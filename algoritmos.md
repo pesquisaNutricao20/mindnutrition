@@ -1,6 +1,6 @@
 # Algoritmos e Cálculos Nutricionais
 
-Este documento descreve as fórmulas e algoritmos utilizados no sistema Serena Nutre para calcular as necessidades nutricionais, diagnóstico e recomendações do usuário.
+Este documento descreve as fórmulas e algoritmos utilizados no sistema Mind Nutrition para calcular as necessidades nutricionais, diagnóstico e recomendações do usuário.
 
 ## 1. Índice de Massa Corporal (IMC)
 

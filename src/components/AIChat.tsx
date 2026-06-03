@@ -100,7 +100,7 @@ export function AIChat({ userName, onBack }: AIChatProps) {
   const [history, setHistory] = useState<{ sender: 'user' | 'bot'; text: string }[]>([
     {
       sender: 'bot',
-      text: `Olá ${userName || 'amigo'}! 🌿 Sou a Nutri AI do Serena Nutre. Estou aqui para analisar seus dados e oferecer conselhos gentis sobre sua alimentação. Como posso ajudar hoje?`,
+      text: `Olá ${userName || 'amigo'}! 🌿 Sou a Nutri AI do Mind Nutrition. Estou aqui para analisar seus dados e oferecer conselhos gentis sobre sua alimentação. Como posso ajudar hoje?`,
     },
   ]);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -217,7 +217,7 @@ export function AIChat({ userName, onBack }: AIChatProps) {
           </motion.button>
         </div>
         <p className="text-center text-[10px] text-ink/30 mt-2 font-medium">
-          Serena Nutre AI • Respostas baseadas no seu perfil
+          Mind Nutrition AI • Respostas baseadas no seu perfil
         </p>
       </div>
     </div>

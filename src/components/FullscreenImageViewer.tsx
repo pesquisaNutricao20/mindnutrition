@@ -94,6 +94,7 @@ export function FullscreenImageViewer({ images, currentIndex, isOpen, onClose, o
 }
 
 interface MeasurementImageProps {
+  key?: React.Key;
   imageSrc: string;
   title: string;
   description: string;

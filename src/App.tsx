@@ -34,17 +34,31 @@ import {
   TrendingUp,
   HelpCircle,
   ArrowUpLeft,
-  X
+  X,
+  Palette,
+  Trash2,
+  ChevronDown
 } from 'lucide-react';
 import { GiOvermind } from 'react-icons/gi';
 import { BsFlower1 } from 'react-icons/bs';
 import { TbHealthRecognition } from 'react-icons/tb';
 import { PiHeartbeat } from 'react-icons/pi';
-import { FaBrain, FaGoogle } from 'react-icons/fa';
+import { FaBrain } from 'react-icons/fa';
 import { motion, AnimatePresence, useAnimation, useMotionValue } from 'motion/react';
 import { ToastProvider, useToast } from './components/Toast';
 import { MascotComponent } from './components/Mascot';
 import { FullscreenImageViewer, MeasurementImageCard } from './components/FullscreenImageViewer';
+import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
+import {
+  deleteCurrentUserData,
+  getCurrentSession,
+  insertMeal,
+  isSupabaseConfigured,
+  loadMeals,
+  loadProfile,
+  supabase,
+  upsertProfile,
+} from './lib/supabase';
 import mascoteEyesOpen from './assets/mascote_eyes_open.png';
 import mascoteEyesClosed from './assets/mascote_eyes_closed.png';
 import mascoteFlying from './assets/mascote_flying.png';
@@ -87,6 +101,7 @@ type Page =
   | 'profile'
   | 'settings-account'
   | 'settings-notifications'
+  | 'settings-theme'
   | 'settings-privacy'
   | 'settings-help'
   | 'admin-login'
@@ -222,12 +237,20 @@ const TypewriterText = ({ text, onComplete }: { text: string, onComplete?: () =>
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState<Page>('landing');
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    if (window.location.pathname === '/nutricionista') {
+      return localStorage.getItem('nutriAdminLoggedIn') === 'true' ? 'admin-dashboard' : 'admin-login';
+    }
+    return 'landing';
+  });
   const [diagnosisStep, setDiagnosisStep] = useState(0);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
-  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [savedLoginNotice, setSavedLoginNotice] = useState(false);
+  const [themeId, setThemeId] = useState(() => localStorage.getItem('mindTheme') || DEFAULT_THEME_ID);
+  const [adminLoggedIn, setAdminLoggedIn] = useState(() => localStorage.getItem('nutriAdminLoggedIn') === 'true');
   const [adminUsers, setAdminUsers] = useState<any[]>(() => {
     const saved = localStorage.getItem('nutriAllUsers');
     return saved ? JSON.parse(saved) : [];
@@ -255,20 +278,85 @@ export default function App() {
     height: 0,
     weightEvolution: MOCK_WEIGHT_DATA,
     waistEvolution: [{ date: '29/04', value: 88 }],
+    armEvolution: [],
+    abdomenEvolution: [],
+    hipEvolution: [{ date: '29/04', value: 104 }],
     age: 25,
     activityLevel: 1.2
   });
 
+  const persistUserProfile = async (profile: UserProfile) => {
+    setUserProfile(profile);
+    localStorage.setItem('nutriUser', JSON.stringify(profile));
+    if (currentUserId && profile.email) {
+      upsertProfile(currentUserId, profile.email, profile as unknown as Record<string, unknown>).catch((err) => {
+        console.warn('Supabase profile sync failed:', err);
+      });
+    }
+  };
+
   useEffect(() => {
-    const saved = localStorage.getItem('nutriUser');
-    if (saved) setUserProfile(JSON.parse(saved));
-    const savedMeals = localStorage.getItem('nutriMeals');
-    if (savedMeals) setLoggedMeals(JSON.parse(savedMeals));
-    const timer = setTimeout(() => setIsLoading(false), 2500);
-    return () => clearTimeout(timer);
+    const theme = APP_THEMES.find(item => item.id === themeId) || APP_THEMES[0];
+    const root = document.documentElement;
+    root.style.setProperty('--ink', theme.colors.ink);
+    root.style.setProperty('--paper', theme.colors.paper);
+    root.style.setProperty('--accent', theme.colors.accent);
+    root.style.setProperty('--accent-pink', theme.colors.accentPink);
+    root.style.setProperty('--accent-light', theme.colors.accentLight);
+    root.style.setProperty('--accent-pink-light', theme.colors.accentPinkLight);
+    root.style.setProperty('--line', theme.colors.line);
+    localStorage.setItem('mindTheme', theme.id);
+  }, [themeId]);
+
+  useEffect(() => {
+    let active = true;
+    const hydrate = async () => {
+      const saved = localStorage.getItem('nutriUser');
+      const savedMeals = localStorage.getItem('nutriMeals');
+      if (saved) {
+        try {
+          setUserProfile(JSON.parse(saved));
+          setSavedLoginNotice(true);
+        } catch {}
+      }
+      if (savedMeals) {
+        try { setLoggedMeals(JSON.parse(savedMeals)); } catch {}
+      }
+
+      if (isSupabaseConfigured) {
+        try {
+          const session = await getCurrentSession();
+          if (session?.user && active) {
+            setCurrentUserId(session.user.id);
+            setSavedLoginNotice(true);
+            const [remoteProfile, remoteMeals] = await Promise.all([
+              loadProfile(session.user.id).catch(() => null),
+              loadMeals(session.user.id).catch(() => []),
+            ]);
+            if (remoteProfile && active) {
+              setUserProfile(prev => ({ ...prev, ...remoteProfile, email: session.user.email || remoteProfile.email || prev.email }));
+              localStorage.setItem('nutriUser', JSON.stringify({ ...userProfile, ...remoteProfile, email: session.user.email || remoteProfile.email || userProfile.email }));
+            } else if (session.user.email && active) {
+              setUserProfile(prev => ({ ...prev, email: session.user.email || prev.email }));
+            }
+            if (remoteMeals.length && active) {
+              setLoggedMeals(remoteMeals);
+              localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
+            }
+          }
+        } catch (err) {
+          console.warn('Supabase session hydrate failed:', err);
+        }
+      }
+
+      setTimeout(() => active && setIsLoading(false), 900);
+    };
+    hydrate();
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
+    if (!isLoading) localStorage.setItem('nutriUser', JSON.stringify(userProfile));
     if (userProfile.name && userProfile.email) {
       const allUsers = JSON.parse(localStorage.getItem('nutriAllUsers') || '[]');
       const existingIndex = allUsers.findIndex((u: any) => u.email === userProfile.email);
@@ -285,6 +373,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nutriArticles', JSON.stringify(adminArticles));
   }, [adminArticles]);
+
+  useEffect(() => {
+    const targetPath = ['admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) ? '/nutricionista' : '/';
+    if (window.location.pathname !== targetPath) {
+      window.history.replaceState({}, '', targetPath);
+    }
+  }, [currentPage]);
 
   const articleControls = useAnimation();
   const articleY = useMotionValue(0);
@@ -315,6 +410,11 @@ export default function App() {
     const updated = [meal, ...loggedMeals];
     setLoggedMeals(updated);
     localStorage.setItem('nutriMeals', JSON.stringify(updated));
+    if (currentUserId) {
+      insertMeal(currentUserId, meal).catch((err) => {
+        console.warn('Supabase meal sync failed:', err);
+      });
+    }
   };
 
   // ---------- Navigation ----------
@@ -327,6 +427,37 @@ export default function App() {
     { id: 'content', icon: Library, label: 'Biblioteca' },
     { id: 'profile', icon: User, label: 'Perfil' },
   ];
+
+  const appPageIds = navItems.map(item => item.id);
+
+  const handleSectionSwipe = (offsetX: number) => {
+    if (Math.abs(offsetX) < 120 || !appPageIds.includes(currentPage)) return;
+    const currentIndex = appPageIds.indexOf(currentPage);
+    const nextIndex = offsetX < 0
+      ? Math.min(currentIndex + 1, appPageIds.length - 1)
+      : Math.max(currentIndex - 1, 0);
+    if (nextIndex !== currentIndex) setCurrentPage(appPageIds[nextIndex] as Page);
+  };
+
+  const renderTopNavbar = () => {
+    if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage) || isLoading) return null;
+    return (
+      <header className="app-topbar">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-accent text-paper flex items-center justify-center animated-gradient shrink-0">
+            <BsFlower1 size={18} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-bold text-base leading-tight truncate">Mind Nutrition</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">Jornada consciente</p>
+          </div>
+        </div>
+        <button onClick={() => setCurrentPage('profile')} className="w-10 h-10 rounded-full overflow-hidden border border-line bg-white shrink-0">
+          <img src={userProfile.photo} alt="" className="w-full h-full object-cover" />
+        </button>
+      </header>
+    );
+  };
 
   const renderDesktopSidebar = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
@@ -370,7 +501,7 @@ export default function App() {
 
   const renderMobileNav = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
-    if (currentPage === 'meal-log') return null;
+    if (currentPage === 'meal-log' || currentPage === 'chat') return null;
 
     // Mobile nav shows 5 items max for better UX
     const mobileItems = navItems.filter(i => i.id !== 'profile');
@@ -427,8 +558,12 @@ export default function App() {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -15 }}
+        drag={appPageIds.includes(currentPage) && !noPadding ? 'x' : false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.08}
+        onDragEnd={(_, info) => handleSectionSwipe(info.offset.x)}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`w-full min-h-screen pb-28 ${noPadding ? '' : 'px-6 md:px-12 py-8 md:py-12'} max-w-4xl mx-auto`}
+        className={`w-full min-h-screen pb-36 md:pb-16 ${noPadding ? '' : 'px-5 md:px-12 pt-24 md:pt-12'} max-w-4xl mx-auto`}
       >
         {children}
       </motion.div>
@@ -462,7 +597,7 @@ export default function App() {
           transition={{ duration: 2, repeat: Infinity }}
           className="mt-10 text-center"
         >
-          <span className="display-title text-5xl text-accent tracking-widest block">Serena Nutre</span>
+          <span className="display-title text-5xl text-accent tracking-widest block">Mind Nutrition</span>
           <p className="label-sm text-accent-pink mt-3 text-sm">Cultivando sua consciência...</p>
         </motion.div>
       </motion.div>
@@ -474,7 +609,7 @@ export default function App() {
       <div className={`${mini ? 'w-8 h-8 rounded-[0.6rem]' : 'w-10 h-10 rounded-[0.8rem]'} bg-accent text-paper flex items-center justify-center animated-gradient shadow-md shrink-0`}>
         <span className="group-hover:rotate-90 transition-transform duration-500"><BsFlower1 size={mini ? 18 : 22} /></span>
       </div>
-      <span className={`logo-title ${mini ? 'text-[1.0rem]' : 'text-[1.3rem]'} text-accent tracking-tight`}>Serena Nutre</span>
+      <span className={`logo-title ${mini ? 'text-[1.0rem]' : 'text-[1.3rem]'} text-accent tracking-tight`}>Mind Nutrition</span>
     </div>
   );
 
@@ -625,10 +760,14 @@ export default function App() {
       <div className="w-full h-full flex flex-col relative z-10 max-w-[2000px] mx-auto">
         <div className="p-3 md:p-6 flex justify-end items-center border-b border-line bg-paper/80 backdrop-blur-sm shrink-0">
           <div className="flex items-center gap-4">
-            {localStorage.getItem('nutriUser') && (
-              <span className="flex items-center gap-2 text-accent text-sm font-bold bg-accent/10 px-4 py-2 rounded-full">
+            {savedLoginNotice && (
+              <motion.span
+                initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 text-accent text-sm font-bold bg-white/95 border border-accent/20 px-4 py-2 rounded-full shadow-xl backdrop-blur"
+              >
                 <CheckCircle size={16} /> Login Salvo
-              </span>
+              </motion.span>
             )}
             <button onClick={() => setCurrentPage('admin-login')} className="text-xs font-medium text-ink/40 hover:text-accent transition-colors flex items-center gap-1">
               <User size={14} /> Nutricionista
@@ -644,8 +783,8 @@ export default function App() {
                 <div className="absolute -top-12 -left-8 text-accent/20 w-32 h-32 spin-slow pointer-events-none">
                   <BsFlower1 size="100%" />
                 </div>
-                <h1 className="font-title text-accent text-[6rem] md:text-[8rem] leading-[0.85] tracking-tight relative z-10">Serena</h1>
-                <h1 className="font-title text-accent-pink -mt-4 md:-mt-8 text-right text-[6rem] md:text-[8rem] leading-[0.85] text-shadow-md tracking-tight relative z-10">Nutre</h1>
+                <h1 className="font-title text-accent text-[4.5rem] sm:text-[6rem] md:text-[8rem] leading-[0.85] tracking-tight relative z-10">Mind</h1>
+                <h1 className="font-title text-accent-pink -mt-3 md:-mt-8 text-right text-[4.2rem] sm:text-[5.8rem] md:text-[8rem] leading-[0.85] text-shadow-md tracking-tight relative z-10">Nutrition</h1>
               </div>
 
               <div className="max-w-md mb-12 bg-white/50 backdrop-blur-sm p-6 rounded-3xl border border-line shadow-sm relative z-20">
@@ -695,12 +834,57 @@ export default function App() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLogin, setIsLogin] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleLogin = () => {
-      if (!email.includes('@')) { setError('Por favor, insira um e-mail válido.'); return; }
-      if (password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return; }
-      setUserProfile({ ...userProfile, email });
-      setCurrentPage('diagnosis');
+    const handleAuth = async () => {
+      const normalizedEmail = email.trim();
+      const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        setError('Por favor, insira um e-mail válido.');
+        return;
+      }
+      if (!strongPassword.test(password)) {
+        setError('Use 8+ caracteres com maiúscula, minúscula, número e símbolo.');
+        return;
+      }
+      if (!supabase) {
+        setError('Supabase não está configurado. Verifique as variáveis .env.local.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setError('');
+      try {
+        const result = isLogin
+          ? await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+          : await supabase.auth.signUp({ email: normalizedEmail, password });
+        if (result.error) throw result.error;
+
+        const user = result.data.user || result.data.session?.user;
+        if (!user) {
+          toast('Verifique seu e-mail para confirmar a conta.', 'info', 5000);
+          return;
+        }
+
+        setCurrentUserId(user.id);
+        const remoteProfile = await loadProfile(user.id).catch(() => null);
+        const remoteMeals = await loadMeals(user.id).catch(() => []);
+        const nextProfile = { ...userProfile, ...(remoteProfile || {}), email: user.email || normalizedEmail };
+        setUserProfile(nextProfile);
+        localStorage.setItem('nutriUser', JSON.stringify(nextProfile));
+        if (remoteMeals.length) {
+          setLoggedMeals(remoteMeals);
+          localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
+        }
+        setSavedLoginNotice(true);
+        toast(isLogin ? 'Login salvo com segurança.' : 'Conta criada. Complete seu perfil.', 'success');
+        setCurrentPage(remoteProfile?.name ? 'dashboard' : 'diagnosis');
+      } catch (err: any) {
+        setError(err?.message || 'Não foi possível autenticar agora.');
+      } finally {
+        setIsSubmitting(false);
+      }
     };
 
     return (
@@ -724,7 +908,14 @@ export default function App() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <p className="label-sm text-accent">Senha</p>
-                  <button onClick={() => toast('Instruções de recuperação enviadas para o e-mail!', 'success')} className="text-xs font-bold text-accent hover:underline">
+                  <button onClick={async () => {
+                    if (!supabase || !email.trim()) {
+                      setError('Informe seu e-mail para recuperar a senha.');
+                      return;
+                    }
+                    await supabase.auth.resetPasswordForEmail(email.trim());
+                    toast('Instruções de recuperação enviadas para o e-mail!', 'success');
+                  }} className="text-xs font-bold text-accent hover:underline">
                     Esqueci minha senha
                   </button>
                 </div>
@@ -735,20 +926,20 @@ export default function App() {
             </div>
 
             <div className="space-y-4 pt-4">
-              <button onClick={() => { if (!email || !password) setError('Preencha os campos para continuar.'); else handleLogin(); }}
-                className={`w-full py-5 text-paper font-bold text-lg rounded-full shadow-lg transition-colors ${email && password ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
-                Criar Conta
+              <button onClick={handleAuth} disabled={isSubmitting || !email || !password}
+                className={`w-full py-5 text-paper font-bold text-lg rounded-full shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
+                {isSubmitting ? 'Processando...' : isLogin ? 'Entrar' : 'Criar Conta'}
               </button>
-              <button onClick={() => setCurrentPage('diagnosis')}
+              <button onClick={() => { setIsLogin(v => !v); setError(''); }}
                 className="w-full py-5 border-2 border-line rounded-full font-bold text-lg flex items-center justify-center gap-3 hover:bg-ink/5 transition-colors">
-                <FaGoogle size={18} /> Entrar com Google
+                {isLogin ? 'Criar nova conta' : 'Já tenho conta'}
               </button>
             </div>
             
             <div className="pt-6 text-center">
-              <button onClick={() => toast('Serena Nutre é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0', 'info', 5000)}
+              <button onClick={() => toast('Mind Nutrition é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0', 'info', 5000)}
                 className="text-sm font-medium text-ink/50 hover:text-accent transition-colors flex items-center justify-center gap-2 mx-auto">
-                <HelpCircle size={16} /> Sobre o Serena Nutre
+                <HelpCircle size={16} /> Sobre o Mind Nutrition
               </button>
             </div>
           </div>
@@ -804,8 +995,7 @@ export default function App() {
         );
         
         const finalProfile = { ...tempProfile, ...result };
-        setUserProfile(finalProfile);
-        localStorage.setItem('nutriUser', JSON.stringify(finalProfile));
+        persistUserProfile(finalProfile);
         setCurrentPage('dashboard');
         return;
       }
@@ -1033,22 +1223,27 @@ export default function App() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setCurrentPage('diagnosis')} className="hidden md:flex bg-white border border-line text-accent font-bold py-2 px-4 rounded-full text-xs shadow-sm hover:border-accent transition-all items-center gap-2">
-              <Edit2 size={14} /> Atualizar Perfil
-            </button>
             <button onClick={() => setCurrentPage('profile')} className="hover:scale-105 transition-transform">
               <Avatar size="md" mood={MOCK_EMOTIONAL_DATA[MOCK_EMOTIONAL_DATA.length - 1].mood} />
             </button>
           </div>
         </header>
 
-        <div className="md:hidden">
-          <button onClick={() => setCurrentPage('diagnosis')} className="w-full bg-white border border-line text-accent font-bold py-3 px-4 rounded-2xl text-sm shadow-sm hover:border-accent transition-all flex items-center justify-center gap-2">
-            <Edit2 size={16} /> Atualizar Perfil e Métricas
-          </button>
-        </div>
-
         <Mascot />
+
+        <section className="animated-gradient p-8 md:p-12 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
+          <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
+          <div className="relative z-10">
+            <h3 className="label-sm mb-4 glass-badge font-bold">Reflexão do Dia</h3>
+            <div className="min-h-[6rem] md:min-h-[5rem] flex items-center">
+              <AnimatePresence mode="wait">
+                <motion.p key={quoteIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="serif-body text-2xl md:text-3xl leading-relaxed drop-shadow-sm">
+                  "{quotes[quoteIndex]}"
+                </motion.p>
+              </AnimatePresence>
+            </div>
+          </div>
+        </section>
 
         <section>
           <div className="flex items-center justify-between mb-6">
@@ -1063,9 +1258,9 @@ export default function App() {
               <button
                 key={post.id}
                 onClick={() => { setSelectedArticle(post); setCurrentPage('content'); }}
-                className="group text-left bg-paper border border-line rounded-[1.5rem] overflow-hidden hover:shadow-md transition-all flex flex-row md:flex-col items-center md:items-start"
+                className="group text-left bg-paper border border-line rounded-[1.5rem] overflow-hidden hover:shadow-md transition-all flex flex-row md:flex-col items-stretch md:items-start"
               >
-                <div className="w-20 h-20 md:w-full md:h-32 shrink-0 overflow-hidden">
+                <div className="w-24 min-h-full md:w-full md:h-36 shrink-0 overflow-hidden bg-line">
                   <img src={post.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 </div>
                 <div className="p-4 flex-1">
@@ -1075,20 +1270,6 @@ export default function App() {
                 </div>
               </button>
             ))}
-          </div>
-        </section>
-
-        <section className="animated-gradient p-8 md:p-12 rounded-[2.5rem] shadow-lg relative overflow-hidden text-paper">
-          <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
-          <div className="relative z-10">
-            <h3 className="label-sm mb-4 glass-badge font-bold">Reflexão do Dia</h3>
-            <div className="min-h-[6rem] md:min-h-[5rem] flex items-center">
-              <AnimatePresence mode="wait">
-                <motion.p key={quoteIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="serif-body text-2xl md:text-3xl leading-relaxed drop-shadow-sm">
-                  "{quotes[quoteIndex]}"
-                </motion.p>
-              </AnimatePresence>
-            </div>
           </div>
         </section>
 
@@ -1155,16 +1336,23 @@ export default function App() {
     const [msg, setMsg] = useState('');
     const [typing, setTyping] = useState(false);
     const [selectedModel, setSelectedModel] = useState('gemini-3-flash-preview');
+    const [modelOpen, setModelOpen] = useState(false);
     const [history, setHistory] = useState<{ sender: 'user' | 'bot', text: string }[]>(() => {
       const saved = localStorage.getItem('nutriChatHistory');
       if (saved) return JSON.parse(saved);
       return [
-        { sender: 'bot', text: `Olá ${userProfile.name || 'amigo'}! Sou a IA do Serena Nutre. Estou aqui para analisar seus dados e oferecer conselhos gentis sobre sua alimentação. Como posso ajudar hoje?` }
+        { sender: 'bot', text: `Olá ${userProfile.name || 'amigo'}! Sou a IA do Mind Nutrition. Estou aqui para analisar seus dados e oferecer conselhos gentis sobre sua alimentação. Como posso ajudar hoje?` }
       ];
     });
     const chatRef = useRef<HTMLDivElement>(null);
     const isFirstRender = useRef(true);
     const [fullscreenImg, setFullscreenImg] = useState(false);
+    const aiModels = [
+      { id: 'gemini-3-flash-preview', label: 'Gemini', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png' },
+      { id: 'kimi-k2.6', label: 'Kimi', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/kimi-color.png' },
+      { id: 'gemma-3', label: 'Gemma', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/gemma-color.png' },
+    ];
+    const activeModel = aiModels.find(model => model.id === selectedModel) || aiModels[0];
 
     useEffect(() => {
       localStorage.setItem('nutriChatHistory', JSON.stringify(history));
@@ -1234,39 +1422,62 @@ export default function App() {
 
     return (
       <PageWrapper noPadding>
-        <div className="flex flex-col h-[100dvh] w-full max-w-4xl mx-auto bg-paper">
-          <header className="px-6 md:px-12 pt-6 pb-4 flex items-center justify-between gap-4 border-b border-line shrink-0 bg-paper/90 backdrop-blur-md z-20 shadow-sm">
+        <div className="flex flex-col min-h-[100dvh] h-[100dvh] w-full max-w-5xl mx-auto bg-[linear-gradient(180deg,var(--paper)_0%,var(--accent-light)_140%)] overflow-hidden">
+          <header className="px-4 md:px-8 pt-4 pb-4 flex items-center justify-between gap-3 border-b border-line shrink-0 bg-paper/85 backdrop-blur-xl z-20 shadow-sm">
             <div className="flex items-center gap-4">
-              <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors bg-white">
+              <button onClick={() => setCurrentPage('dashboard')} className="w-11 h-11 rounded-2xl border border-line flex items-center justify-center hover:bg-line transition-colors bg-white shadow-sm shrink-0">
                 <ArrowLeft size={20} />
               </button>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="relative">
-                  <img src={mascoteAi} alt="Nutri AI" className="w-14 h-14 rounded-2xl object-contain bg-accent/10 p-1.5 shadow-sm" />
+                  <img src={mascoteAi} alt="Nutri AI" className="w-12 h-12 rounded-2xl object-contain bg-white p-1.5 shadow-sm border border-line" />
                   <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-400 rounded-full border-2 border-paper" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h2 className="font-bold text-lg text-ink">Nutri AI</h2>
                   <p className="label-sm text-accent">{typing ? 'Digitando...' : 'Online'}</p>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="bg-white border border-line rounded-2xl px-4 py-2.5 text-xs font-bold outline-none focus:border-accent shadow-sm"
-              >
-                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-                <option value="kimi-k2.6">kimi-k2.6</option>
-              </select>
-              <button onClick={handleClearHistory} className="bg-red-50 text-red-500 border border-red-200 px-4 py-2.5 rounded-2xl text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <button
+                  onClick={() => setModelOpen(open => !open)}
+                  className="bg-white border border-line rounded-2xl pl-2 pr-3 py-2 text-xs font-bold outline-none focus:border-accent shadow-sm flex items-center gap-2 min-w-[7.5rem]"
+                >
+                  <img src={activeModel.logo} alt="" className="w-6 h-6 rounded-lg object-contain bg-ink/5" />
+                  <span className="hidden sm:inline">{activeModel.label}</span>
+                  <ChevronDown size={14} className={`ml-auto transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {modelOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      className="absolute right-0 mt-2 w-44 bg-white border border-line rounded-2xl shadow-2xl p-2 z-50"
+                    >
+                      {aiModels.map(model => (
+                        <button
+                          key={model.id}
+                          onClick={() => { setSelectedModel(model.id); setModelOpen(false); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-bold hover:bg-accent/10 ${selectedModel === model.id ? 'text-accent bg-accent/10' : 'text-ink'}`}
+                        >
+                          <img src={model.logo} alt="" className="w-7 h-7 rounded-lg object-contain bg-ink/5" />
+                          <span>{model.label}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <button onClick={handleClearHistory} className="bg-red-50 text-red-500 border border-red-200 px-3 md:px-4 py-2.5 rounded-2xl text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">
                 Limpar
               </button>
             </div>
           </header>
 
-          <div ref={chatRef} className="flex-1 overflow-y-auto px-6 md:px-12 py-8 space-y-5 pb-36">
+          <div ref={chatRef} className="flex-1 overflow-y-auto px-4 md:px-10 py-6 space-y-5">
             {history.map((h, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
@@ -1279,7 +1490,7 @@ export default function App() {
                     <span className="text-xs font-bold text-ink/60">{userProfile.name?.charAt(0).toUpperCase() || 'U'}</span>
                   </div>
                 )}
-                <div className={`max-w-[80%] md:max-w-[70%] px-5 py-4 rounded-3xl text-base font-medium shadow-sm leading-relaxed ${
+                <div className={`max-w-[82%] md:max-w-[68%] px-5 py-4 rounded-3xl text-[0.95rem] md:text-base font-medium shadow-sm leading-relaxed ${
                   h.sender === 'user' ? 'bg-accent text-white rounded-br-md' : 'bg-white border border-line text-ink rounded-bl-md'
                 }`}>
                   {h.sender === 'bot' && i === history.length - 1 && !typing ? (
@@ -1305,7 +1516,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="shrink-0 px-4 md:px-8 py-4 bg-paper/90 backdrop-blur-lg border-t border-line pb-safe">
+          <div className="shrink-0 px-4 md:px-8 py-4 bg-paper/90 backdrop-blur-xl border-t border-line pb-safe">
             <div className="max-w-3xl mx-auto flex items-center gap-3">
               <input
                 type="text" value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()}
@@ -1320,7 +1531,7 @@ export default function App() {
               </motion.button>
             </div>
             <p className="text-center text-[10px] text-ink/30 mt-3 font-medium">
-              Serena Nutre AI • Respostas baseadas no seu perfil
+              Mind Nutrition AI • Respostas baseadas no seu perfil
             </p>
           </div>
         </div>
@@ -1430,7 +1641,7 @@ export default function App() {
                     </div>
                   </div>
                   <button onClick={() => {
-                    const newMeal = { ...log, title: 'Refeição', date: new Date().toISOString(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), type: log.preHunger > 5 ? 'Emocional' : 'Física' };
+                    const newMeal = { ...log, title: 'Refeição', date: new Date().toISOString(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), type: log.preHunger >= 6 ? 'Física' : 'Emocional' };
                     saveMeal(newMeal);
                     setCurrentPage('dashboard');
                   }} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg animated-gradient">
@@ -1497,8 +1708,7 @@ export default function App() {
         updatedProfile.imc = parseFloat((newMetrics.weight / Math.pow(updatedProfile.height / 100, 2)).toFixed(1));
       }
 
-      setUserProfile(updatedProfile);
-      localStorage.setItem('nutriUser', JSON.stringify(updatedProfile));
+      persistUserProfile(updatedProfile);
       setShowMetricsModal(false);
     };
 
@@ -1514,6 +1724,27 @@ export default function App() {
         value: h && h.value > 0 ? parseFloat((w.value / h.value).toFixed(2)) : 0
       };
     }).filter(d => d.value > 0);
+
+    const physicalMeals = loggedMeals.filter((meal: any) => meal.type === 'Física' || meal.type === 'FÃ­sica').length;
+    const emotionalMeals = loggedMeals.filter((meal: any) => meal.type === 'Emocional').length;
+    const hungerPieData = [
+      { name: 'Fome Física', value: physicalMeals },
+      { name: 'Fome Emocional', value: emotionalMeals },
+      { name: 'Não classificada', value: Math.max(loggedMeals.length - physicalMeals - emotionalMeals, 0) },
+    ].filter(item => item.value > 0);
+    const chartPieData = hungerPieData.length ? hungerPieData : [{ name: 'Nenhuma refeição registrada', value: 1 }];
+    const dayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const emotionalData = dayLabels.map((day, index) => {
+      const meals = loggedMeals.filter((meal: any) => new Date(meal.date || Date.now()).getDay() === index);
+      return {
+        day,
+        fisico: meals.filter((meal: any) => meal.type === 'Física' || meal.type === 'FÃ­sica').length,
+        emocional: meals.filter((meal: any) => meal.type === 'Emocional').length,
+      };
+    });
+    const awarenessScore = loggedMeals.length
+      ? Math.min(100, Math.round((loggedMeals.filter((meal: any) => meal.notes || meal.postMood || meal.satisfaction).length / loggedMeals.length) * 100))
+      : 0;
 
     return (
     <PageWrapper>
@@ -1542,8 +1773,8 @@ export default function App() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="animated-gradient text-paper p-10 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
             <h3 className="label-sm text-paper mb-4 glass-badge inline-block self-start font-bold">Consciência Plena</h3>
-            <div className="text-7xl font-display mb-2 text-paper drop-shadow-md">88%</div>
-            <p className="text-sm font-medium text-paper/90 leading-relaxed">Você está mais atento às suas emoções esta semana.</p>
+            <div className="text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</div>
+            <p className="text-sm font-medium text-paper/90 leading-relaxed">{loggedMeals.length ? 'Baseado nas refeições registradas e nas emoções informadas.' : 'Registre refeições para gerar sua leitura de consciência.'}</p>
           </div>
 
           <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
@@ -1689,8 +1920,8 @@ export default function App() {
               <div className="h-44 w-1/2">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={MOCK_PIE_DATA} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
-                      {MOCK_PIE_DATA.map((entry, index) => (
+                    <Pie data={chartPieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
+                      {chartPieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -1699,7 +1930,7 @@ export default function App() {
                 </ResponsiveContainer>
               </div>
               <div className="w-1/2 space-y-3">
-                {MOCK_PIE_DATA.map((item, i) => (
+                {chartPieData.map((item, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
                     <span className="text-xs font-bold">{item.name}</span>
@@ -1713,7 +1944,7 @@ export default function App() {
             <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Emocional</h3>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={MOCK_EMOTIONAL_DATA}>
+                <BarChart data={emotionalData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={10} />
                   <Tooltip cursor={{ fill: 'var(--line)', opacity: 0.5 }} contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
@@ -1731,10 +1962,10 @@ export default function App() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Refeições', val: '24', icon: Coffee, trend: '+4' },
-            { label: 'Leituras', val: '12', icon: Library, trend: '+2' },
-            { label: 'Foco', val: '82%', icon: TrendingUp, trend: '+5%' },
-            { label: 'Humor', val: '7.5', icon: Smile, trend: '+0.2' },
+            { label: 'Refeições', val: String(loggedMeals.length), icon: Coffee, trend: loggedMeals.length ? 'ativo' : 'zero' },
+            { label: 'Físicas', val: String(physicalMeals), icon: Activity, trend: `${Math.round((physicalMeals / Math.max(loggedMeals.length, 1)) * 100)}%` },
+            { label: 'Emocionais', val: String(emotionalMeals), icon: Heart, trend: `${Math.round((emotionalMeals / Math.max(loggedMeals.length, 1)) * 100)}%` },
+            { label: 'Foco', val: `${awarenessScore}%`, icon: TrendingUp, trend: loggedMeals.length ? 'real' : 'aguardando' },
           ].map((m, i) => (
             <div key={i} className="bg-accent/5 p-6 rounded-3xl border border-accent/10">
               <m.icon size={20} className="text-accent mb-3" />
@@ -1752,7 +1983,7 @@ export default function App() {
         {showMetricsModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/60 backdrop-blur-sm" onClick={() => setShowMetricsModal(false)} />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-paper w-full max-w-2xl rounded-[2.5rem] p-8 md:p-12 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-paper w-full max-w-2xl rounded-[2rem] md:rounded-[2.5rem] p-5 md:p-12 pb-8 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
               <h3 className="display-title text-3xl mb-4 text-center">Atualizar Métricas</h3>
               <p className="text-center text-ink/60 mb-8 serif-body">Clique nas imagens para ver as instruções completas</p>
               <div className="space-y-6">
@@ -1948,8 +2179,7 @@ export default function App() {
       const newProfile = { ...userProfile };
       if (editMode === 'name' || editMode === 'all') newProfile.name = name;
       if (editMode === 'email' || editMode === 'all') newProfile.email = email;
-      setUserProfile(newProfile);
-      localStorage.setItem('nutriUser', JSON.stringify(newProfile));
+      persistUserProfile(newProfile);
       toast('Perfil atualizado com sucesso!', 'success');
       setEditMode('none');
       setCurrentPage('profile');
@@ -2026,8 +2256,7 @@ export default function App() {
                           const reader = new FileReader();
                           reader.onload = (ev) => {
                             const newProfile = { ...userProfile, photo: ev.target?.result as string };
-                            setUserProfile(newProfile);
-                            localStorage.setItem('nutriUser', JSON.stringify(newProfile));
+                            persistUserProfile(newProfile);
                             toast('Foto atualizada!', 'success');
                           };
                           reader.readAsDataURL(e.target.files[0]);
@@ -2081,7 +2310,64 @@ export default function App() {
     </PageWrapper>
   );
 
-  const PrivacySettings = () => (
+  const ThemeSettings = () => (
+    <PageWrapper>
+      <div className="space-y-12">
+        <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <h2 className="display-title text-5xl">Temas.</h2>
+          <p className="serif-body text-xl text-ink/60 mt-2">Escolha uma paleta para o app.</p>
+        </div>
+        <div className="grid gap-4 max-w-2xl">
+          {APP_THEMES.map(theme => {
+            const active = theme.id === themeId;
+            return (
+              <button
+                key={theme.id}
+                onClick={() => setThemeId(theme.id)}
+                className={`w-full p-5 bg-white border rounded-3xl shadow-sm text-left transition-all ${active ? 'border-accent ring-4 ring-accent/10' : 'border-line hover:border-accent/50'}`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-lg">{theme.name}</h3>
+                    <p className="text-xs text-ink/50 font-medium mt-1">{theme.description}</p>
+                  </div>
+                  {active && <CheckCircle size={20} className="text-accent shrink-0" />}
+                </div>
+                <div className="flex gap-2 mt-4">
+                  {[theme.colors.ink, theme.colors.paper, theme.colors.accent, theme.colors.accentPink, theme.colors.accentLight].map((color, index) => (
+                    <span key={index} className="w-9 h-9 rounded-full border border-line shadow-sm" style={{ backgroundColor: color }} />
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </PageWrapper>
+  );
+
+  const PrivacySettings = () => {
+    const { toast } = useToast();
+    const handleDeleteData = async () => {
+      if (!window.confirm('Apagar seus dados de perfil e refeições do banco? Esta ação não pode ser desfeita.')) return;
+      try {
+        if (currentUserId) await deleteCurrentUserData(currentUserId);
+        await supabase?.auth.signOut();
+        localStorage.removeItem('nutriUser');
+        localStorage.removeItem('nutriMeals');
+        setLoggedMeals([]);
+        setCurrentUserId(null);
+        toast('Seus dados foram apagados.', 'success');
+        setCurrentPage('landing');
+      } catch (err) {
+        toast('Não foi possível apagar os dados no banco agora.', 'error');
+      }
+    };
+
+    return (
     <PageWrapper>
       <div className="space-y-12">
         <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
@@ -2104,16 +2390,14 @@ export default function App() {
               </div>
             </div>
           ))}
-          <button onClick={() => {
-            localStorage.removeItem('nutriUser');
-            window.location.reload();
-          }} className="w-full py-5 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors mt-8">
-            Sair e Limpar Dados
+          <button onClick={handleDeleteData} className="w-full py-5 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors mt-8 flex items-center justify-center gap-2">
+            <Trash2 size={18} /> Apagar meus dados do banco
           </button>
         </div>
       </div>
     </PageWrapper>
-  );
+    );
+  };
 
   const SettingsHelp = () => (
     <PageWrapper>
@@ -2184,6 +2468,14 @@ export default function App() {
           <div>
             <h2 className="display-title text-4xl">{userProfile.name || 'Usuário'}</h2>
             <p className="label-sm text-accent mt-2">Membro consciente desde 2026</p>
+            <div className="flex justify-center gap-2 mt-4">
+              <button onClick={() => setCurrentPage('settings-account')} className="px-4 py-2 rounded-full bg-white border border-line text-xs font-bold text-ink/70 hover:text-accent hover:border-accent transition-colors inline-flex items-center gap-2">
+                <Edit2 size={14} /> Editar nome
+              </button>
+              <button onClick={() => setCurrentPage('settings-account')} className="px-4 py-2 rounded-full bg-white border border-line text-xs font-bold text-ink/70 hover:text-accent hover:border-accent transition-colors inline-flex items-center gap-2">
+                <Camera size={14} /> Trocar foto
+              </button>
+            </div>
           </div>
         </header>
 
@@ -2218,6 +2510,7 @@ export default function App() {
           {[
             { label: 'Configurações da Conta', icon: Settings, page: 'settings-account' },
             { label: 'Notificações', icon: Bell, page: 'settings-notifications' },
+            { label: 'Temas do App', icon: Palette, page: 'settings-theme' },
             { label: 'Privacidade e Segurança', icon: Lock, page: 'settings-privacy' },
             { label: 'Ajuda', icon: HelpCircle, page: 'settings-help' },
           ].map((item, i) => (
@@ -2234,9 +2527,9 @@ export default function App() {
         </div>
 
         <div className="pt-2">
-          <button onClick={() => toast('Serena Nutre é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0.0', 'info', 5000)}
+          <button onClick={() => toast('Mind Nutrition é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0.0', 'info', 5000)}
             className="w-full py-4 flex items-center justify-center gap-2 text-ink/50 hover:text-accent font-medium transition-colors">
-            <HelpCircle size={18} /> Sobre o Serena Nutre
+            <HelpCircle size={18} /> Sobre o Mind Nutrition
           </button>
           <button onClick={() => setCurrentPage('landing')} className="w-full py-6 mt-4 flex items-center justify-center gap-3 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors shadow-sm">
             <LogOut size={20} />
@@ -2633,6 +2926,7 @@ export default function App() {
       <div className="paper-texture" />
 
       {renderDesktopSidebar()}
+      {renderTopNavbar()}
 
       <main className="app-main relative z-10 w-full overflow-x-hidden">
         <AnimatePresence mode="wait">
@@ -2651,6 +2945,7 @@ export default function App() {
           {currentPage === 'profile' && <ProfilePage key="profile" />}
           {currentPage === 'settings-account' && <AccountSettings key="account" />}
           {currentPage === 'settings-notifications' && <NotificationSettings key="notifications" />}
+          {currentPage === 'settings-theme' && <ThemeSettings key="themes" />}
           {currentPage === 'settings-privacy' && <PrivacySettings key="privacy" />}
           {currentPage === 'settings-help' && <SettingsHelp key="help" />}
           {currentPage === 'meal-details' && <MealDetailsPage key="meal-details" />}
