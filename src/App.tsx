@@ -184,6 +184,33 @@ const MOCK_PIE_DATA = [
 ];
 
 const COLORS = ['var(--accent)', 'var(--accent-pink)', '#5A9485'];
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_MB = 4;
+const MAX_MEAL_PHOTOS = 6;
+
+const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result as string);
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
+async function readValidatedImages(files: FileList | null, currentCount = 0) {
+  if (!files || files.length === 0) return { images: [] as string[], error: '' };
+  const selected = Array.from(files);
+  if (currentCount + selected.length > MAX_MEAL_PHOTOS) {
+    return { images: [] as string[], error: `Adicione no máximo ${MAX_MEAL_PHOTOS} fotos por refeição.` };
+  }
+  const invalid = selected.find(file => !ACCEPTED_IMAGE_TYPES.includes(file.type));
+  if (invalid) {
+    return { images: [] as string[], error: 'Use imagens JPG, PNG ou WEBP.' };
+  }
+  const tooLarge = selected.find(file => file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024);
+  if (tooLarge) {
+    return { images: [] as string[], error: `Cada imagem deve ter até ${MAX_IMAGE_SIZE_MB}MB.` };
+  }
+  return { images: await Promise.all(selected.map(readFileAsDataUrl)), error: '' };
+}
 
 const MOCK_WEIGHT_DATA = [
   { date: '01/04', value: 76.5 },
@@ -192,6 +219,8 @@ const MOCK_WEIGHT_DATA = [
   { date: '22/04', value: 75.3 },
   { date: '29/04', value: 75.0 },
 ];
+
+const DEFAULT_PROFILE_PHOTO = '';
 
 const MOCK_MEALS = [
   { time: '08:30', title: 'Café da Manhã', mood: 'Calmo', icon: Coffee, type: 'Física', image: 'https://images.unsplash.com/photo-1495214783159-3503fd1b572d?auto=format&fit=crop&q=80&w=800', notes: 'Aveia com frutas vermelhas. Me senti presente enquanto comia.' },
@@ -268,7 +297,7 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile>({
     name: '',
     email: '',
-    photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
+    photo: DEFAULT_PROFILE_PHOTO,
     gender: '',
     objectives: [],
     initialEmotions: [],
@@ -285,11 +314,13 @@ export default function App() {
     activityLevel: 1.2
   });
 
-  const persistUserProfile = async (profile: UserProfile) => {
+  const persistUserProfile = async (profile: UserProfile, userId = currentUserId) => {
     setUserProfile(profile);
     localStorage.setItem('nutriUser', JSON.stringify(profile));
-    if (currentUserId && profile.email) {
-      upsertProfile(currentUserId, profile.email, profile as unknown as Record<string, unknown>).catch((err) => {
+    const sessionUserId = userId || (await getCurrentSession().catch(() => null))?.user?.id || null;
+    if (sessionUserId && profile.email) {
+      setCurrentUserId(sessionUserId);
+      upsertProfile(sessionUserId, profile.email, profile as unknown as Record<string, unknown>).catch((err) => {
         console.warn('Supabase profile sync failed:', err);
       });
     }
@@ -334,10 +365,17 @@ export default function App() {
               loadMeals(session.user.id).catch(() => []),
             ]);
             if (remoteProfile && active) {
-              setUserProfile(prev => ({ ...prev, ...remoteProfile, email: session.user.email || remoteProfile.email || prev.email }));
-              localStorage.setItem('nutriUser', JSON.stringify({ ...userProfile, ...remoteProfile, email: session.user.email || remoteProfile.email || userProfile.email }));
+              setUserProfile(prev => {
+                const hydrated = { ...prev, ...remoteProfile, email: session.user.email || remoteProfile.email || prev.email };
+                localStorage.setItem('nutriUser', JSON.stringify(hydrated));
+                return hydrated;
+              });
             } else if (session.user.email && active) {
-              setUserProfile(prev => ({ ...prev, email: session.user.email || prev.email }));
+              setUserProfile(prev => {
+                const hydrated = { ...prev, email: session.user.email || prev.email };
+                localStorage.setItem('nutriUser', JSON.stringify(hydrated));
+                return hydrated;
+              });
             }
             if (remoteMeals.length && active) {
               setLoggedMeals(remoteMeals);
@@ -449,11 +487,10 @@ export default function App() {
           </div>
           <div className="min-w-0">
             <h1 className="font-bold text-base leading-tight truncate">Mind Nutrition</h1>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">Jornada consciente</p>
           </div>
         </div>
         <button onClick={() => setCurrentPage('profile')} className="w-10 h-10 rounded-full overflow-hidden border border-line bg-white shrink-0">
-          <img src={userProfile.photo} alt="" className="w-full h-full object-cover" />
+          <ProfileAvatar photo={userProfile.photo} size="sm" className="border-0" />
         </button>
       </header>
     );
@@ -463,9 +500,6 @@ export default function App() {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
     return (
       <aside className="app-sidebar">
-        <div className="w-12 h-12 mb-8 rounded-2xl bg-accent text-paper flex items-center justify-center animated-gradient shadow-lg">
-          <span className="text-paper spin-slow"><BsFlower1 size={28} /></span>
-        </div>
         {navItems.map((item) => {
           const isActive = currentPage === item.id;
           return (
@@ -553,6 +587,8 @@ export default function App() {
   // ---------- Transitions ----------
 
   const PageWrapper = ({ children, noPadding = false }: { children: React.ReactNode, noPadding?: boolean }) => {
+    const hasTopbar = !['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage);
+    const pagePadding = noPadding ? '' : `px-5 md:px-12 ${hasTopbar ? 'pt-28 md:pt-28' : 'pt-8 md:pt-12'}`;
     return (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
@@ -563,7 +599,7 @@ export default function App() {
         dragElastic={0.08}
         onDragEnd={(_, info) => handleSectionSwipe(info.offset.x)}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`w-full min-h-screen pb-36 md:pb-16 ${noPadding ? '' : 'px-5 md:px-12 pt-24 md:pt-12'} max-w-4xl mx-auto`}
+        className={`w-full min-h-screen pb-36 md:pb-16 ${pagePadding} max-w-4xl mx-auto`}
       >
         {children}
       </motion.div>
@@ -836,6 +872,19 @@ export default function App() {
     const [error, setError] = useState('');
     const [isLogin, setIsLogin] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [signupPhoto, setSignupPhoto] = useState(userProfile.photo || DEFAULT_PROFILE_PHOTO);
+
+    const handleSignupPhoto = async (files: FileList | null) => {
+      const result = await readValidatedImages(files, 0);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (result.images[0]) {
+        setSignupPhoto(result.images[0]);
+        setError('');
+      }
+    };
 
     const handleAuth = async () => {
       const normalizedEmail = email.trim();
@@ -870,9 +919,8 @@ export default function App() {
         setCurrentUserId(user.id);
         const remoteProfile = await loadProfile(user.id).catch(() => null);
         const remoteMeals = await loadMeals(user.id).catch(() => []);
-        const nextProfile = { ...userProfile, ...(remoteProfile || {}), email: user.email || normalizedEmail };
-        setUserProfile(nextProfile);
-        localStorage.setItem('nutriUser', JSON.stringify(nextProfile));
+        const nextProfile = { ...userProfile, photo: signupPhoto, ...(remoteProfile || {}), email: user.email || normalizedEmail };
+        await persistUserProfile(nextProfile, user.id);
         if (remoteMeals.length) {
           setLoggedMeals(remoteMeals);
           localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
@@ -889,7 +937,36 @@ export default function App() {
 
     return (
       <PageWrapper>
-        <div className="space-y-12">
+        <div className="grid lg:grid-cols-[0.95fr_1.05fr] gap-8 lg:gap-12 items-start">
+          <section className="relative overflow-hidden rounded-[2rem] bg-white border border-line p-6 md:p-8 shadow-xl">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <span className="label-sm text-accent">Mind Nutrition</span>
+                <h2 className="display-title text-5xl mt-3">{isLogin ? 'Entre com calma.' : 'Comece do seu jeito.'}</h2>
+              </div>
+            </div>
+            <p className="serif-body text-xl text-ink/60 mt-4">
+              Um espaço privado para registrar refeições, emoções e evolução corporal com gentileza.
+            </p>
+            <div className="relative mt-8 h-56">
+              <div className="absolute inset-x-6 bottom-3 h-16 bg-accent/15 rounded-full blur-2xl" />
+              <motion.img
+                src={mascoteFlying}
+                alt="Mascote Mind Nutrition"
+                className="absolute left-1/2 top-0 -translate-x-1/2 h-full object-contain drop-shadow-2xl"
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            </div>
+            <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+              {['Auth Supabase', 'Dados salvos', 'IA pessoal'].map(item => (
+                <div key={item} className="rounded-2xl border border-line bg-paper/80 px-3 py-3 text-[10px] font-bold uppercase text-ink/55">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="bg-paper border border-line rounded-[2rem] p-5 md:p-8 shadow-sm">
           <button onClick={() => setCurrentPage('landing')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-ink/5 transition-colors">
             <ArrowLeft size={20} className="text-ink" />
           </button>
@@ -898,17 +975,39 @@ export default function App() {
             <p className="serif-body text-xl text-ink/60">Vamos começar sua jornada?</p>
           </div>
 
-          <div className="space-y-8 max-w-sm">
+          <div className="flex bg-white border border-line rounded-2xl p-1 mt-8">
+            <button onClick={() => { setIsLogin(true); setError(''); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/50 hover:text-ink'}`}>Entrar</button>
+            <button onClick={() => { setIsLogin(false); setError(''); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${!isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/50 hover:text-ink'}`}>Cadastrar</button>
+          </div>
+
+          {!isLogin && (
+            <div className="mt-6 flex items-center gap-4 rounded-3xl bg-white border border-line p-4">
+              <div className="w-20 h-20 rounded-2xl overflow-hidden border border-line bg-paper">
+                <ProfileAvatar photo={signupPhoto} size="lg" className="border-0" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm">Foto de perfil</p>
+                <p className="text-xs text-ink/50 mt-1">JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB.</p>
+                <label className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-full bg-accent/10 text-accent text-xs font-bold cursor-pointer hover:bg-accent/15">
+                  <Camera size={14} /> Escolher foto
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleSignupPhoto(e.target.files)} />
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-8 mt-8">
             <div className="space-y-6">
               <div>
                 <p className="label-sm mb-2 text-accent">E-mail</p>
                 <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }}
-                  className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none transition-colors text-xl font-medium" />
+                  placeholder="voce@email.com"
+                  className="w-full py-4 px-4 bg-white border border-line rounded-2xl focus:border-accent focus:outline-none transition-colors text-base font-medium" />
               </div>
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <p className="label-sm text-accent">Senha</p>
-                  <button onClick={async () => {
+                  {isLogin && <button onClick={async () => {
                     if (!supabase || !email.trim()) {
                       setError('Informe seu e-mail para recuperar a senha.');
                       return;
@@ -917,22 +1016,33 @@ export default function App() {
                     toast('Instruções de recuperação enviadas para o e-mail!', 'success');
                   }} className="text-xs font-bold text-accent hover:underline">
                     Esqueci minha senha
-                  </button>
+                  </button>}
                 </div>
                 <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
-                  className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none transition-colors text-xl font-medium" />
+                  placeholder="8+ caracteres, número e símbolo"
+                  className="w-full py-4 px-4 bg-white border border-line rounded-2xl focus:border-accent focus:outline-none transition-colors text-base font-medium" />
+                {!isLogin && (
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    {[
+                      { ok: password.length >= 8, label: '8 caracteres' },
+                      { ok: /[A-Z]/.test(password), label: 'Maiúscula' },
+                      { ok: /\d/.test(password), label: 'Número' },
+                      { ok: /[^A-Za-z\d]/.test(password), label: 'Símbolo' },
+                    ].map(item => (
+                      <span key={item.label} className={`text-[10px] font-bold rounded-full px-3 py-1.5 ${item.ok ? 'bg-accent/10 text-accent' : 'bg-ink/5 text-ink/40'}`}>
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
+              {error && <p className="text-red-500 text-sm font-bold bg-red-50 border border-red-100 rounded-2xl p-3">{error}</p>}
             </div>
 
             <div className="space-y-4 pt-4">
               <button onClick={handleAuth} disabled={isSubmitting || !email || !password}
-                className={`w-full py-5 text-paper font-bold text-lg rounded-full shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
-                {isSubmitting ? 'Processando...' : isLogin ? 'Entrar' : 'Criar Conta'}
-              </button>
-              <button onClick={() => { setIsLogin(v => !v); setError(''); }}
-                className="w-full py-5 border-2 border-line rounded-full font-bold text-lg flex items-center justify-center gap-3 hover:bg-ink/5 transition-colors">
-                {isLogin ? 'Criar nova conta' : 'Já tenho conta'}
+                className={`w-full py-5 text-paper font-bold text-lg rounded-2xl shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
+                {isSubmitting ? 'Processando...' : isLogin ? 'Entrar no app' : 'Criar conta e continuar'}
               </button>
             </div>
             
@@ -943,6 +1053,7 @@ export default function App() {
               </button>
             </div>
           </div>
+          </section>
         </div>
       </PageWrapper>
     );
@@ -972,7 +1083,7 @@ export default function App() {
 
     const current = steps[diagnosisStep];
 
-    const handleNext = () => {
+    const handleNext = async () => {
       setErrorMsg('');
       if (current.type === 'input' && !tempProfile.name) {
         setErrorMsg('Por favor, informe seu nome.');
@@ -995,7 +1106,7 @@ export default function App() {
         );
         
         const finalProfile = { ...tempProfile, ...result };
-        persistUserProfile(finalProfile);
+        await persistUserProfile(finalProfile);
         setCurrentPage('dashboard');
         return;
       }
@@ -1215,18 +1326,11 @@ export default function App() {
     return (
     <PageWrapper>
       <div className="space-y-12">
-        <header className="flex justify-between items-center">
-          <div>
-            <Logo mini />
-            <p className="serif-body text-xl text-ink/60 mt-1 italic">
-              {userProfile.name ? `Espaço de ${userProfile.name}` : 'Espaço de Consciência'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setCurrentPage('profile')} className="hover:scale-105 transition-transform">
-              <Avatar size="md" mood={MOCK_EMOTIONAL_DATA[MOCK_EMOTIONAL_DATA.length - 1].mood} />
-            </button>
-          </div>
+        <header>
+          <p className="label-sm text-accent">Início</p>
+          <h2 className="serif-body text-2xl md:text-3xl text-ink/70 mt-2">
+            {userProfile.name ? `Espaço de ${userProfile.name}` : 'Espaço de Consciência'}
+          </h2>
         </header>
 
         <Mascot />
@@ -1348,9 +1452,9 @@ export default function App() {
     const isFirstRender = useRef(true);
     const [fullscreenImg, setFullscreenImg] = useState(false);
     const aiModels = [
-      { id: 'gemini-3-flash-preview', label: 'Gemini', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png' },
-      { id: 'kimi-k2.6', label: 'Kimi', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/kimi-color.png' },
-      { id: 'gemma-3', label: 'Gemma', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/gemma-color.png' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini', desc: 'Rápido e equilibrado', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png' },
+      { id: 'kimi-k2.6', label: 'Kimi', desc: 'Leitura longa e contexto', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/kimi-color.png' },
+      { id: 'gemma-3', label: 'Gemma', desc: 'Respostas compactas', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/gemma-color.png' },
     ];
     const activeModel = aiModels.find(model => model.id === selectedModel) || aiModels[0];
 
@@ -1422,8 +1526,8 @@ export default function App() {
 
     return (
       <PageWrapper noPadding>
-        <div className="flex flex-col min-h-[100dvh] h-[100dvh] w-full max-w-5xl mx-auto bg-[linear-gradient(180deg,var(--paper)_0%,var(--accent-light)_140%)] overflow-hidden">
-          <header className="px-4 md:px-8 pt-4 pb-4 flex items-center justify-between gap-3 border-b border-line shrink-0 bg-paper/85 backdrop-blur-xl z-20 shadow-sm">
+        <div className="flex flex-col min-h-[100dvh] h-[100dvh] w-full max-w-5xl mx-auto bg-[radial-gradient(circle_at_top_left,var(--accent-light)_0%,transparent_34%),linear-gradient(180deg,var(--paper)_0%,#ffffff_120%)] overflow-hidden">
+          <header className="px-4 md:px-8 pt-4 pb-4 flex items-center justify-between gap-3 border-b border-line shrink-0 bg-white/80 backdrop-blur-xl z-20 shadow-sm">
             <div className="flex items-center gap-4">
               <button onClick={() => setCurrentPage('dashboard')} className="w-11 h-11 rounded-2xl border border-line flex items-center justify-center hover:bg-line transition-colors bg-white shadow-sm shrink-0">
                 <ArrowLeft size={20} />
@@ -1435,7 +1539,7 @@ export default function App() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="font-bold text-lg text-ink">Nutri AI</h2>
-                  <p className="label-sm text-accent">{typing ? 'Digitando...' : 'Online'}</p>
+                  <p className="text-[11px] font-bold text-accent">{typing ? 'Digitando...' : `Usando ${activeModel.label}`}</p>
                 </div>
               </div>
             </div>
@@ -1443,10 +1547,13 @@ export default function App() {
               <div className="relative">
                 <button
                   onClick={() => setModelOpen(open => !open)}
-                  className="bg-white border border-line rounded-2xl pl-2 pr-3 py-2 text-xs font-bold outline-none focus:border-accent shadow-sm flex items-center gap-2 min-w-[7.5rem]"
+                  className="bg-white border border-line rounded-2xl pl-2 pr-3 py-2 text-xs font-bold outline-none focus:border-accent shadow-sm flex items-center gap-2 min-w-[9.5rem] hover:border-accent transition-colors"
                 >
                   <img src={activeModel.logo} alt="" className="w-6 h-6 rounded-lg object-contain bg-ink/5" />
-                  <span className="hidden sm:inline">{activeModel.label}</span>
+                  <span className="hidden sm:flex flex-col items-start leading-tight">
+                    <span>{activeModel.label}</span>
+                    <span className="font-medium text-[9px] text-ink/40">{activeModel.desc}</span>
+                  </span>
                   <ChevronDown size={14} className={`ml-auto transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
                 </button>
                 <AnimatePresence>
@@ -1455,16 +1562,20 @@ export default function App() {
                       initial={{ opacity: 0, y: -6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                      className="absolute right-0 mt-2 w-44 bg-white border border-line rounded-2xl shadow-2xl p-2 z-50"
+                      className="absolute right-0 mt-2 w-72 bg-white border border-line rounded-3xl shadow-2xl p-3 z-50"
                     >
                       {aiModels.map(model => (
                         <button
                           key={model.id}
                           onClick={() => { setSelectedModel(model.id); setModelOpen(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-bold hover:bg-accent/10 ${selectedModel === model.id ? 'text-accent bg-accent/10' : 'text-ink'}`}
+                          className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left hover:bg-accent/10 transition-colors ${selectedModel === model.id ? 'text-accent bg-accent/10 ring-1 ring-accent/20' : 'text-ink'}`}
                         >
-                          <img src={model.logo} alt="" className="w-7 h-7 rounded-lg object-contain bg-ink/5" />
-                          <span>{model.label}</span>
+                          <img src={model.logo} alt="" className="w-10 h-10 rounded-xl object-contain bg-ink/5 border border-line" />
+                          <span className="flex-1">
+                            <span className="block text-sm font-bold">{model.label}</span>
+                            <span className="block text-[11px] font-medium text-ink/45 mt-0.5">{model.desc}</span>
+                          </span>
+                          {selectedModel === model.id && <CheckCircle size={16} className="text-accent" />}
                         </button>
                       ))}
                     </motion.div>
@@ -1486,9 +1597,7 @@ export default function App() {
                   <img src={mascoteAi} alt="Nutri AI" className="w-10 h-10 rounded-2xl object-contain bg-accent/10 p-1 shrink-0 mt-auto shadow-sm" />
                 )}
                 {h.sender === 'user' && (
-                  <div className="w-10 h-10 rounded-2xl bg-ink/10 flex items-center justify-center shrink-0 mt-auto shadow-sm">
-                    <span className="text-xs font-bold text-ink/60">{userProfile.name?.charAt(0).toUpperCase() || 'U'}</span>
-                  </div>
+                  <ProfileAvatar photo={userProfile.photo} size="sm" className="rounded-2xl shrink-0 mt-auto shadow-sm border border-line" />
                 )}
                 <div className={`max-w-[82%] md:max-w-[68%] px-5 py-4 rounded-3xl text-[0.95rem] md:text-base font-medium shadow-sm leading-relaxed ${
                   h.sender === 'user' ? 'bg-accent text-white rounded-br-md' : 'bg-white border border-line text-ink rounded-bl-md'
@@ -1540,8 +1649,20 @@ export default function App() {
   };
 
   const MealLog = () => {
+    const { toast } = useToast();
     const [step, setStep] = useState<'pre' | 'meal' | 'post'>('pre');
-    const [log, setLog] = useState({ preHunger: 5, preMood: 'Neutro', postHunger: 5, postMood: 'Neutro', satisfaction: 3, notes: '' });
+    const [log, setLog] = useState<{ preHunger: number; preMood: string; postHunger: number; postMood: string; satisfaction: number; notes: string; photos: string[] }>({ preHunger: 5, preMood: 'Neutro', postHunger: 5, postMood: 'Neutro', satisfaction: 3, notes: '', photos: [] });
+
+    const handleMealPhotos = async (files: FileList | null) => {
+      const result = await readValidatedImages(files, log.photos.length);
+      if (result.error) {
+        toast(result.error, 'error');
+        return;
+      }
+      if (result.images.length) {
+        setLog(prev => ({ ...prev, photos: [...prev.photos, ...result.images] }));
+      }
+    };
 
     const moods = [
       { label: 'Euforia', icon: Sparkles },
@@ -1593,15 +1714,43 @@ export default function App() {
                 <>
                   <div className="flex gap-4 w-full">
                     <button className="flex-1 aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-3 text-accent hover:bg-accent/10 transition-colors relative overflow-hidden">
-                      <input type="file" accept="image/*" capture="environment" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" onChange={(e) => handleMealPhotos(e.target.files)} />
                       <Camera size={32} />
                       <span className="font-bold text-sm">Câmera</span>
                     </button>
                     <button className="flex-1 aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-3 text-accent hover:bg-accent/10 transition-colors relative overflow-hidden">
-                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" onChange={(e) => handleMealPhotos(e.target.files)} />
                       <Library size={32} />
                       <span className="font-bold text-sm">Galeria</span>
                     </button>
+                  </div>
+                  <div className="rounded-[2rem] border border-line bg-white p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="font-bold text-sm">Fotos adicionadas</h3>
+                        <p className="text-xs text-ink/45">JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB cada.</p>
+                      </div>
+                      <span className="text-xs font-bold text-accent bg-accent/10 px-3 py-1 rounded-full">{log.photos.length}/{MAX_MEAL_PHOTOS}</span>
+                    </div>
+                    {log.photos.length === 0 ? (
+                      <div className="h-24 rounded-2xl bg-ink/5 border border-dashed border-line flex items-center justify-center text-xs font-bold text-ink/35">
+                        Nenhuma foto adicionada
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {log.photos.map((photo, index) => (
+                          <div key={photo.slice(0, 48) + index} className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-line">
+                            <img src={photo} alt={`Foto da refeição ${index + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => setLog(prev => ({ ...prev, photos: prev.photos.filter((_, photoIndex) => photoIndex !== index) }))}
+                              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-ink/75 text-paper flex items-center justify-center"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <textarea placeholder="O que você está comendo? Quais as texturas e sabores?"
                     className="w-full h-40 bg-paper border border-line rounded-[2rem] p-8 font-medium text-lg resize-none focus:outline-none focus:border-accent shadow-sm"
@@ -1641,7 +1790,7 @@ export default function App() {
                     </div>
                   </div>
                   <button onClick={() => {
-                    const newMeal = { ...log, title: 'Refeição', date: new Date().toISOString(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), type: log.preHunger >= 6 ? 'Física' : 'Emocional' };
+                    const newMeal = { ...log, title: 'Refeição', date: new Date().toISOString(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), type: log.preHunger >= 6 ? 'Física' : 'Emocional', image: log.photos[0] || '' };
                     saveMeal(newMeal);
                     setCurrentPage('dashboard');
                   }} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg animated-gradient">
@@ -2116,6 +2265,8 @@ export default function App() {
 
   const MealDetailsPage = () => {
     if (!selectedMeal) return null;
+    const MealIcon = selectedMeal.icon || Coffee;
+    const mealPhotos = selectedMeal.photos?.length ? selectedMeal.photos : (selectedMeal.image ? [selectedMeal.image] : []);
     return (
       <PageWrapper>
         <div className="space-y-8">
@@ -2130,10 +2281,17 @@ export default function App() {
           </header>
 
           <div className="bg-white border border-line rounded-[2.5rem] overflow-hidden shadow-sm">
-            <div className="h-64 md:h-96 w-full relative">
-              <img src={selectedMeal.image} alt={selectedMeal.title} className="w-full h-full object-cover" />
+            <div className="h-64 md:h-96 w-full relative bg-accent/5">
+              {mealPhotos[0] ? (
+                <img src={mealPhotos[0]} alt={selectedMeal.title} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-ink/35 gap-3">
+                  <Coffee size={42} />
+                  <span className="text-sm font-bold">Sem foto nesta refeição</span>
+                </div>
+              )}
               <div className="absolute top-4 right-4 bg-paper/90 backdrop-blur-md px-4 py-2 rounded-full flex items-center gap-2 shadow-md">
-                <selectedMeal.icon size={16} className={selectedMeal.type === 'Física' ? 'text-accent' : 'text-accent-pink'} />
+                <MealIcon size={16} className={selectedMeal.type === 'Física' ? 'text-accent' : 'text-accent-pink'} />
                 <span className="text-xs font-bold uppercase">{selectedMeal.time}</span>
               </div>
             </div>
@@ -2156,6 +2314,19 @@ export default function App() {
                 </div>
               </div>
 
+              {mealPhotos.length > 0 && (
+                <div>
+                  <h3 className="font-bold text-xl mb-4">Fotos da Refeição</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {mealPhotos.map((photo: string, index: number) => (
+                      <div key={photo.slice(0, 48) + index} className="aspect-square overflow-hidden rounded-3xl border border-line bg-line">
+                        <img src={photo} alt={`Foto da refeição ${index + 1}`} className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h3 className="font-bold text-xl mb-4">Notas da Refeição</h3>
                 <div className="p-6 bg-paper border border-line rounded-3xl text-ink/80 text-lg leading-relaxed shadow-inner">
@@ -2174,11 +2345,34 @@ export default function App() {
     const [editMode, setEditMode] = useState<'none' | 'name' | 'email' | 'photo' | 'all'>('none');
     const [name, setName] = useState(userProfile.name);
     const [email, setEmail] = useState(userProfile.email);
+    const [draftProfile, setDraftProfile] = useState<UserProfile>(userProfile);
+
+    const updateDraftList = (field: keyof UserProfile, value: string) => {
+      setDraftProfile(prev => ({
+        ...prev,
+        [field]: value.split(',').map(item => item.trim()).filter(Boolean),
+      }));
+    };
+
+    const updateLatestMetric = (field: keyof UserProfile, value: number) => {
+      setDraftProfile(prev => {
+        const current = ([...(prev[field] as any[] || [])]);
+        const entry = { date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value };
+        if (current.length) current[current.length - 1] = { ...current[current.length - 1], value };
+        else current.push(entry);
+        return { ...prev, [field]: current } as UserProfile;
+      });
+    };
 
     const handleSave = () => {
-      const newProfile = { ...userProfile };
-      if (editMode === 'name' || editMode === 'all') newProfile.name = name;
-      if (editMode === 'email' || editMode === 'all') newProfile.email = email;
+      let newProfile = editMode === 'all' ? { ...draftProfile } : { ...userProfile };
+      if (editMode === 'name') newProfile.name = name;
+      if (editMode === 'email') newProfile.email = email;
+      if (editMode === 'all') {
+        const latestWeight = newProfile.weightEvolution?.[newProfile.weightEvolution.length - 1]?.value || 0;
+        const result = calculateNutritionalNeeds(latestWeight, newProfile.height, newProfile.age, newProfile.gender, newProfile.activityLevel, newProfile.objectives);
+        newProfile = { ...newProfile, ...result };
+      }
       persistUserProfile(newProfile);
       toast('Perfil atualizado com sucesso!', 'success');
       setEditMode('none');
@@ -2204,7 +2398,7 @@ export default function App() {
               ].map((item) => (
                 <button
                   key={item.key}
-                  onClick={() => setEditMode(item.key as any)}
+                  onClick={() => { setDraftProfile(userProfile); setName(userProfile.name); setEmail(userProfile.email); setEditMode(item.key as any); }}
                   className="w-full p-6 bg-white border border-line rounded-3xl shadow-sm hover:border-accent hover:bg-accent/5 transition-all flex items-center gap-4 text-left"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
@@ -2234,32 +2428,102 @@ export default function App() {
               {(editMode === 'name' || editMode === 'all') && (
                 <div>
                   <label className="label-sm text-ink/50">Nome de exibição</label>
-                  <input value={name} onChange={e => setName(e.target.value)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
+                  <input value={editMode === 'all' ? draftProfile.name : name} onChange={e => {
+                    if (editMode === 'all') setDraftProfile(prev => ({ ...prev, name: e.target.value }));
+                    setName(e.target.value);
+                  }} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
                 </div>
               )}
 
               {(editMode === 'email' || editMode === 'all') && (
                 <div>
                   <label className="label-sm text-ink/50">E-mail</label>
-                  <input value={email} onChange={e => setEmail(e.target.value)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
+                  <input value={editMode === 'all' ? draftProfile.email : email} onChange={e => {
+                    if (editMode === 'all') setDraftProfile(prev => ({ ...prev, email: e.target.value }));
+                    setEmail(e.target.value);
+                  }} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
+                </div>
+              )}
+
+              {editMode === 'all' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label-sm text-ink/50">Idade</label>
+                      <input type="number" value={draftProfile.age || ''} onChange={e => setDraftProfile(prev => ({ ...prev, age: parseFloat(e.target.value) || 0 }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
+                    </div>
+                    <div>
+                      <label className="label-sm text-ink/50">Altura (cm)</label>
+                      <input type="number" value={draftProfile.height || ''} onChange={e => setDraftProfile(prev => ({ ...prev, height: parseFloat(e.target.value) || 0 }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-sm text-ink/50">Gênero</label>
+                    <select value={draftProfile.gender} onChange={e => setDraftProfile(prev => ({ ...prev, gender: e.target.value }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-lg font-bold">
+                      <option value="">Selecione</option>
+                      <option value="Masculino">Masculino</option>
+                      <option value="Feminino">Feminino</option>
+                      <option value="Não-binário">Não-binário</option>
+                      <option value="Prefiro não identificar">Prefiro não identificar</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label-sm text-ink/50">Nível de atividade</label>
+                    <select value={draftProfile.activityLevel || 1.2} onChange={e => setDraftProfile(prev => ({ ...prev, activityLevel: parseFloat(e.target.value) }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-lg font-bold">
+                      <option value={1.2}>Sedentário</option>
+                      <option value={1.375}>Levemente ativo</option>
+                      <option value={1.55}>Moderadamente ativo</option>
+                      <option value={1.725}>Muito ativo</option>
+                    </select>
+                  </div>
+                  {[
+                    { field: 'objectives', label: 'Objetivos' },
+                    { field: 'initialEmotions', label: 'Emoções iniciais' },
+                    { field: 'triggers', label: 'Gatilhos' },
+                    { field: 'foods', label: 'Preferências alimentares' },
+                    { field: 'comorbidities', label: 'Condições de saúde' },
+                  ].map(item => (
+                    <div key={item.field}>
+                      <label className="label-sm text-ink/50">{item.label}</label>
+                      <input value={((draftProfile[item.field as keyof UserProfile] as string[]) || []).join(', ')} onChange={e => updateDraftList(item.field as keyof UserProfile, e.target.value)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-base font-bold" />
+                    </div>
+                  ))}
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      { field: 'weightEvolution', label: 'Peso (kg)' },
+                      { field: 'waistEvolution', label: 'Cintura (cm)' },
+                      { field: 'abdomenEvolution', label: 'Abdômen (cm)' },
+                      { field: 'hipEvolution', label: 'Quadril (cm)' },
+                      { field: 'armEvolution', label: 'Braço (cm)' },
+                    ].map(item => {
+                      const values = (draftProfile[item.field as keyof UserProfile] as any[]) || [];
+                      return (
+                        <div key={item.field}>
+                          <label className="label-sm text-ink/50">{item.label}</label>
+                          <input type="number" value={values[values.length - 1]?.value || ''} onChange={e => updateLatestMetric(item.field as keyof UserProfile, parseFloat(e.target.value) || 0)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
               {editMode === 'photo' && (
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative group">
-                    <img src={userProfile.photo} alt="" className="w-32 h-32 rounded-full object-cover border-4 border-accent shadow-lg" />
+                    <ProfileAvatar photo={userProfile.photo} size="xl" className="border-4 border-accent shadow-lg" />
                     <label className="absolute bottom-0 right-0 w-10 h-10 bg-ink text-paper rounded-full flex items-center justify-center shadow-lg border-2 border-paper cursor-pointer">
                       <Camera size={18} />
-                      <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                        if (e.target.files?.[0]) {
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            const newProfile = { ...userProfile, photo: ev.target?.result as string };
-                            persistUserProfile(newProfile);
-                            toast('Foto atualizada!', 'success');
-                          };
-                          reader.readAsDataURL(e.target.files[0]);
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={async (e) => {
+                        const result = await readValidatedImages(e.target.files, 0);
+                        if (result.error) {
+                          toast(result.error, 'error');
+                          return;
+                        }
+                        if (result.images[0]) {
+                          const newProfile = { ...userProfile, photo: result.images[0] };
+                          persistUserProfile(newProfile);
+                          toast('Foto atualizada!', 'success');
                         }
                       }} />
                     </label>
@@ -2399,6 +2663,18 @@ export default function App() {
     );
   };
 
+  const ProfileAvatar = ({ photo, size = 'md', mood = 'Calmo', className = '' }: { photo?: string; size?: 'sm' | 'md' | 'lg' | 'xl'; mood?: string; className?: string }) => {
+    const dimensions = size === 'xl' ? 'w-32 h-32' : size === 'lg' ? 'w-24 h-24' : size === 'md' ? 'w-12 h-12' : 'w-10 h-10';
+    if (photo) {
+      return <img src={photo} alt="" className={`${dimensions} rounded-full object-cover ${className}`} />;
+    }
+    return (
+      <div className={`${dimensions} rounded-full overflow-hidden bg-paper ${className}`}>
+        <Avatar size={size === 'xl' || size === 'lg' ? 'lg' : size === 'md' ? 'sm' : 'sm'} mood={mood} />
+      </div>
+    );
+  };
+
   const SettingsHelp = () => (
     <PageWrapper>
       <div className="space-y-12">
@@ -2455,75 +2731,79 @@ export default function App() {
 
   const ProfilePage = () => {
     const { toast } = useToast();
+    const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
+    const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
+    const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
+    const profileActions = [
+      { label: 'Editar dados', icon: Edit2, page: 'settings-account' },
+      { label: 'Notificações', icon: Bell, page: 'settings-notifications' },
+      { label: 'Temas', icon: Palette, page: 'settings-theme' },
+      { label: 'Privacidade', icon: Lock, page: 'settings-privacy' },
+      { label: 'Ajuda', icon: HelpCircle, page: 'settings-help' },
+    ];
     return (
     <PageWrapper>
       <div className="space-y-8">
-        <header className="flex flex-col items-center text-center space-y-4 pt-4">
-          <div className="relative">
-            <img src={userProfile.photo} alt="" className="w-32 h-32 rounded-full object-cover border-4 border-accent shadow-xl" />
-            <div className="absolute -bottom-2 -right-2 bg-paper p-2 rounded-full border border-line shadow-md">
-              <Avatar size="sm" mood="Calmo" />
-            </div>
-          </div>
-          <div>
-            <h2 className="display-title text-4xl">{userProfile.name || 'Usuário'}</h2>
-            <p className="label-sm text-accent mt-2">Membro consciente desde 2026</p>
-            <div className="flex justify-center gap-2 mt-4">
-              <button onClick={() => setCurrentPage('settings-account')} className="px-4 py-2 rounded-full bg-white border border-line text-xs font-bold text-ink/70 hover:text-accent hover:border-accent transition-colors inline-flex items-center gap-2">
-                <Edit2 size={14} /> Editar nome
-              </button>
-              <button onClick={() => setCurrentPage('settings-account')} className="px-4 py-2 rounded-full bg-white border border-line text-xs font-bold text-ink/70 hover:text-accent hover:border-accent transition-colors inline-flex items-center gap-2">
-                <Camera size={14} /> Trocar foto
+        <header className="relative overflow-hidden rounded-[2rem] bg-white border border-line p-6 md:p-8 shadow-sm">
+          <div className="absolute -right-12 -top-12 w-44 h-44 rounded-full bg-accent/10 blur-2xl" />
+          <div className="relative flex flex-col sm:flex-row items-center sm:items-end gap-6">
+            <div className="relative shrink-0">
+              <ProfileAvatar photo={userProfile.photo} size="xl" className="border-4 border-paper shadow-xl" />
+              <button onClick={() => setCurrentPage('settings-account')} className="absolute -bottom-1 -right-1 w-11 h-11 rounded-2xl bg-accent text-paper flex items-center justify-center shadow-lg border-4 border-white">
+                <Camera size={17} />
               </button>
             </div>
+            <div className="text-center sm:text-left flex-1 min-w-0">
+              <span className="label-sm text-accent">Perfil</span>
+              <h2 className="display-title text-4xl md:text-5xl mt-2">{userProfile.name || 'Seu perfil'}</h2>
+              <p className="text-sm font-medium text-ink/55 mt-2">{userProfile.email || 'Complete seus dados para personalizar o app'}</p>
+              <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-4">
+                {(userProfile.objectives?.length ? userProfile.objectives.slice(0, 3) : ['Jornada em construção']).map((item: string) => (
+                  <span key={item} className="px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold">{item}</span>
+                ))}
+              </div>
+            </div>
+            <button onClick={() => setCurrentPage('settings-account')} className="shrink-0 px-5 py-3 rounded-2xl bg-ink text-paper text-sm font-bold inline-flex items-center gap-2 shadow-sm">
+              <Edit2 size={16} /> Editar
+            </button>
           </div>
         </header>
 
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-accent/10 border border-accent/20 rounded-3xl p-4 text-center shadow-sm">
-            <span className="text-xs font-bold text-accent uppercase block mb-1">IMC</span>
-            <span className="text-2xl font-display text-ink">{userProfile.imc || '--'}</span>
-          </div>
-          <div className="bg-accent-pink/10 border border-accent-pink/20 rounded-3xl p-4 text-center shadow-sm">
-            <span className="text-xs font-bold text-accent-pink uppercase block mb-1">TMB</span>
-            <span className="text-2xl font-display text-ink">{userProfile.tmb || '--'}</span>
-          </div>
-          <div className="bg-line border border-ink/10 rounded-3xl p-4 text-center shadow-sm">
-            <span className="text-xs font-bold text-ink/60 uppercase block mb-1">Idade</span>
-            <span className="text-2xl font-display text-ink">{userProfile.age || '--'}</span>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { label: 'IMC', val: userProfile.imc || '--', tone: 'text-accent bg-accent/10 border-accent/20' },
+            { label: 'TMB', val: userProfile.tmb || '--', tone: 'text-accent-pink bg-accent-pink/10 border-accent-pink/20' },
+            { label: 'Idade', val: userProfile.age || '--', tone: 'text-ink/70 bg-white border-line' },
+            { label: 'Peso', val: latestWeight ? `${latestWeight}kg` : '--', tone: 'text-accent bg-white border-line' },
+            { label: 'C/Q', val: latestWaist && latestHip ? (latestWaist / latestHip).toFixed(2) : '--', tone: 'text-accent-pink bg-white border-line' },
+          ].map(item => (
+            <div key={item.label} className={`rounded-2xl p-4 text-center border shadow-sm ${item.tone}`}>
+              <span className="text-[10px] font-bold uppercase block mb-1 opacity-70">{item.label}</span>
+              <span className="text-2xl font-display text-ink">{item.val}</span>
+            </div>
+          ))}
         </div>
 
-        {userProfile.objectives && userProfile.objectives.length > 0 && (
-          <div className="bg-white border border-line p-6 rounded-3xl shadow-sm flex items-center justify-between">
-            <div>
-              <span className="label-sm text-accent">Foco Principal</span>
-              <p className="font-bold text-lg">{userProfile.objectives[0]}</p>
-            </div>
-            <div className="w-12 h-12 bg-accent text-paper rounded-2xl flex items-center justify-center">
+        <div className="grid md:grid-cols-[1fr_1.2fr] gap-4">
+          <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
+            <span className="label-sm text-accent">Resumo</span>
+            <p className="font-bold text-lg mt-2">{userProfile.objectives?.[0] || 'Defina seu foco principal'}</p>
+            <p className="text-sm text-ink/50 mt-2">{userProfile.triggers?.length ? `Gatilhos: ${userProfile.triggers.slice(0, 3).join(', ')}` : 'Gatilhos ainda não informados.'}</p>
+            <div className="mt-5 w-12 h-12 bg-accent text-paper rounded-2xl flex items-center justify-center">
               <Brain size={24} />
             </div>
           </div>
-        )}
 
-        <div className="bg-white border border-line rounded-[2.5rem] overflow-hidden shadow-sm">
-          {[
-            { label: 'Configurações da Conta', icon: Settings, page: 'settings-account' },
-            { label: 'Notificações', icon: Bell, page: 'settings-notifications' },
-            { label: 'Temas do App', icon: Palette, page: 'settings-theme' },
-            { label: 'Privacidade e Segurança', icon: Lock, page: 'settings-privacy' },
-            { label: 'Ajuda', icon: HelpCircle, page: 'settings-help' },
-          ].map((item, i) => (
-            <button key={i} onClick={() => setCurrentPage(item.page as Page)} className="w-full p-6 px-8 flex items-center justify-between border-b border-line last:border-0 hover:bg-accent/5 transition-colors group">
-              <div className="flex items-center gap-5">
-                <div className="w-12 h-12 rounded-2xl bg-ink/5 flex items-center justify-center text-ink/70 group-hover:bg-accent group-hover:text-paper transition-all">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {profileActions.map((item) => (
+              <button key={item.label} onClick={() => setCurrentPage(item.page as Page)} className="bg-white border border-line rounded-3xl p-4 text-left shadow-sm hover:border-accent hover:bg-accent/5 transition-all group">
+                <div className="w-11 h-11 rounded-2xl bg-ink/5 flex items-center justify-center text-ink/70 group-hover:bg-accent group-hover:text-paper transition-all mb-4">
                   <item.icon size={20} />
                 </div>
-                <span className="font-bold text-xl">{item.label}</span>
-              </div>
-              <ChevronRight size={20} className="text-ink/20 group-hover:text-accent transition-colors" />
-            </button>
-          ))}
+                <span className="font-bold text-sm">{item.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="pt-2">
@@ -2695,7 +2975,7 @@ export default function App() {
               {adminUsers.map((user, idx) => (
                 <button key={idx} onClick={() => setSelectedUser(user)}
                   className="w-full bg-white border border-line p-6 rounded-3xl shadow-sm hover:border-accent hover:shadow-md transition-all flex items-center gap-4 text-left">
-                  <img src={user.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200'} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-accent/20" />
+                  <ProfileAvatar photo={user.photo} size="md" className="border-2 border-accent/20" />
                   <div className="flex-1">
                     <h4 className="font-bold text-lg">{user.name || 'Sem nome'}</h4>
                     <p className="text-sm text-ink/50">{user.email || 'Sem e-mail'}</p>
@@ -2724,7 +3004,7 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-col items-center mb-8">
-                  <img src={selectedUser.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200'} alt="" className="w-24 h-24 rounded-full object-cover border-4 border-accent shadow-lg mb-4" />
+                  <ProfileAvatar photo={selectedUser.photo} size="lg" className="border-4 border-accent shadow-lg mb-4" />
                   <h4 className="font-bold text-2xl">{selectedUser.name || 'Sem nome'}</h4>
                   <p className="text-sm text-ink/50">{selectedUser.email}</p>
                 </div>
