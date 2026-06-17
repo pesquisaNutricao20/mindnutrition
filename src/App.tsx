@@ -45,10 +45,19 @@ import { TbHealthRecognition } from 'react-icons/tb';
 import { PiHeartbeat } from 'react-icons/pi';
 import { FaBrain } from 'react-icons/fa';
 import { motion, AnimatePresence, useAnimation, useMotionValue } from 'motion/react';
-import { ToastProvider, useToast } from './components/Toast';
+import { useToast } from './components/Toast';
 import { MascotComponent } from './components/Mascot';
 import { FullscreenImageViewer, MeasurementImageCard } from './components/FullscreenImageViewer';
+import { AuthPage } from './components/AuthPage';
+import { Avatar } from './components/ui/Avatar';
+import { ProfileAvatar } from './components/ui/ProfileAvatar';
+import { HungerOdometer } from './components/ui/HungerOdometer';
+import { TypewriterText } from './components/ui/TypewriterText';
+import { LoadingScreen } from './components/ui/LoadingScreen';
+import { MascotBubble } from './components/ui/MascotBubble';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
+import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL_PHOTOS } from './constants';
+import type { Page, UserProfile } from './types';
 import {
   deleteCurrentUserData,
   getCurrentSession,
@@ -87,50 +96,6 @@ import {
   Cell,
   ReferenceLine
 } from 'recharts';
-
-type Page =
-  | 'landing'
-  | 'auth'
-  | 'diagnosis'
-  | 'dashboard'
-  | 'meal-log'
-  | 'meal-details'
-  | 'content'
-  | 'progress'
-  | 'chat'
-  | 'profile'
-  | 'settings-account'
-  | 'settings-notifications'
-  | 'settings-theme'
-  | 'settings-privacy'
-  | 'settings-help'
-  | 'admin-login'
-  | 'admin-dashboard'
-  | 'admin-users'
-  | 'admin-articles';
-
-interface UserProfile {
-  name: string;
-  email: string;
-  photo: string;
-  gender: string;
-  objectives: string[];
-  initialEmotions: string[];
-  triggers: string[];
-  foods: string[];
-  comorbidities: string[];
-  height: number;
-  weightEvolution: { date: string, value: number }[];
-  waistEvolution: { date: string, value: number }[];
-  armEvolution: { date: string, value: number }[];
-  abdomenEvolution: { date: string, value: number }[];
-  hipEvolution: { date: string, value: number }[];
-  age: number;
-  activityLevel: number;
-  imc?: number;
-  tmb?: number;
-  net?: number;
-}
 
 export function calculateNutritionalNeeds(
   weight: number, 
@@ -184,33 +149,6 @@ const MOCK_PIE_DATA = [
 ];
 
 const COLORS = ['var(--accent)', 'var(--accent-pink)', '#5A9485'];
-const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_IMAGE_SIZE_MB = 4;
-const MAX_MEAL_PHOTOS = 6;
-
-const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(reader.result as string);
-  reader.onerror = reject;
-  reader.readAsDataURL(file);
-});
-
-async function readValidatedImages(files: FileList | null, currentCount = 0) {
-  if (!files || files.length === 0) return { images: [] as string[], error: '' };
-  const selected = Array.from(files);
-  if (currentCount + selected.length > MAX_MEAL_PHOTOS) {
-    return { images: [] as string[], error: `Adicione no máximo ${MAX_MEAL_PHOTOS} fotos por refeição.` };
-  }
-  const invalid = selected.find(file => !ACCEPTED_IMAGE_TYPES.includes(file.type));
-  if (invalid) {
-    return { images: [] as string[], error: 'Use imagens JPG, PNG ou WEBP.' };
-  }
-  const tooLarge = selected.find(file => file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024);
-  if (tooLarge) {
-    return { images: [] as string[], error: `Cada imagem deve ter até ${MAX_IMAGE_SIZE_MB}MB.` };
-  }
-  return { images: await Promise.all(selected.map(readFileAsDataUrl)), error: '' };
-}
 
 const MOCK_WEIGHT_DATA = [
   { date: '01/04', value: 76.5 },
@@ -219,8 +157,6 @@ const MOCK_WEIGHT_DATA = [
   { date: '22/04', value: 75.3 },
   { date: '29/04', value: 75.0 },
 ];
-
-const DEFAULT_PROFILE_PHOTO = '';
 
 const MOCK_MEALS = [
   { time: '08:30', title: 'Café da Manhã', mood: 'Calmo', icon: Coffee, type: 'Física', image: 'https://images.unsplash.com/photo-1495214783159-3503fd1b572d?auto=format&fit=crop&q=80&w=800', notes: 'Aveia com frutas vermelhas. Me senti presente enquanto comia.' },
@@ -245,26 +181,8 @@ const MOCK_FOODS_JSON = [
 
 // ---------- Sub-Components ----------
 
-const TypewriterText = ({ text, onComplete }: { text: string, onComplete?: () => void }) => {
-  const [displayedText, setDisplayedText] = useState('');
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (index < text.length) {
-      const timeout = setTimeout(() => {
-        setDisplayedText(prev => prev + text[index]);
-        setIndex(index + 1);
-      }, 30);
-      return () => clearTimeout(timeout);
-    } else if (onComplete) {
-      onComplete();
-    }
-  }, [index, text, onComplete]);
-
-  return <span>{displayedText}</span>;
-};
-
 export default function App() {
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState<Page>(() => {
     if (window.location.pathname === '/nutricionista') {
@@ -608,179 +526,6 @@ export default function App() {
 
   // ---------- Components ----------
 
-  const LoadingScreen = () => (
-    <div className="fixed inset-0 z-[10000] bg-paper flex flex-col items-center justify-center w-full h-full">
-      <div className="paper-texture" />
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="relative flex flex-col items-center justify-center"
-      >
-        <motion.div
-          animate={{ y: [0, -15, 0] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative"
-        >
-          <img src={mascoteFlying} alt="Mascote voando" className="w-32 h-32 md:w-40 md:h-40 object-contain" />
-          <motion.div
-            className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-16 h-3 bg-ink/10 rounded-full blur-sm"
-            animate={{ scale: [1, 0.6, 1], opacity: [0.3, 0.1, 0.3] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </motion.div>
-        <motion.div
-          animate={{ scale: [1, 1.02, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="mt-10 text-center"
-        >
-          <span className="display-title text-5xl text-accent tracking-widest block">Mind Nutrition</span>
-          <p className="label-sm text-accent-pink mt-3 text-sm">Cultivando sua consciência...</p>
-        </motion.div>
-      </motion.div>
-    </div>
-  );
-
-  const Logo = ({ mini = false }: { mini?: boolean }) => (
-    <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setCurrentPage('landing')}>
-      <div className={`${mini ? 'w-8 h-8 rounded-[0.6rem]' : 'w-10 h-10 rounded-[0.8rem]'} bg-accent text-paper flex items-center justify-center animated-gradient shadow-md shrink-0`}>
-        <span className="group-hover:rotate-90 transition-transform duration-500"><BsFlower1 size={mini ? 18 : 22} /></span>
-      </div>
-      <span className={`logo-title ${mini ? 'text-[1.0rem]' : 'text-[1.3rem]'} text-accent tracking-tight`}>Mind Nutrition</span>
-    </div>
-  );
-
-  const Avatar = ({ size = "lg", mood = "normal" }: { size?: "sm" | "md" | "lg", mood?: string }) => {
-    const dimensions = size === "lg" ? "w-32 h-32" : size === "md" ? "w-20 h-20" : "w-12 h-12";
-    return (
-      <div className={`relative ${dimensions} transition-all duration-500`}>
-        <div className="absolute inset-0 bg-accent/20 rounded-full blur-xl animate-pulse" />
-        <svg viewBox="0 0 100 100" className="w-full h-full relative z-10 drop-shadow-xl">
-          <circle cx="50" cy="50" r="45" fill="var(--paper)" stroke="var(--ink)" strokeWidth="3" />
-          <circle cx="35" cy="40" r="5" fill="var(--ink)" />
-          <circle cx="65" cy="40" r="5" fill="var(--ink)" />
-          {mood === "Calmo" || mood === "Alegria" || mood === "Euforia" ? (
-            <path d="M 35 65 Q 50 75 65 65" fill="none" stroke="var(--ink)" strokeWidth="4" strokeLinecap="round" />
-          ) : mood === "Tenso" || mood === "Frustração" || mood === "Culpa" ? (
-            <path d="M 35 70 Q 50 60 65 70" fill="none" stroke="var(--ink)" strokeWidth="4" strokeLinecap="round" />
-          ) : (
-            <path d="M 35 65 Q 50 68 65 65" fill="none" stroke="var(--ink)" strokeWidth="4" strokeLinecap="round" />
-          )}
-          <path d="M 15 25 Q 25 15 35 25" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" />
-          <path d="M 85 25 Q 75 15 65 25" fill="none" stroke="var(--accent-pink)" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
-  };
-
-  const Mascot = () => {
-    const [moodInputOpen, setMoodInputOpen] = useState(false);
-    const [currentMood, setCurrentMood] = useState('');
-    const [eyesOpen, setEyesOpen] = useState(true);
-
-    useEffect(() => {
-      const blinkInterval = setInterval(() => {
-        setEyesOpen(false);
-        setTimeout(() => setEyesOpen(true), 100);
-      }, 1800 + Math.random() * 1500);
-      return () => clearInterval(blinkInterval);
-    }, []);
-
-    return (
-      <div className="bg-accent/10 border border-accent/20 p-6 rounded-[2.5rem] relative overflow-hidden group">
-        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-          <BsFlower1 size={120} />
-        </div>
-        <div className="flex items-center gap-6 relative z-10">
-          <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-inner shrink-0 overflow-hidden">
-            <img
-              src={eyesOpen ? mascoteEyesOpen : mascoteEyesClosed}
-              alt="Mascote"
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <div className="flex-1">
-            <h4 className="label-sm text-accent">Mascote Nutri</h4>
-            <p className="serif-body text-xl text-ink mt-1">"Ei {userProfile.name || 'amigo'}, como está seu coração hoje? Você está se sentindo bem?"</p>
-            {!moodInputOpen ? (
-              <button onClick={() => setMoodInputOpen(true)} className="mt-3 text-xs font-bold bg-accent text-paper px-4 py-2 rounded-full hover:bg-accent/90 transition-colors shadow-sm">
-                Responder
-              </button>
-            ) : (
-              <div className="mt-3 flex gap-2">
-                <input 
-                  type="text" value={currentMood} onChange={(e) => setCurrentMood(e.target.value)}
-                  placeholder="Estou me sentindo..." 
-                  className="flex-1 px-4 py-2 text-sm rounded-full border border-line focus:border-accent focus:outline-none" autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && currentMood) {
-                      alert('Obrigado por compartilhar! O Nutri guardou isso com carinho.');
-                      setMoodInputOpen(false); setCurrentMood('');
-                    }
-                  }}
-                />
-                <button 
-                  onClick={() => {
-                    if(currentMood) { alert('Obrigado por compartilhar! O Nutri guardou isso com carinho.'); setMoodInputOpen(false); setCurrentMood(''); }
-                  }}
-                  className="bg-accent text-paper p-2 w-10 h-10 flex items-center justify-center rounded-full hover:bg-accent/90 shrink-0"
-                >
-                  <Send size={16} />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const HungerOdometer = ({ value, onChange }: { value: number, onChange: (v: number) => void }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [isDragging, setIsDragging] = useState(false);
-
-    const handleUpdate = (clientX: number) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      let x = clientX - rect.left;
-      x = Math.max(0, Math.min(x, rect.width));
-      onChange(Math.round((x / rect.width) * 10));
-    };
-
-    return (
-      <div className="space-y-4">
-        <div className="flex justify-between label-sm">
-          <span className="text-accent font-bold">Física</span>
-          <span className="text-accent-pink font-bold">Emocional</span>
-        </div>
-        <div
-          ref={containerRef}
-          className="odometer-track"
-          onPointerDown={(e) => {
-            setIsDragging(true);
-            handleUpdate(e.clientX);
-            e.currentTarget.setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={(e) => {
-            if (isDragging) handleUpdate(e.clientX);
-          }}
-          onPointerUp={(e) => {
-            setIsDragging(false);
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          }}
-        >
-          <motion.div
-            className="odometer-handle"
-            animate={{ left: `${value * 10}%` }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          />
-        </div>
-        <div className="text-center serif-body text-3xl font-bold text-ink">
-          {value}
-        </div>
-      </div>
-    );
-  };
-
   // ---------- Pages ----------
 
   const LandingPage = () => (
@@ -794,23 +539,6 @@ export default function App() {
     >
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-paper via-transparent to-paper pointer-events-none z-0" />
       <div className="w-full h-full flex flex-col relative z-10 max-w-[2000px] mx-auto">
-        <div className="p-3 md:p-6 flex justify-end items-center border-b border-line bg-paper/80 backdrop-blur-sm shrink-0">
-          <div className="flex items-center gap-4">
-            {savedLoginNotice && (
-              <motion.span
-                initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 text-accent text-sm font-bold bg-white/95 border border-accent/20 px-4 py-2 rounded-full shadow-xl backdrop-blur"
-              >
-                <CheckCircle size={16} /> Login Salvo
-              </motion.span>
-            )}
-            <button onClick={() => setCurrentPage('admin-login')} className="text-xs font-medium text-ink/40 hover:text-accent transition-colors flex items-center gap-1">
-              <User size={14} /> Nutricionista
-            </button>
-            <span className="label-sm text-ink/60 hidden md:block">Versão 1.0</span>
-          </div>
-        </div>
 
         <div className="flex-1 flex flex-col justify-center px-8 md:px-16 pb-20 md:pb-32 overflow-y-auto">
           <div className="max-w-4xl mx-auto w-full">
@@ -865,198 +593,24 @@ export default function App() {
     </motion.div>
   );
 
-  const AuthPageInner = () => {
-    const { toast } = useToast();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [isLogin, setIsLogin] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [signupPhoto, setSignupPhoto] = useState(userProfile.photo || DEFAULT_PROFILE_PHOTO);
-
-    const handleSignupPhoto = async (files: FileList | null) => {
-      const result = await readValidatedImages(files, 0);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      if (result.images[0]) {
-        setSignupPhoto(result.images[0]);
-        setError('');
-      }
-    };
-
-    const handleAuth = async () => {
-      const normalizedEmail = email.trim();
-      const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-        setError('Por favor, insira um e-mail válido.');
-        return;
-      }
-      if (!strongPassword.test(password)) {
-        setError('Use 8+ caracteres com maiúscula, minúscula, número e símbolo.');
-        return;
-      }
-      if (!supabase) {
-        setError('Supabase não está configurado. Verifique as variáveis .env.local.');
-        return;
-      }
-
-      setIsSubmitting(true);
-      setError('');
-      try {
-        const result = isLogin
-          ? await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
-          : await supabase.auth.signUp({ email: normalizedEmail, password });
-        if (result.error) throw result.error;
-
-        const user = result.data.user || result.data.session?.user;
-        if (!user) {
-          toast('Verifique seu e-mail para confirmar a conta.', 'info', 5000);
-          return;
-        }
-
-        setCurrentUserId(user.id);
-        const remoteProfile = await loadProfile(user.id).catch(() => null);
-        const remoteMeals = await loadMeals(user.id).catch(() => []);
-        const nextProfile = { ...userProfile, photo: signupPhoto, ...(remoteProfile || {}), email: user.email || normalizedEmail };
-        await persistUserProfile(nextProfile, user.id);
-        if (remoteMeals.length) {
-          setLoggedMeals(remoteMeals);
-          localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
-        }
-        setSavedLoginNotice(true);
-        toast(isLogin ? 'Login salvo com segurança.' : 'Conta criada. Complete seu perfil.', 'success');
-        setCurrentPage(remoteProfile?.name ? 'dashboard' : 'diagnosis');
-      } catch (err: any) {
-        setError(err?.message || 'Não foi possível autenticar agora.');
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-
-    return (
-      <PageWrapper>
-        <div className="grid lg:grid-cols-[0.95fr_1.05fr] gap-8 lg:gap-12 items-start">
-          <section className="relative overflow-hidden rounded-[2rem] bg-white border border-line p-6 md:p-8 shadow-xl">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <span className="label-sm text-accent">Mind Nutrition</span>
-                <h2 className="display-title text-5xl mt-3">{isLogin ? 'Entre com calma.' : 'Comece do seu jeito.'}</h2>
-              </div>
-            </div>
-            <p className="serif-body text-xl text-ink/60 mt-4">
-              Um espaço privado para registrar refeições, emoções e evolução corporal com gentileza.
-            </p>
-            <div className="relative mt-8 h-56">
-              <div className="absolute inset-x-6 bottom-3 h-16 bg-accent/15 rounded-full blur-2xl" />
-              <motion.img
-                src={mascoteFlying}
-                alt="Mascote Mind Nutrition"
-                className="absolute left-1/2 top-0 -translate-x-1/2 h-full object-contain drop-shadow-2xl"
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            </div>
-            <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-              {['Auth Supabase', 'Dados salvos', 'IA pessoal'].map(item => (
-                <div key={item} className="rounded-2xl border border-line bg-paper/80 px-3 py-3 text-[10px] font-bold uppercase text-ink/55">
-                  {item}
-                </div>
-              ))}
-            </div>
-          </section>
-          <section className="bg-paper border border-line rounded-[2rem] p-5 md:p-8 shadow-sm">
-          <button onClick={() => setCurrentPage('landing')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-ink/5 transition-colors">
-            <ArrowLeft size={20} className="text-ink" />
-          </button>
-          <div className="space-y-2">
-            <h2 className="display-title text-5xl">Olá.</h2>
-            <p className="serif-body text-xl text-ink/60">Vamos começar sua jornada?</p>
-          </div>
-
-          <div className="flex bg-white border border-line rounded-2xl p-1 mt-8">
-            <button onClick={() => { setIsLogin(true); setError(''); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/50 hover:text-ink'}`}>Entrar</button>
-            <button onClick={() => { setIsLogin(false); setError(''); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${!isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/50 hover:text-ink'}`}>Cadastrar</button>
-          </div>
-
-          {!isLogin && (
-            <div className="mt-6 flex items-center gap-4 rounded-3xl bg-white border border-line p-4">
-              <div className="w-20 h-20 rounded-2xl overflow-hidden border border-line bg-paper">
-                <ProfileAvatar photo={signupPhoto} size="lg" className="border-0" />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-sm">Foto de perfil</p>
-                <p className="text-xs text-ink/50 mt-1">JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB.</p>
-                <label className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-full bg-accent/10 text-accent text-xs font-bold cursor-pointer hover:bg-accent/15">
-                  <Camera size={14} /> Escolher foto
-                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleSignupPhoto(e.target.files)} />
-                </label>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-8 mt-8">
-            <div className="space-y-6">
-              <div>
-                <p className="label-sm mb-2 text-accent">E-mail</p>
-                <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }}
-                  placeholder="voce@email.com"
-                  className="w-full py-4 px-4 bg-white border border-line rounded-2xl focus:border-accent focus:outline-none transition-colors text-base font-medium" />
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <p className="label-sm text-accent">Senha</p>
-                  {isLogin && <button onClick={async () => {
-                    if (!supabase || !email.trim()) {
-                      setError('Informe seu e-mail para recuperar a senha.');
-                      return;
-                    }
-                    await supabase.auth.resetPasswordForEmail(email.trim());
-                    toast('Instruções de recuperação enviadas para o e-mail!', 'success');
-                  }} className="text-xs font-bold text-accent hover:underline">
-                    Esqueci minha senha
-                  </button>}
-                </div>
-                <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
-                  placeholder="8+ caracteres, número e símbolo"
-                  className="w-full py-4 px-4 bg-white border border-line rounded-2xl focus:border-accent focus:outline-none transition-colors text-base font-medium" />
-                {!isLogin && (
-                  <div className="grid grid-cols-2 gap-2 mt-3">
-                    {[
-                      { ok: password.length >= 8, label: '8 caracteres' },
-                      { ok: /[A-Z]/.test(password), label: 'Maiúscula' },
-                      { ok: /\d/.test(password), label: 'Número' },
-                      { ok: /[^A-Za-z\d]/.test(password), label: 'Símbolo' },
-                    ].map(item => (
-                      <span key={item.label} className={`text-[10px] font-bold rounded-full px-3 py-1.5 ${item.ok ? 'bg-accent/10 text-accent' : 'bg-ink/5 text-ink/40'}`}>
-                        {item.label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {error && <p className="text-red-500 text-sm font-bold bg-red-50 border border-red-100 rounded-2xl p-3">{error}</p>}
-            </div>
-
-            <div className="space-y-4 pt-4">
-              <button onClick={handleAuth} disabled={isSubmitting || !email || !password}
-                className={`w-full py-5 text-paper font-bold text-lg rounded-2xl shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
-                {isSubmitting ? 'Processando...' : isLogin ? 'Entrar no app' : 'Criar conta e continuar'}
-              </button>
-            </div>
-            
-            <div className="pt-6 text-center">
-              <button onClick={() => toast('Mind Nutrition é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0', 'info', 5000)}
-                className="text-sm font-medium text-ink/50 hover:text-accent transition-colors flex items-center justify-center gap-2 mx-auto">
-                <HelpCircle size={16} /> Sobre o Mind Nutrition
-              </button>
-            </div>
-          </div>
-          </section>
-        </div>
-      </PageWrapper>
-    );
+  const handleAuthenticated = async (params: {
+    user: { id: string; email?: string };
+    isLogin: boolean;
+    signupPhoto: string;
+  }) => {
+    const { user, isLogin, signupPhoto } = params;
+    setCurrentUserId(user.id);
+    const remoteProfile = await loadProfile(user.id).catch(() => null);
+    const remoteMeals = await loadMeals(user.id).catch(() => []);
+    const nextProfile = { ...userProfile, photo: signupPhoto, ...(remoteProfile || {}), email: user.email || '' };
+    await persistUserProfile(nextProfile, user.id);
+    if (remoteMeals.length) {
+      setLoggedMeals(remoteMeals);
+      localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
+    }
+    setSavedLoginNotice(true);
+    toast(isLogin ? 'Login salvo com segurança.' : 'Conta criada. Complete seu perfil.', 'success');
+    setCurrentPage(remoteProfile?.name ? 'dashboard' : 'diagnosis');
   };
 
   const DiagnosisQuiz = () => {
@@ -1203,13 +757,13 @@ export default function App() {
             {current.type === 'multiselect' && (
               <div className="space-y-6">
                 <div className="grid gap-3">
-                  {current.options?.map(opt => {
+                  {current.options?.map((opt: any) => {
                     const isOther = opt === 'Outros';
                     const arr = (tempProfile[current.field as keyof UserProfile] as string[]) || [];
                     const selected = arr.includes(opt) || (isOther && arr.some(i => i.startsWith('Outros')));
                     
                     return (
-                      <div key={opt}>
+                      <div key={String(opt)}>
                         <button
                           onClick={() => {
                             if (isOther) {
@@ -1225,7 +779,7 @@ export default function App() {
                           }}
                           className={`w-full p-5 text-left border-2 rounded-2xl font-medium text-lg transition-colors ${selected ? 'border-accent bg-accent text-paper' : 'border-line hover:border-accent'}`}
                         >
-                          {opt}
+                          {String(opt)}
                         </button>
                         {isOther && selected && (
                           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
@@ -1333,7 +887,7 @@ export default function App() {
           </h2>
         </header>
 
-        <Mascot />
+        <MascotBubble userProfile={userProfile} onShowToast={toast} />
 
         <section className="animated-gradient p-8 md:p-12 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
           <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
@@ -1421,18 +975,6 @@ export default function App() {
       </div>
     </PageWrapper>
     );
-  };
-
-  const TypewriterText = ({ text, onComplete }: { text: string; onComplete?: () => void }) => {
-    const [displayed, setDisplayed] = useState('');
-    const [i, setI] = useState(0);
-    useEffect(() => {
-      if (i < text.length) {
-        const t = setTimeout(() => { setDisplayed(p => p + text[i]); setI(i + 1); }, 22);
-        return () => clearTimeout(t);
-      } else if (onComplete) onComplete();
-    }, [i, text, onComplete]);
-    return <span>{displayed}</span>;
   };
 
   const AIChat = () => {
@@ -1841,10 +1383,10 @@ export default function App() {
       const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       const updatedProfile = { ...userProfile };
       
-      const updateEvolution = (key: keyof UserProfile, val: number) => {
+      const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', val: number) => {
         if (val <= 0) return;
         const arr = (updatedProfile[key] as any[]) || [];
-        updatedProfile[key] = [...arr, { date, value: val }] as any;
+        (updatedProfile[key] as any) = [...arr, { date, value: val }];
       };
 
       updateEvolution('weightEvolution', newMetrics.weight);
@@ -2663,18 +2205,6 @@ export default function App() {
     );
   };
 
-  const ProfileAvatar = ({ photo, size = 'md', mood = 'Calmo', className = '' }: { photo?: string; size?: 'sm' | 'md' | 'lg' | 'xl'; mood?: string; className?: string }) => {
-    const dimensions = size === 'xl' ? 'w-32 h-32' : size === 'lg' ? 'w-24 h-24' : size === 'md' ? 'w-12 h-12' : 'w-10 h-10';
-    if (photo) {
-      return <img src={photo} alt="" className={`${dimensions} rounded-full object-cover ${className}`} />;
-    }
-    return (
-      <div className={`${dimensions} rounded-full overflow-hidden bg-paper ${className}`}>
-        <Avatar size={size === 'xl' || size === 'lg' ? 'lg' : size === 'md' ? 'sm' : 'sm'} mood={mood} />
-      </div>
-    );
-  };
-
   const SettingsHelp = () => (
     <PageWrapper>
       <div className="space-y-12">
@@ -2848,14 +2378,6 @@ export default function App() {
         className="w-full min-h-screen bg-paper flex items-center justify-center px-6"
       >
         <div className="w-full max-w-md space-y-10">
-          <div className="text-center">
-            <div className="w-20 h-20 mx-auto bg-accent/10 rounded-full flex items-center justify-center mb-6">
-              <User size={40} className="text-accent" />
-            </div>
-            <h2 className="display-title text-4xl text-accent">Área do Nutricionista</h2>
-            <p className="serif-body text-xl text-ink/60 mt-2">Acesso restrito - Faça login para continuar</p>
-          </div>
-
           <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm space-y-6">
             {error && <p className="text-red-500 text-sm font-bold text-center">{error}</p>}
             <div>
@@ -3201,7 +2723,6 @@ export default function App() {
   if (isLoading) return <LoadingScreen />;
 
   return (
-    <ToastProvider>
     <div className="app-shell bg-paper text-ink min-h-screen">
       <div className="paper-texture" />
 
@@ -3211,7 +2732,15 @@ export default function App() {
       <main className="app-main relative z-10 w-full overflow-x-hidden">
         <AnimatePresence mode="wait">
           {currentPage === 'landing' && <LandingPage key="landing" />}
-          {currentPage === 'auth' && <AuthPageInner key="auth" />}
+          {currentPage === 'auth' && (
+            <AuthPage
+              key="auth"
+              userProfile={userProfile}
+              onAuthenticated={handleAuthenticated}
+              onNavigate={setCurrentPage}
+              onShowToast={toast}
+            />
+          )}
           {currentPage === 'diagnosis' && <DiagnosisQuiz key="diagnosis" />}
           {currentPage === 'dashboard' && <Dashboard key="dashboard" />}
           {currentPage === 'meal-log' && <MealLog key="meal-log" />}
@@ -3283,6 +2812,5 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
-    </ToastProvider>
   );
 }
