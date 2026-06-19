@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Home,
   PlusCircle,
@@ -19,9 +19,9 @@ import {
   LogOut,
   Sparkles,
   Leaf,
+  PhoneCall,
   ArrowRight,
   Library,
-  Bell,
   Lock,
   Mail,
   Edit2,
@@ -43,7 +43,7 @@ import { GiOvermind } from 'react-icons/gi';
 import { BsFlower1 } from 'react-icons/bs';
 import { TbHealthRecognition } from 'react-icons/tb';
 import { PiHeartbeat } from 'react-icons/pi';
-import { FaBrain } from 'react-icons/fa';
+import { FaBrain, FaWhatsapp } from 'react-icons/fa';
 import { motion, AnimatePresence, useAnimation, useMotionValue } from 'motion/react';
 import { useToast } from './components/Toast';
 import { MascotComponent } from './components/Mascot';
@@ -60,8 +60,10 @@ import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL
 import type { Page, UserProfile } from './types';
 import {
   deleteCurrentUserData,
+  getFriendlySupabaseError,
   getCurrentSession,
   insertMeal,
+  isSupabaseDataSyncAvailable,
   isSupabaseConfigured,
   loadMeals,
   loadProfile,
@@ -78,7 +80,6 @@ import cinturaImg from './assets/cintura.png';
 import abdomenImg from './assets/abdomen.png';
 import quadrilImg from './assets/quadril.png';
 import {
-  ResponsiveContainer,
   BarChart,
   Bar,
   XAxis,
@@ -122,6 +123,131 @@ export function calculateNutritionalNeeds(
     net: Math.round(net)
   };
 }
+
+type ChartFrameProps = {
+  className?: string;
+  minHeight?: number;
+  children: (size: { width: number; height: number }) => React.ReactNode;
+};
+
+const ChartFrame = ({ className = 'h-64', minHeight = 180, children }: ChartFrameProps) => {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    let rafId = 0;
+    const updateSize = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const rect = frame.getBoundingClientRect();
+        const width = Math.floor(rect.width);
+        const height = Math.max(Math.floor(rect.height), minHeight);
+        setSize(prev => (prev.width === width && prev.height === height ? prev : { width, height }));
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(frame);
+    window.addEventListener('resize', updateSize);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
+  }, [minHeight]);
+
+  return (
+    <div ref={frameRef} className={`chart-frame ${className}`} style={{ minHeight }}>
+      {size.width > 0 && size.height > 0 ? children(size) : (
+        <div className="h-full min-h-[inherit] rounded-3xl bg-paper/70 animate-pulse" />
+      )}
+    </div>
+  );
+};
+
+const isProfileComplete = (profile: Partial<UserProfile>) => {
+  const latestWeight = profile.weightEvolution?.[profile.weightEvolution.length - 1]?.value;
+  const hasIdentity = Boolean(profile.name || profile.email);
+  const hasRequiredMeasurements = Boolean(profile.height && latestWeight);
+  const hasCompletionMarker = Boolean(profile.onboardingComplete || profile.profileCompletedAt);
+  const hasLegacyMetrics = Boolean(profile.imc || profile.tmb || profile.net);
+
+  return Boolean(
+    hasIdentity &&
+    (hasCompletionMarker || hasRequiredMeasurements || hasLegacyMetrics)
+  );
+};
+
+const withProfileCompletionState = (profile: UserProfile): UserProfile => {
+  if (!isProfileComplete(profile)) return profile;
+  return {
+    ...profile,
+    onboardingComplete: true,
+    profileCompletedAt: profile.profileCompletedAt || new Date().toISOString(),
+  };
+};
+
+const mergeProfileData = (base: UserProfile, incoming?: Partial<UserProfile> | null): UserProfile => {
+  if (!incoming) return base;
+
+  const merged = { ...base, ...incoming } as UserProfile;
+  const arrayFields: (keyof UserProfile)[] = [
+    'objectives',
+    'initialEmotions',
+    'triggers',
+    'foods',
+    'comorbidities',
+    'weightEvolution',
+    'waistEvolution',
+    'armEvolution',
+    'abdomenEvolution',
+    'hipEvolution',
+  ];
+  const numberFields: (keyof UserProfile)[] = ['age', 'height', 'activityLevel', 'imc', 'tmb', 'net'];
+  const stringFields: (keyof UserProfile)[] = ['name', 'email', 'photo', 'gender', 'profileCompletedAt'];
+
+  arrayFields.forEach(field => {
+    const baseValue = base[field];
+    const incomingValue = incoming[field];
+    if (Array.isArray(baseValue) && baseValue.length && (!Array.isArray(incomingValue) || incomingValue.length === 0)) {
+      (merged as any)[field] = baseValue;
+    }
+  });
+
+  numberFields.forEach(field => {
+    const baseValue = base[field];
+    const incomingValue = incoming[field];
+    if (typeof baseValue === 'number' && baseValue > 0 && (typeof incomingValue !== 'number' || incomingValue <= 0)) {
+      (merged as any)[field] = baseValue;
+    }
+  });
+
+  stringFields.forEach(field => {
+    const baseValue = base[field];
+    const incomingValue = incoming[field];
+    if (typeof baseValue === 'string' && baseValue && (typeof incomingValue !== 'string' || !incomingValue)) {
+      (merged as any)[field] = baseValue;
+    }
+  });
+
+  if (base.onboardingComplete && incoming.onboardingComplete !== true) {
+    merged.onboardingComplete = true;
+  }
+
+  return merged;
+};
+
+const getPostLoginPage = (profile: Partial<UserProfile>): Page => (
+  isProfileComplete(profile) ? 'dashboard' : 'diagnosis'
+);
+
+// Keep modal/card overlays as a dark scrim instead of backdrop blur; high blur is costly on mobile GPUs.
+const MODAL_BACKDROP_CLASS = 'absolute inset-0 bg-ink/85';
 
 const MOCK_EMOTIONAL_DATA = [
   { day: 'Seg', humor: 40, fisico: 30, emocional: 70, mood: 'Calmo' },
@@ -188,7 +314,8 @@ export default function App() {
     if (window.location.pathname === '/nutricionista') {
       return localStorage.getItem('nutriAdminLoggedIn') === 'true' ? 'admin-dashboard' : 'admin-login';
     }
-    return 'landing';
+    const savedUser = localStorage.getItem('nutriUser');
+    return savedUser ? 'dashboard' : 'landing';
   });
   const [diagnosisStep, setDiagnosisStep] = useState(0);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
@@ -233,13 +360,14 @@ export default function App() {
   });
 
   const persistUserProfile = async (profile: UserProfile, userId = currentUserId) => {
-    setUserProfile(profile);
-    localStorage.setItem('nutriUser', JSON.stringify(profile));
+    const profileToPersist = withProfileCompletionState(profile);
+    setUserProfile(profileToPersist);
+    localStorage.setItem('nutriUser', JSON.stringify(profileToPersist));
     const sessionUserId = userId || (await getCurrentSession().catch(() => null))?.user?.id || null;
-    if (sessionUserId && profile.email) {
+    if (sessionUserId && profileToPersist.email) {
       setCurrentUserId(sessionUserId);
-      upsertProfile(sessionUserId, profile.email, profile as unknown as Record<string, unknown>).catch((err) => {
-        console.warn('Supabase profile sync failed:', err);
+      upsertProfile(sessionUserId, profileToPersist.email, profileToPersist as unknown as Record<string, unknown>).catch((err) => {
+        console.info('Supabase profile sync skipped:', getFriendlySupabaseError(err));
       });
     }
   };
@@ -264,8 +392,10 @@ export default function App() {
       const savedMeals = localStorage.getItem('nutriMeals');
       if (saved) {
         try {
-          setUserProfile(JSON.parse(saved));
+          const savedProfile = withProfileCompletionState(JSON.parse(saved));
+          setUserProfile(savedProfile);
           setSavedLoginNotice(true);
+          setCurrentPage(prev => prev === 'landing' ? getPostLoginPage(savedProfile) : prev);
         } catch {}
       }
       if (savedMeals) {
@@ -276,22 +406,39 @@ export default function App() {
         try {
           const session = await getCurrentSession();
           if (session?.user && active) {
+            const metadata = session.user.user_metadata || {};
+            const metadataName = metadata.full_name || metadata.name || metadata.display_name || '';
+            const metadataPhoto = metadata.avatar_url || metadata.picture || '';
             setCurrentUserId(session.user.id);
             setSavedLoginNotice(true);
-            const [remoteProfile, remoteMeals] = await Promise.all([
-              loadProfile(session.user.id).catch(() => null),
-              loadMeals(session.user.id).catch(() => []),
-            ]);
+            const remoteProfile = await loadProfile(session.user.id).catch(() => null);
+            const remoteMeals = isSupabaseDataSyncAvailable()
+              ? await loadMeals(session.user.id).catch(() => [])
+              : [];
             if (remoteProfile && active) {
               setUserProfile(prev => {
-                const hydrated = { ...prev, ...remoteProfile, email: session.user.email || remoteProfile.email || prev.email };
+                const hydrated = withProfileCompletionState(mergeProfileData(prev, {
+                  ...remoteProfile,
+                  email: session.user.email || remoteProfile.email || prev.email,
+                  name: remoteProfile.name || prev.name || metadataName,
+                  photo: remoteProfile.photo || prev.photo || metadataPhoto,
+                }));
                 localStorage.setItem('nutriUser', JSON.stringify(hydrated));
+                setCurrentPage(page => page === 'landing' || page === 'dashboard' ? getPostLoginPage(hydrated) : page);
                 return hydrated;
               });
             } else if (session.user.email && active) {
               setUserProfile(prev => {
-                const hydrated = { ...prev, email: session.user.email || prev.email };
+                const hydrated = withProfileCompletionState(mergeProfileData(prev, {
+                  email: session.user.email || prev.email,
+                  name: prev.name || metadataName,
+                  photo: prev.photo && prev.photo !== DEFAULT_PROFILE_PHOTO ? prev.photo : metadataPhoto || prev.photo,
+                }));
                 localStorage.setItem('nutriUser', JSON.stringify(hydrated));
+                upsertProfile(session.user.id, session.user.email || hydrated.email, hydrated as unknown as Record<string, unknown>).catch((err) => {
+                  console.info('Supabase profile sync skipped:', getFriendlySupabaseError(err));
+                });
+                setCurrentPage(page => page === 'landing' || page === 'dashboard' ? getPostLoginPage(hydrated) : page);
                 return hydrated;
               });
             }
@@ -301,7 +448,7 @@ export default function App() {
             }
           }
         } catch (err) {
-          console.warn('Supabase session hydrate failed:', err);
+          console.info('Supabase session hydrate skipped:', getFriendlySupabaseError(err));
         }
       }
 
@@ -368,7 +515,7 @@ export default function App() {
     localStorage.setItem('nutriMeals', JSON.stringify(updated));
     if (currentUserId) {
       insertMeal(currentUserId, meal).catch((err) => {
-        console.warn('Supabase meal sync failed:', err);
+        console.info('Supabase meal sync skipped:', getFriendlySupabaseError(err));
       });
     }
   };
@@ -383,17 +530,6 @@ export default function App() {
     { id: 'content', icon: Library, label: 'Biblioteca' },
     { id: 'profile', icon: User, label: 'Perfil' },
   ];
-
-  const appPageIds = navItems.map(item => item.id);
-
-  const handleSectionSwipe = (offsetX: number) => {
-    if (Math.abs(offsetX) < 120 || !appPageIds.includes(currentPage)) return;
-    const currentIndex = appPageIds.indexOf(currentPage);
-    const nextIndex = offsetX < 0
-      ? Math.min(currentIndex + 1, appPageIds.length - 1)
-      : Math.max(currentIndex - 1, 0);
-    if (nextIndex !== currentIndex) setCurrentPage(appPageIds[nextIndex] as Page);
-  };
 
   const renderTopNavbar = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage) || isLoading) return null;
@@ -459,8 +595,8 @@ export default function App() {
     const mobileItems = navItems.filter(i => i.id !== 'profile');
 
     return (
-      <div className="mobile-nav fixed bottom-0 left-0 w-full z-40 bg-paper border-t border-line pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-        <nav className="flex justify-around items-center px-2 h-20">
+      <div className="mobile-nav fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pb-safe pointer-events-none">
+        <nav className="pointer-events-auto flex h-16 w-full max-w-[24rem] items-center justify-around rounded-full border border-white/60 bg-paper/72 px-2 shadow-[0_18px_45px_rgba(0,0,0,0.16)] backdrop-blur-xl">
           {mobileItems.map((item) => {
             const isActive = currentPage === item.id;
 
@@ -469,7 +605,7 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => setCurrentPage(item.id as Page)}
-                  className="relative -top-6 w-16 h-16 rounded-full bg-accent text-paper flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform border-4 border-paper"
+                  className="relative -top-4 w-16 h-16 rounded-full bg-accent text-paper flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform border-4 border-paper"
                 >
                   <item.icon size={28} />
                 </button>
@@ -480,20 +616,20 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => setCurrentPage(item.id as Page)}
-                className={`flex flex-col items-center justify-center w-[4.5rem] h-full gap-1 transition-colors ${isActive ? 'text-accent' : 'text-ink/50 hover:text-ink'
+                className={`flex flex-col items-center justify-center w-14 h-14 rounded-full gap-0.5 transition-colors ${isActive ? 'text-accent' : 'text-ink/50 hover:text-ink'
                   }`}
               >
-                <div className="relative p-2 rounded-[1.25rem] flex items-center justify-center">
+                <div className="relative p-2 rounded-full flex items-center justify-center">
                   {isActive && (
                     <motion.div
                       layoutId="mob-nav-active"
-                      className="absolute inset-0 border-2 border-accent rounded-[1.25rem] bg-accent/5"
+                      className="absolute inset-0 rounded-full bg-accent/12"
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} className="relative z-10" />
+                  <item.icon size={21} strokeWidth={isActive ? 2.6 : 2.1} className="relative z-10" />
                 </div>
-                <span className="text-[9px] font-bold mt-0.5">{item.label}</span>
+                <span className="text-[8px] font-bold leading-none">{item.label}</span>
               </button>
             );
           })}
@@ -512,12 +648,8 @@ export default function App() {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -15 }}
-        drag={appPageIds.includes(currentPage) && !noPadding ? 'x' : false}
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.08}
-        onDragEnd={(_, info) => handleSectionSwipe(info.offset.x)}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`w-full min-h-screen pb-36 md:pb-16 ${pagePadding} max-w-4xl mx-auto`}
+        className={`w-full min-h-screen  md:pb-0 ${pagePadding} max-w-6xl mx-auto`}
       >
         {children}
       </motion.div>
@@ -534,7 +666,7 @@ export default function App() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="w-full h-[100dvh] overflow-hidden fixed inset-0 z-50 bg-paper"
+      className="landing-gradient w-full h-[100dvh] overflow-hidden fixed inset-0 z-50 bg-paper"
       style={{ backgroundImage: 'radial-gradient(var(--line) 1px, transparent 1px)', backgroundSize: '30px 30px' }}
     >
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-paper via-transparent to-paper pointer-events-none z-0" />
@@ -562,8 +694,13 @@ export default function App() {
 
               <button
                 onClick={() => {
-                  if (localStorage.getItem('nutriUser')) {
-                    setCurrentPage('dashboard');
+                  const saved = localStorage.getItem('nutriUser');
+                  if (saved) {
+                    try {
+                      setCurrentPage(getPostLoginPage(JSON.parse(saved)));
+                    } catch {
+                      setCurrentPage('diagnosis');
+                    }
                   } else {
                     setCurrentPage('auth');
                   }
@@ -594,15 +731,25 @@ export default function App() {
   );
 
   const handleAuthenticated = async (params: {
-    user: { id: string; email?: string };
+    user: { id: string; email?: string; user_metadata?: Record<string, any> };
     isLogin: boolean;
     signupPhoto: string;
   }) => {
     const { user, isLogin, signupPhoto } = params;
+    const metadata = user.user_metadata || {};
+    const metadataName = metadata.full_name || metadata.name || metadata.display_name || '';
+    const metadataPhoto = metadata.avatar_url || metadata.picture || '';
     setCurrentUserId(user.id);
     const remoteProfile = await loadProfile(user.id).catch(() => null);
-    const remoteMeals = await loadMeals(user.id).catch(() => []);
-    const nextProfile = { ...userProfile, photo: signupPhoto, ...(remoteProfile || {}), email: user.email || '' };
+    const remoteMeals = isSupabaseDataSyncAvailable()
+      ? await loadMeals(user.id).catch(() => [])
+      : [];
+    const nextProfile = withProfileCompletionState(mergeProfileData(userProfile, {
+      ...(remoteProfile || {}),
+      photo: signupPhoto || metadataPhoto || userProfile.photo,
+      name: remoteProfile?.name || userProfile.name || metadataName,
+      email: user.email || '',
+    }));
     await persistUserProfile(nextProfile, user.id);
     if (remoteMeals.length) {
       setLoggedMeals(remoteMeals);
@@ -610,7 +757,7 @@ export default function App() {
     }
     setSavedLoginNotice(true);
     toast(isLogin ? 'Login salvo com segurança.' : 'Conta criada. Complete seu perfil.', 'success');
-    setCurrentPage(remoteProfile?.name ? 'dashboard' : 'diagnosis');
+    setCurrentPage(getPostLoginPage(nextProfile));
   };
 
   const DiagnosisQuiz = () => {
@@ -983,22 +1130,28 @@ export default function App() {
     const [typing, setTyping] = useState(false);
     const [selectedModel, setSelectedModel] = useState('gemini-3-flash-preview');
     const [modelOpen, setModelOpen] = useState(false);
+    const [showAiNotice, setShowAiNotice] = useState(false);
     const [history, setHistory] = useState<{ sender: 'user' | 'bot', text: string }[]>(() => {
       const saved = localStorage.getItem('nutriChatHistory');
       if (saved) return JSON.parse(saved);
       return [
-        { sender: 'bot', text: `Olá ${userProfile.name || 'amigo'}! Sou a IA do Mind Nutrition. Estou aqui para analisar seus dados e oferecer conselhos gentis sobre sua alimentação. Como posso ajudar hoje?` }
+        { sender: 'bot', text: `Olá ${userProfile.name || 'amigo'}! Sou uma assistente experimental do Mind Nutrition. Posso ajudar você a refletir sobre registros, padrões de fome e próximos passos, mas minhas respostas não substituem orientação profissional.` }
       ];
     });
     const chatRef = useRef<HTMLDivElement>(null);
     const isFirstRender = useRef(true);
     const [fullscreenImg, setFullscreenImg] = useState(false);
     const aiModels = [
-      { id: 'gemini-3-flash-preview', label: 'Gemini', desc: 'Rápido e equilibrado', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png' },
-      { id: 'kimi-k2.6', label: 'Kimi', desc: 'Leitura longa e contexto', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/kimi-color.png' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini', desc: 'Rápido e equilibrado', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-avatar/avatars/gemini.webp' },
+      { id: 'kimi-k2.6', label: 'Kimi', desc: 'Leitura longa e contexto', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kimi.png' },
       { id: 'gemma-3', label: 'Gemma', desc: 'Respostas compactas', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/gemma-color.png' },
     ];
     const activeModel = aiModels.find(model => model.id === selectedModel) || aiModels[0];
+    const quickPrompts = [
+      'O que meus registros sugerem?',
+      'Ajude-me a diferenciar fome física e emocional',
+      'Crie uma reflexão curta para antes da refeição',
+    ];
 
     useEffect(() => {
       localStorage.setItem('nutriChatHistory', JSON.stringify(history));
@@ -1010,7 +1163,7 @@ export default function App() {
     }, [history, typing]);
 
     const handleClearHistory = () => {
-      setHistory([{ sender: 'bot', text: `Histórico apagado. Olá ${userProfile.name || 'amigo'}! Como posso ajudar hoje?` }]);
+      setHistory([{ sender: 'bot', text: `Histórico apagado. Olá ${userProfile.name || 'amigo'}! Posso ajudar com uma reflexão experimental sobre seus registros de alimentação consciente.` }]);
       toast('Histórico limpo!', 'heart');
     };
 
@@ -1046,7 +1199,7 @@ export default function App() {
           body: JSON.stringify({
             model: selectedModel,
             messages: [
-              { role: 'system', content: `Você é a Nutri AI, uma assistente gentil e compreensiva de nutrição consciente. Use os dados a seguir para personalizar suas respostas:\n${contextData}` },
+              { role: 'system', content: `Você é a Nutri AI, uma assistente experimental, gentil e compreensiva de nutrição consciente. Não dê diagnóstico, prescrição, plano médico ou promessa clínica. Diga quando houver poucos dados e convide o usuário a registrar mais refeições. Use os dados a seguir apenas para personalizar reflexões:\n${contextData}` },
               ...ollamaHistory,
               { role: 'user', content: userMessage }
             ],
@@ -1059,7 +1212,7 @@ export default function App() {
         const data = await response.json();
         setHistory(prev => [...prev, { sender: 'bot', text: data.message.content }]);
       } catch (err) {
-        setHistory(prev => [...prev, { sender: 'bot', text: 'Desculpe, não consegui me conectar ao serviço de IA no momento. Verifique se o Ollama está rodando localmente (http://localhost:11434).' }]);
+        setHistory(prev => [...prev, { sender: 'bot', text: 'Não consegui conectar ao serviço experimental de IA agora. Se estiver usando Ollama localmente, verifique se ele está rodando em http://localhost:11434.' }]);
         toast('Erro de conexão com a IA', 'error');
       } finally {
         setTyping(false);
@@ -1068,80 +1221,47 @@ export default function App() {
 
     return (
       <PageWrapper noPadding>
-        <div className="flex flex-col min-h-[100dvh] h-[100dvh] w-full max-w-5xl mx-auto bg-[radial-gradient(circle_at_top_left,var(--accent-light)_0%,transparent_34%),linear-gradient(180deg,var(--paper)_0%,#ffffff_120%)] overflow-hidden">
-          <header className="px-4 md:px-8 pt-4 pb-4 flex items-center justify-between gap-3 border-b border-line shrink-0 bg-white/80 backdrop-blur-xl z-20 shadow-sm">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setCurrentPage('dashboard')} className="w-11 h-11 rounded-2xl border border-line flex items-center justify-center hover:bg-line transition-colors bg-white shadow-sm shrink-0">
-                <ArrowLeft size={20} />
-              </button>
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="relative">
-                  <img src={mascoteAi} alt="Nutri AI" className="w-12 h-12 rounded-2xl object-contain bg-white p-1.5 shadow-sm border border-line" />
-                  <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-400 rounded-full border-2 border-paper" />
+        <div className="theme-animated-bg flex h-[100dvh] min-h-[100dvh] w-full max-w-6xl mx-auto flex-col overflow-hidden">
+          <header className="shrink-0 border-b border-line bg-white/80 px-3 py-3 shadow-sm backdrop-blur-xl sm:px-4 md:px-8 md:py-4">
+            <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <button onClick={() => setCurrentPage('dashboard')} className="icon-button h-11 w-11">
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="relative shrink-0">
+                  <img src={mascoteAi} alt="Nutri AI" className="h-20 w-20 rounded-full border border-line object-contain"/>
+                  <span className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-2 border-paper bg-green-400" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="font-bold text-lg text-ink">Nutri AI</h2>
-                  <p className="text-[11px] font-bold text-accent">{typing ? 'Digitando...' : `Usando ${activeModel.label}`}</p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h2 className="truncate text-lg font-bold text-ink">Nutri AI</h2>
+                  </div>
+                  <p className="truncate text-[11px] font-bold text-accent">{typing ? 'Digitando...' : 'Apoio reflexivo com IA'}</p>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <button
-                  onClick={() => setModelOpen(open => !open)}
-                  className="bg-white border border-line rounded-2xl pl-2 pr-3 py-2 text-xs font-bold outline-none focus:border-accent shadow-sm flex items-center gap-2 min-w-[9.5rem] hover:border-accent transition-colors"
-                >
-                  <img src={activeModel.logo} alt="" className="w-6 h-6 rounded-lg object-contain bg-ink/5" />
-                  <span className="hidden sm:flex flex-col items-start leading-tight">
-                    <span>{activeModel.label}</span>
-                    <span className="font-medium text-[9px] text-ink/40">{activeModel.desc}</span>
-                  </span>
-                  <ChevronDown size={14} className={`ml-auto transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
-                </button>
-                <AnimatePresence>
-                  {modelOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                      className="absolute right-0 mt-2 w-72 bg-white border border-line rounded-3xl shadow-2xl p-3 z-50"
-                    >
-                      {aiModels.map(model => (
-                        <button
-                          key={model.id}
-                          onClick={() => { setSelectedModel(model.id); setModelOpen(false); }}
-                          className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left hover:bg-accent/10 transition-colors ${selectedModel === model.id ? 'text-accent bg-accent/10 ring-1 ring-accent/20' : 'text-ink'}`}
-                        >
-                          <img src={model.logo} alt="" className="w-10 h-10 rounded-xl object-contain bg-ink/5 border border-line" />
-                          <span className="flex-1">
-                            <span className="block text-sm font-bold">{model.label}</span>
-                            <span className="block text-[11px] font-medium text-ink/45 mt-0.5">{model.desc}</span>
-                          </span>
-                          {selectedModel === model.id && <CheckCircle size={16} className="text-accent" />}
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <button onClick={handleClearHistory} className="bg-red-50 text-red-500 border border-red-200 px-3 md:px-4 py-2.5 rounded-2xl text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">
-                Limpar
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                className="icon-button h-11 w-11 text-red-500 hover:border-red-200 hover:bg-red-50"
+                aria-label="Limpar histórico do chat"
+              >
+                <Trash2 size={17} />
               </button>
             </div>
           </header>
 
-          <div ref={chatRef} className="flex-1 overflow-y-auto px-4 md:px-10 py-6 space-y-5">
+          <div ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4 md:px-10 md:py-6">
             {history.map((h, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                className={`flex w-full gap-3 ${h.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                className={`flex w-full min-w-0 gap-2 sm:gap-3 ${h.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                 {h.sender === 'bot' && (
-                  <img src={mascoteAi} alt="Nutri AI" className="w-10 h-10 rounded-2xl object-contain bg-accent/10 p-1 shrink-0 mt-auto shadow-sm" />
+                  <img src={mascoteAi} alt="Nutri AI" className="mt-auto h-9 w-9 shrink-0 rounded-2xl bg-accent/10 object-contain p-1 shadow-sm sm:h-10 sm:w-10" />
                 )}
                 {h.sender === 'user' && (
                   <ProfileAvatar photo={userProfile.photo} size="sm" className="rounded-2xl shrink-0 mt-auto shadow-sm border border-line" />
                 )}
-                <div className={`max-w-[82%] md:max-w-[68%] px-5 py-4 rounded-3xl text-[0.95rem] md:text-base font-medium shadow-sm leading-relaxed ${
+                <div className={`max-w-[calc(100%-3rem)] whitespace-pre-wrap break-words rounded-3xl px-4 py-3 text-[0.92rem] font-medium leading-relaxed shadow-sm sm:px-5 sm:py-4 md:max-w-[min(72%,42rem)] md:text-base ${
                   h.sender === 'user' ? 'bg-accent text-white rounded-br-md' : 'bg-white border border-line text-ink rounded-bl-md'
                 }`}>
                   {h.sender === 'bot' && i === history.length - 1 && !typing ? (
@@ -1153,9 +1273,9 @@ export default function App() {
             {typing && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                className="flex gap-3">
-                <img src={mascoteAi} alt="Nutri AI" className="w-10 h-10 rounded-2xl object-contain bg-accent/10 p-1 shrink-0 shadow-sm" />
-                <div className="bg-white border border-line rounded-3xl rounded-bl-md px-5 py-4 flex items-center gap-1.5 shadow-sm">
+                className="flex gap-2 sm:gap-3">
+                <img src={mascoteAi} alt="Nutri AI" className="h-9 w-9 shrink-0 rounded-2xl bg-accent/10 object-contain p-1 shadow-sm sm:h-10 sm:w-10" />
+                <div className="flex items-center gap-1.5 rounded-3xl rounded-bl-md border border-line bg-white px-5 py-4 shadow-sm">
                   {[0, 1, 2].map(i => (
                     <motion.div key={i} className="w-2 h-2 rounded-full bg-accent/40"
                       animate={{ y: [0, -6, 0] }}
@@ -1167,24 +1287,103 @@ export default function App() {
             )}
           </div>
 
-          <div className="shrink-0 px-4 md:px-8 py-4 bg-paper/90 backdrop-blur-xl border-t border-line pb-safe">
-            <div className="max-w-3xl mx-auto flex items-center gap-3">
-              <input
-                type="text" value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()}
-                placeholder="Pergunte algo sobre sua alimentação..."
-                className="flex-1 py-4 px-6 bg-white border border-line rounded-2xl shadow-sm focus:border-accent focus:outline-none text-base font-medium"
-              />
-              <motion.button
-                onClick={handleSend} disabled={!msg.trim() || typing}
-                whileTap={{ scale: 0.95 }}
-                className="w-14 h-14 bg-accent text-white rounded-2xl flex items-center justify-center disabled:opacity-40 hover:bg-accent/90 transition-all shadow-lg shrink-0">
-                <Send size={20} className="-ml-0.5" />
-              </motion.button>
+          <div className="shrink-0 border-t border-line bg-paper/80 px-3 py-3 backdrop-blur-xl pb-safe sm:px-4 md:px-8">
+            <div className="chat-composer mx-auto w-full p-2.5 sm:p-3">
+              <div className="flex gap-2 overflow-x-auto px-1 pb-2">
+                {quickPrompts.map(prompt => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => setMsg(prompt)}
+                    className="shrink-0 rounded-full border border-line bg-paper/80 px-3.5 py-2 text-[11px] font-bold text-ink/60 transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent sm:text-xs"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+              <div className="relative flex items-end gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setModelOpen(open => !open)}
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-line bg-white shadow-sm transition-colors hover:border-accent focus:border-accent focus:outline-none sm:h-14 sm:w-14"
+                  aria-label={`Modelo selecionado: ${activeModel.label}`}
+                >
+                  <img src={activeModel.logo} alt="" className="h-6 w-6 rounded-lg object-contain sm:h-7 sm:w-7" />
+                </button>
+                <AnimatePresence>
+                  {modelOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                      className="absolute bottom-full left-0 z-50 mb-3 w-[min(20rem,calc(100vw-2rem))] rounded-3xl border border-line bg-white p-2 shadow-2xl sm:p-3"
+                    >
+                      {aiModels.map(model => (
+                        <button
+                          key={model.id}
+                          type="button"
+                          onClick={() => { setSelectedModel(model.id); setModelOpen(false); }}
+                          className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-accent/10 ${selectedModel === model.id ? 'bg-accent/10 text-accent ring-1 ring-accent/20' : 'text-ink'}`}
+                        >
+                          <img src={model.logo} alt="" className="h-8 w-8 rounded-xl border border-line bg-white object-contain" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold">{model.label}</span>
+                            <span className="mt-0.5 block truncate text-[11px] font-medium text-ink/45">{model.desc}</span>
+                          </span>
+                          {selectedModel === model.id && <CheckCircle size={16} className="text-accent" />}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <textarea
+                  value={msg}
+                  rows={1}
+                  onChange={e => setMsg(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Escreva uma pergunta"
+                  className="max-h-32 min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-line bg-paper/80 px-3.5 py-3 text-[0.95rem] font-medium leading-relaxed shadow-inner shadow-ink/5 outline-none transition-colors placeholder:text-ink/35 focus:border-accent focus:bg-white sm:min-h-14 sm:px-5 sm:py-4 sm:text-base"
+                />
+                <motion.button
+                  onClick={handleSend} disabled={!msg.trim() || typing}
+                  whileTap={{ scale: 0.95 }}
+                  className="send-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg shadow-accent/25 transition-all disabled:opacity-40 sm:h-14 sm:w-14"
+                  aria-label="Enviar mensagem"
+                >
+                  <Send size={18} className="-ml-0.5 sm:h-5 sm:w-5" />
+                </motion.button>
+              </div>
+              <p className="px-2 pt-2 text-center text-[10px] font-medium text-ink/35">
+                IA experimental. Use como apoio reflexivo, não como orientação clínica.
+              </p>
             </div>
-            <p className="text-center text-[10px] text-ink/30 mt-3 font-medium">
-              Mind Nutrition AI • Respostas baseadas no seu perfil
-            </p>
           </div>
+          <AnimatePresence>
+            {showAiNotice && (
+              <div className="modal-shell fixed inset-0 z-50 flex">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowAiNotice(false)} />
+                <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-md bg-paper p-6 shadow-2xl">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <span className="label-sm text-accent-pink">Experimental</span>
+                      <h3 className="modal-title font-bold mt-2">Assistente em teste.</h3>
+                    </div>
+                    <button type="button" onClick={() => setShowAiNotice(false)} className="icon-button">
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <p className="mt-5 text-sm leading-relaxed text-ink/65">
+                    Apoio reflexivo, não orientação clínica. Para sintomas, medicação, restrições alimentares ou transtornos alimentares, procure um profissional de saúde.
+                  </p>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       </PageWrapper>
     );
@@ -1416,7 +1615,7 @@ export default function App() {
       };
     }).filter(d => d.value > 0);
 
-    const physicalMeals = loggedMeals.filter((meal: any) => meal.type === 'Física' || meal.type === 'FÃ­sica').length;
+    const physicalMeals = loggedMeals.filter((meal: any) => meal.type === 'Física' || meal.type === 'Física').length;
     const emotionalMeals = loggedMeals.filter((meal: any) => meal.type === 'Emocional').length;
     const hungerPieData = [
       { name: 'Fome Física', value: physicalMeals },
@@ -1429,13 +1628,15 @@ export default function App() {
       const meals = loggedMeals.filter((meal: any) => new Date(meal.date || Date.now()).getDay() === index);
       return {
         day,
-        fisico: meals.filter((meal: any) => meal.type === 'Física' || meal.type === 'FÃ­sica').length,
+        fisico: meals.filter((meal: any) => meal.type === 'Física' || meal.type === 'Física').length,
         emocional: meals.filter((meal: any) => meal.type === 'Emocional').length,
       };
     });
     const awarenessScore = loggedMeals.length
       ? Math.min(100, Math.round((loggedMeals.filter((meal: any) => meal.notes || meal.postMood || meal.satisfaction).length / loggedMeals.length) * 100))
       : 0;
+    const hasEnoughMealData = loggedMeals.length >= 3;
+    const missingMealLogs = Math.max(3 - loggedMeals.length, 0);
 
     return (
     <PageWrapper>
@@ -1461,31 +1662,59 @@ export default function App() {
           </button>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {!hasEnoughMealData && (
+          <section className="bg-white border border-line rounded-[2rem] p-6 md:p-8 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center gap-5">
+              <div className="w-14 h-14 rounded-2xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                <Activity size={26} />
+              </div>
+              <div className="flex-1">
+                <span className="label-sm text-accent">Dados insuficientes</span>
+                <h3 className="font-bold text-xl mt-2">Registre mais refeições para liberar insights confiáveis.</h3>
+                <p className="text-sm text-ink/60 mt-2 leading-relaxed">
+                  Ainda faltam {missingMealLogs} registro{missingMealLogs === 1 ? '' : 's'} para comparar fome física, fome emocional e variação de humor com mais contexto.
+                </p>
+              </div>
+              <button onClick={() => setCurrentPage('meal-log')} className="bg-accent text-paper px-5 py-3 rounded-2xl font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors">
+                Registrar refeição
+              </button>
+            </div>
+          </section>
+        )}
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 min-w-0">
           <div className="animated-gradient text-paper p-10 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
             <h3 className="label-sm text-paper mb-4 glass-badge inline-block self-start font-bold">Consciência Plena</h3>
             <div className="text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</div>
             <p className="text-sm font-medium text-paper/90 leading-relaxed">{loggedMeals.length ? 'Baseado nas refeições registradas e nas emoções informadas.' : 'Registre refeições para gerar sua leitura de consciência.'}</p>
           </div>
 
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
+          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
             <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent"><Brain size={18} /></span> Equilíbrio Mental vs Físico</h3>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={MOCK_RADAR_DATA}>
+            {hasEnoughMealData ? (
+            <ChartFrame className="h-64" minHeight={180}>
+              {({ width, height }) => (
+                <RadarChart width={width} height={height} cx="50%" cy="50%" outerRadius="80%" data={MOCK_RADAR_DATA}>
                   <PolarGrid stroke="var(--line)" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--ink)' }} />
-                  <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} />
-                  <Radar name="Meta" dataKey="B" stroke="var(--accent-pink)" fill="var(--accent-pink)" fillOpacity={0.1} />
+                  <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} isAnimationActive animationDuration={900} animationEasing="ease-out" />
+                  <Radar name="Meta" dataKey="B" stroke="var(--accent-pink)" fill="var(--accent-pink)" fillOpacity={0.1} isAnimationActive animationDuration={900} animationEasing="ease-out" />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none' }} />
                 </RadarChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </ChartFrame>
+            ) : (
+              <div className="min-h-64 rounded-3xl border border-dashed border-line bg-paper/70 p-8 flex flex-col justify-center">
+                <span className="label-sm text-accent">Aguardando registros</span>
+                <p className="font-bold text-xl mt-3">Este gráfico precisa de pelo menos 3 refeições registradas.</p>
+                <p className="text-sm text-ink/55 mt-2 leading-relaxed">Com poucos dados, a leitura emocional poderia induzir conclusões erradas. Registre algumas refeições com humor, fome e saciedade para ver padrões reais.</p>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm">
+        <div className="grid lg:grid-cols-2 gap-6 min-w-0">
+          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
             <div className="flex items-center justify-between mb-8">
               <h3 className="font-bold flex items-center gap-2"><span className="text-accent"><TbHealthRecognition size={20} /></span> Evolução do Peso Corporal</h3>
               <div className="flex gap-4">
@@ -1493,9 +1722,9 @@ export default function App() {
                 <span className="flex items-center gap-2 text-[10px] font-bold uppercase text-ink/40"><div className="w-2 h-2 rounded-full bg-accent-pink"></div> Meta</span>
               </div>
             </div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={userProfile.weightEvolution}>
+            <ChartFrame className="h-64" minHeight={180}>
+              {({ width, height }) => (
+                <AreaChart width={width} height={height} data={userProfile.weightEvolution}>
                   <defs>
                     <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.4} />
@@ -1523,17 +1752,20 @@ export default function App() {
                     style={{ filter: 'url(#shadow)' }}
                     dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 3 }}
                     activeDot={{ r: 8, fill: 'var(--accent)', stroke: 'var(--paper)', strokeWidth: 4 }}
+                    isAnimationActive
+                    animationDuration={900}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </ChartFrame>
           </div>
 
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm">
+          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
             <h3 className="font-bold flex items-center gap-2 mb-8"><span className="text-accent-pink"><Activity size={20} /></span> Evolução do IMC</h3>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={imcData}>
+            <ChartFrame className="h-64" minHeight={180}>
+              {({ width, height }) => (
+                <AreaChart width={width} height={height} data={imcData}>
                   <defs>
                     <linearGradient id="colorIMC" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--accent-pink)" stopOpacity={0.4} />
@@ -1561,18 +1793,21 @@ export default function App() {
                     style={{ filter: 'url(#shadowIMC)' }}
                     dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 3 }}
                     activeDot={{ r: 8, fill: 'var(--accent-pink)', stroke: 'var(--paper)', strokeWidth: 4 }}
+                    isAnimationActive
+                    animationDuration={900}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </ChartFrame>
           </div>
 
           {rcqData.length > 0 && (
-            <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
+            <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
               <h3 className="font-bold flex items-center gap-2 mb-8"><span className="text-ink/60"><Activity size={20} /></span> Evolução RCQ (Relação Cintura-Quadril)</h3>
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={rcqData}>
+              <ChartFrame className="h-64" minHeight={180}>
+                {({ width, height }) => (
+                  <AreaChart width={width} height={height} data={rcqData}>
                     <defs>
                       <linearGradient id="colorRCQ" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="var(--ink)" stopOpacity={0.2} />
@@ -1596,30 +1831,34 @@ export default function App() {
                       fill="url(#colorRCQ)"
                       dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--ink)', strokeWidth: 3 }}
                       activeDot={{ r: 8, fill: 'var(--ink)', stroke: 'var(--paper)', strokeWidth: 4 }}
+                      isAnimationActive
+                      animationDuration={900}
+                      animationEasing="ease-out"
                     />
                   </AreaChart>
-                </ResponsiveContainer>
-              </div>
+                )}
+              </ChartFrame>
             </div>
           )}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm flex flex-col">
+        <div className="grid md:grid-cols-2 gap-6 min-w-0">
+          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm flex flex-col min-w-0">
             <h3 className="font-bold mb-4 flex items-center gap-2"><span className="text-accent-pink"><Zap size={18} /></span> Fontes de Fome</h3>
+            {hasEnoughMealData ? (
             <div className="flex-1 flex items-center">
-              <div className="h-44 w-1/2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={chartPieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
+              <ChartFrame className="h-44 w-1/2" minHeight={140}>
+                {({ width, height }) => (
+                  <PieChart width={width} height={height}>
+                    <Pie data={chartPieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value" isAnimationActive animationDuration={750} animationEasing="ease-out">
                       {chartPieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
+                )}
+              </ChartFrame>
               <div className="w-1/2 space-y-3">
                 {chartPieData.map((item, i) => (
                   <div key={i} className="flex items-center gap-2">
@@ -1629,25 +1868,42 @@ export default function App() {
                 ))}
               </div>
             </div>
+            ) : (
+              <div className="min-h-44 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
+                <span className="label-sm text-accent-pink">Sem amostra mínima</span>
+                <p className="font-bold text-lg mt-2">Ainda não há refeições suficientes para comparar fontes de fome.</p>
+                <p className="text-sm text-ink/55 mt-2">Registre fome antes e depois das próximas refeições para identificar padrões físicos, emocionais ou sociais.</p>
+              </div>
+            )}
           </div>
 
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm">
+          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
             <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Emocional</h3>
-            <div className="h-56 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={emotionalData}>
+            {hasEnoughMealData ? (
+            <>
+            <ChartFrame className="h-56" minHeight={160}>
+              {({ width, height }) => (
+                <BarChart width={width} height={height} data={emotionalData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={10} />
                   <Tooltip cursor={{ fill: 'var(--line)', opacity: 0.5 }} contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="fisico" stackId="a" fill="var(--accent)" radius={[0, 0, 6, 6]} barSize={16} />
-                  <Bar dataKey="emocional" stackId="a" fill="var(--accent-pink)" radius={[6, 6, 0, 0]} barSize={16} />
+                  <Bar dataKey="fisico" stackId="a" fill="var(--accent)" radius={[0, 0, 6, 6]} barSize={16} isAnimationActive animationDuration={750} />
+                  <Bar dataKey="emocional" stackId="a" fill="var(--accent-pink)" radius={[6, 6, 0, 0]} barSize={16} isAnimationActive animationDuration={750} />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </ChartFrame>
             <div className="flex justify-center gap-8 mt-6">
               <span className="flex items-center gap-2 text-xs font-bold"><div className="w-4 h-4 rounded-full bg-accent"></div> Fome Física</span>
               <span className="flex items-center gap-2 text-xs font-bold"><div className="w-4 h-4 rounded-full bg-accent-pink"></div> Fome Emocional</span>
             </div>
+            </>
+            ) : (
+              <div className="min-h-56 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
+                <span className="label-sm text-accent-pink">Linha do tempo em espera</span>
+                <p className="font-bold text-lg mt-2">O gráfico semanal aparece quando houver registros distribuídos ao longo dos dias.</p>
+                <p className="text-sm text-ink/55 mt-2">Use o registro de refeição para informar humor e saciedade. Esses dados tornam os insights mais úteis e menos genéricos.</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1672,10 +1928,10 @@ export default function App() {
 
       <AnimatePresence>
         {showMetricsModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/60 backdrop-blur-sm" onClick={() => setShowMetricsModal(false)} />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-paper w-full max-w-2xl rounded-[2rem] md:rounded-[2.5rem] p-5 md:p-12 pb-8 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
-              <h3 className="display-title text-3xl mb-4 text-center">Atualizar Métricas</h3>
+          <div className="modal-shell fixed inset-0 z-50 flex">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative bg-paper max-w-2xl p-5 md:p-12 pb-8 shadow-2xl">
+              <h3 className="display-title modal-title mb-4 text-center">Atualizar Métricas</h3>
               <p className="text-center text-ink/60 mb-8 serif-body">Clique nas imagens para ver as instruções completas</p>
               <div className="space-y-6">
                  <div className="flex gap-4 items-center bg-white p-4 rounded-3xl border border-line shadow-sm">
@@ -2088,34 +2344,6 @@ export default function App() {
     );
   };
 
-  const NotificationSettings = () => (
-    <PageWrapper>
-      <div className="space-y-12">
-        <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-          <ArrowLeft size={20} />
-        </button>
-        <h2 className="display-title text-5xl">Notificações.</h2>
-        <div className="space-y-6 max-w-md">
-          {[
-            { title: 'Lembretes de Refeição', desc: 'Sinalize momentos de pausa consciente.' },
-            { title: 'Dicas do Mascote', desc: 'Pequenas mensagens de carinho do Nutri.' },
-            { title: 'Alertas de Evolução', desc: 'Notificações sobre suas conquistas.' }
-          ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between p-6 bg-white border border-line rounded-3xl shadow-sm">
-              <div>
-                <h4 className="font-bold text-lg">{item.title}</h4>
-                <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
-              </div>
-              <div className="w-12 h-6 bg-accent rounded-full p-1 relative cursor-pointer">
-                <div className="w-4 h-4 bg-paper rounded-full shadow-md translate-x-6" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </PageWrapper>
-  );
-
   const ThemeSettings = () => (
     <PageWrapper>
       <div className="space-y-12">
@@ -2157,8 +2385,23 @@ export default function App() {
 
   const PrivacySettings = () => {
     const { toast } = useToast();
+    const [privacyPrefs, setPrivacyPrefs] = useState<Record<string, boolean>>(() => {
+      const saved = localStorage.getItem('mindPrivacyPrefs');
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+      return { privateProfile: true, cloudBackup: true, twoFactor: false };
+    });
+
+    const updatePrivacyPref = (key: string) => {
+      const updated = { ...privacyPrefs, [key]: !privacyPrefs[key] };
+      setPrivacyPrefs(updated);
+      localStorage.setItem('mindPrivacyPrefs', JSON.stringify(updated));
+      toast('Preferencia de privacidade atualizada.', 'success');
+    };
+
     const handleDeleteData = async () => {
-      if (!window.confirm('Apagar seus dados de perfil e refeições do banco? Esta ação não pode ser desfeita.')) return;
+      if (!window.confirm('Apagar seus dados de perfil e refeicoes do banco? Esta acao nao pode ser desfeita.')) return;
       try {
         if (currentUserId) await deleteCurrentUserData(currentUserId);
         await supabase?.auth.signOut();
@@ -2169,42 +2412,43 @@ export default function App() {
         toast('Seus dados foram apagados.', 'success');
         setCurrentPage('landing');
       } catch (err) {
-        toast('Não foi possível apagar os dados no banco agora.', 'error');
+        toast('Nao foi possivel apagar os dados no banco agora.', 'error');
       }
     };
 
+    const privacyOptions = [
+      { key: 'privateProfile', title: 'Perfil Privado', desc: 'Seus dados visiveis apenas para voce.' },
+      { key: 'cloudBackup', title: 'Backup na Nuvem', desc: 'Sincronize seus dados em outros dispositivos quando o Supabase estiver ativo.' },
+      { key: 'twoFactor', title: 'Autenticacao em 2 Passos', desc: 'Preferencia registrada. A ativacao final depende do provedor de autenticacao.' },
+    ];
+
     return (
-    <PageWrapper>
-      <div className="space-y-12">
-        <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-          <ArrowLeft size={20} />
-        </button>
-        <h2 className="display-title text-5xl">Privacidade.</h2>
-        <div className="space-y-6 max-w-md">
-          {[
-            { title: 'Perfil Privado', desc: 'Seus dados visíveis apenas para você.' },
-            { title: 'Backup na Nuvem', desc: 'Sincronize seus dados em outros dispositivos.' },
-            { title: 'Autenticação em 2 Passos', desc: 'Mais segurança para seu Studio.' }
-          ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between p-6 bg-white border border-line rounded-3xl shadow-sm">
-              <div>
-                <h4 className="font-bold text-lg">{item.title}</h4>
-                <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
-              </div>
-              <div className={`w-12 h-6 rounded-full p-1 relative cursor-pointer ${i === 0 ? 'bg-accent' : 'bg-line'}`}>
-                <div className={`w-4 h-4 bg-paper rounded-full shadow-md ${i === 0 ? 'translate-x-6' : ''}`} />
-              </div>
-            </div>
-          ))}
-          <button onClick={handleDeleteData} className="w-full py-5 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors mt-8 flex items-center justify-center gap-2">
-            <Trash2 size={18} /> Apagar meus dados do banco
+      <PageWrapper>
+        <div className="space-y-12">
+          <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+            <ArrowLeft size={20} />
           </button>
+          <h2 className="display-title text-5xl">Privacidade.</h2>
+          <div className="space-y-6 max-w-md">
+            {privacyOptions.map((item) => (
+              <button key={item.key} type="button" onClick={() => updatePrivacyPref(item.key)} className="w-full flex items-center justify-between gap-4 p-6 bg-white border border-line rounded-3xl shadow-sm text-left hover:border-accent/50 transition-colors">
+                <div>
+                  <h4 className="font-bold text-lg">{item.title}</h4>
+                  <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
+                </div>
+                <div className={`w-12 h-6 rounded-full p-1 relative shrink-0 transition-colors ${privacyPrefs[item.key] ? 'bg-accent' : 'bg-line'}`}>
+                  <div className={`w-4 h-4 bg-paper rounded-full shadow-md transition-transform ${privacyPrefs[item.key] ? 'translate-x-6' : ''}`} />
+                </div>
+              </button>
+            ))}
+            <button onClick={handleDeleteData} className="w-full py-5 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors mt-8 flex items-center justify-center gap-2">
+              <Trash2 size={18} /> Apagar meus dados do banco
+            </button>
+          </div>
         </div>
-      </div>
-    </PageWrapper>
+      </PageWrapper>
     );
   };
-
   const SettingsHelp = () => (
     <PageWrapper>
       <div className="space-y-12">
@@ -2218,15 +2462,15 @@ export default function App() {
             <p className="text-sm text-ink/70 mb-6 font-medium">Nossa equipe clínica está pronta para te atender com todo cuidado e atenção.</p>
             
             <div className="space-y-4">
-              <a href="https://wa.me/5511999999999" target="_blank" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><MessageSquare size={18} /></div>
+              <a href="https://wa.me/5511999999999" target="_blank" rel="noreferrer" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><FaWhatsapp size={20} /></div>
                 <div>
                   <span className="block font-bold text-sm">WhatsApp da Clínica</span>
                   <span className="block text-xs text-ink/60">(11) 99999-9999</span>
                 </div>
               </a>
               <a href="tel:+551133333333" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><Activity size={18} /></div>
+                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><PhoneCall size={18} /></div>
                 <div>
                   <span className="block font-bold text-sm">Telefone Fixo</span>
                   <span className="block text-xs text-ink/60">(11) 3333-3333</span>
@@ -2264,9 +2508,58 @@ export default function App() {
     const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
     const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
     const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
+    const [selectedMetric, setSelectedMetric] = useState<null | {
+      label: string;
+      val: string | number;
+      tone: string;
+      title: string;
+      description: string;
+      interpretation: string;
+    }>(null);
+    const profileMetrics = [
+      {
+        label: 'IMC',
+        val: userProfile.imc || '--',
+        tone: 'text-accent bg-accent/10 border-accent/20',
+        title: 'Índice de Massa Corporal',
+        description: 'O IMC cruza peso e altura para criar uma leitura geral do estado corporal. Ele é útil como triagem, mas não substitui uma avaliação profissional.',
+        interpretation: 'Use como ponto de contexto. Massa muscular, retenção de líquidos, composição corporal e histórico de saúde podem mudar a interpretação do número.',
+      },
+      {
+        label: 'TMB',
+        val: userProfile.tmb || '--',
+        tone: 'text-accent-pink bg-accent-pink/10 border-accent-pink/20',
+        title: 'Taxa Metabólica Basal',
+        description: 'A TMB estima quanta energia seu corpo usa em repouso para manter funções vitais, como respiração, circulação e temperatura corporal.',
+        interpretation: 'Ela ajuda a personalizar metas e reflexões alimentares. Não é uma meta de consumo por si só, porque rotina, treino, sono e saúde alteram a necessidade diária.',
+      },
+      {
+        label: 'Idade',
+        val: userProfile.age || '--',
+        tone: 'text-ink/70 bg-white border-line',
+        title: 'Idade informada no perfil',
+        description: 'A idade entra nos cálculos metabólicos e ajuda o app a contextualizar recomendações de energia, rotina e evolução corporal.',
+        interpretation: 'Mantenha esse dado atualizado para melhorar estimativas como TMB e leituras de progresso ao longo do tempo.',
+      },
+      {
+        label: 'Peso',
+        val: latestWeight ? `${latestWeight}kg` : '--',
+        tone: 'text-accent bg-white border-line',
+        title: 'Peso corporal mais recente',
+        description: 'Mostra o último peso registrado na evolução corporal. O valor isolado diz pouco; a tendência ao longo das semanas costuma ser mais útil.',
+        interpretation: 'Observe junto com humor, fome, medidas corporais e constância dos registros para evitar conclusões apressadas.',
+      },
+      {
+        label: 'C/Q',
+        val: latestWaist && latestHip ? (latestWaist / latestHip).toFixed(2) : '--',
+        tone: 'text-accent-pink bg-white border-line',
+        title: 'Relação Cintura/Quadril',
+        description: 'A C/Q divide a medida da cintura pela medida do quadril. Ela ajuda a contextualizar distribuição corporal e risco cardiometabólico em triagens.',
+        interpretation: 'É apenas um indicador de acompanhamento. Diferenças de biotipo, técnica de medição e contexto clínico importam bastante.',
+      },
+    ];
     const profileActions = [
       { label: 'Editar dados', icon: Edit2, page: 'settings-account' },
-      { label: 'Notificações', icon: Bell, page: 'settings-notifications' },
       { label: 'Temas', icon: Palette, page: 'settings-theme' },
       { label: 'Privacidade', icon: Lock, page: 'settings-privacy' },
       { label: 'Ajuda', icon: HelpCircle, page: 'settings-help' },
@@ -2299,29 +2592,43 @@ export default function App() {
           </div>
         </header>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            { label: 'IMC', val: userProfile.imc || '--', tone: 'text-accent bg-accent/10 border-accent/20' },
-            { label: 'TMB', val: userProfile.tmb || '--', tone: 'text-accent-pink bg-accent-pink/10 border-accent-pink/20' },
-            { label: 'Idade', val: userProfile.age || '--', tone: 'text-ink/70 bg-white border-line' },
-            { label: 'Peso', val: latestWeight ? `${latestWeight}kg` : '--', tone: 'text-accent bg-white border-line' },
-            { label: 'C/Q', val: latestWaist && latestHip ? (latestWaist / latestHip).toFixed(2) : '--', tone: 'text-accent-pink bg-white border-line' },
-          ].map(item => (
-            <div key={item.label} className={`rounded-2xl p-4 text-center border shadow-sm ${item.tone}`}>
-              <span className="text-[10px] font-bold uppercase block mb-1 opacity-70">{item.label}</span>
-              <span className="text-2xl font-display text-ink">{item.val}</span>
-            </div>
-          ))}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="label-sm text-accent">Toque nos indicadores para entender cada termo</span>
+            <HelpCircle size={16} className="text-accent/70 shrink-0" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {profileMetrics.map(item => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setSelectedMetric(item)}
+                className={`group rounded-2xl p-4 text-left border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent/30 ${item.tone}`}
+                aria-label={`Entender ${item.label}`}
+              >
+                <span className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase mb-2 opacity-70">
+                  {item.label}
+                  <HelpCircle size={14} className="opacity-60 group-hover:opacity-100" />
+                </span>
+                <span className="block text-2xl font-display text-ink">{item.val}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="grid md:grid-cols-[1fr_1.2fr] gap-4">
           <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
             <span className="label-sm text-accent">Resumo</span>
-            <p className="font-bold text-lg mt-2">{userProfile.objectives?.[0] || 'Defina seu foco principal'}</p>
-            <p className="text-sm text-ink/50 mt-2">{userProfile.triggers?.length ? `Gatilhos: ${userProfile.triggers.slice(0, 3).join(', ')}` : 'Gatilhos ainda não informados.'}</p>
+            <p className="font-bold text-lg mt-2">{userProfile.objectives?.[0] || 'Complete seu foco principal'}</p>
+            <p className="text-sm text-ink/50 mt-2">{userProfile.triggers?.length ? `Gatilhos: ${userProfile.triggers.slice(0, 3).join(', ')}` : 'Informe seus gatilhos para personalizar os lembretes e insights.'}</p>
             <div className="mt-5 w-12 h-12 bg-accent text-paper rounded-2xl flex items-center justify-center">
               <Brain size={24} />
             </div>
+            {(!userProfile.objectives?.length || !userProfile.triggers?.length) && (
+              <button onClick={() => setCurrentPage('diagnosis')} className="mt-5 w-full rounded-2xl bg-accent/10 px-4 py-3 text-sm font-bold text-accent transition-colors hover:bg-accent/15">
+                Completar perfil
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -2347,6 +2654,44 @@ export default function App() {
           </button>
         </div>
       </div>
+      <AnimatePresence>
+        {selectedMetric && (
+          <div className="modal-shell fixed inset-0 z-50 flex">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={MODAL_BACKDROP_CLASS}
+              onClick={() => setSelectedMetric(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              className="modal-panel relative bg-paper p-6 md:p-8 shadow-2xl max-w-lg"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span className="label-sm text-accent">Entenda o termo</span>
+                  <h3 className="modal-title font-bold mt-2">{selectedMetric.title}</h3>
+                </div>
+                <button type="button" onClick={() => setSelectedMetric(null)} className="icon-button">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className={`mt-6 rounded-3xl border p-5 ${selectedMetric.tone}`}>
+                <span className="text-[10px] font-bold uppercase opacity-70">{selectedMetric.label}</span>
+                <strong className="mt-1 block text-4xl font-display text-ink">{selectedMetric.val}</strong>
+              </div>
+              <p className="mt-6 text-sm leading-relaxed text-ink/65">{selectedMetric.description}</p>
+              <div className="mt-4 rounded-3xl bg-white border border-line p-5">
+                <span className="label-sm text-accent-pink">Como interpretar</span>
+                <p className="mt-2 text-sm leading-relaxed text-ink/60">{selectedMetric.interpretation}</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </PageWrapper>
     );
   };
@@ -2515,9 +2860,9 @@ export default function App() {
 
         <AnimatePresence>
           {selectedUser && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/60 backdrop-blur-sm" onClick={() => setSelectedUser(null)} />
-              <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-paper w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="modal-shell fixed inset-0 z-50 flex">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setSelectedUser(null)} />
+              <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative bg-paper max-w-lg p-5 md:p-8 shadow-2xl">
                 <div className="flex items-center gap-4 mb-6">
                   <button onClick={() => setSelectedUser(null)} className="p-2 rounded-full hover:bg-line transition-colors">
                     <ArrowLeft size={18} />
@@ -2665,9 +3010,9 @@ export default function App() {
 
         <AnimatePresence>
           {showNewArticle && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/60 backdrop-blur-sm" onClick={() => setShowNewArticle(false)} />
-              <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-paper w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl">
+            <div className="modal-shell fixed inset-0 z-50 flex">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowNewArticle(false)} />
+              <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative bg-paper max-w-lg p-5 md:p-8 shadow-2xl">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="font-bold text-xl">Novo Artigo</h3>
                   <button onClick={() => setShowNewArticle(false)} className="p-2 rounded-full hover:bg-line transition-colors">
@@ -2753,7 +3098,6 @@ export default function App() {
           )}
           {currentPage === 'profile' && <ProfilePage key="profile" />}
           {currentPage === 'settings-account' && <AccountSettings key="account" />}
-          {currentPage === 'settings-notifications' && <NotificationSettings key="notifications" />}
           {currentPage === 'settings-theme' && <ThemeSettings key="themes" />}
           {currentPage === 'settings-privacy' && <PrivacySettings key="privacy" />}
           {currentPage === 'settings-help' && <SettingsHelp key="help" />}
@@ -2769,13 +3113,13 @@ export default function App() {
 
       <AnimatePresence>
         {selectedArticle && (
-          <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/60 backdrop-blur-sm" onClick={closeArticle} />
+          <div className="modal-shell fixed inset-0 z-50 flex">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={closeArticle} />
             <motion.div
               initial={{ y: '100%', scale: 0.95 }} animate={{ y: 0, scale: 1 }} exit={{ y: '100%', scale: 0.95 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               drag={window.innerWidth < 768 ? "y" : false} dragConstraints={{ top: 0 }} dragElastic={0.2} onDragEnd={handleArticleDragEnd} style={{ y: articleY }}
-              className="relative bg-paper w-full h-[90vh] md:h-auto md:max-h-[90vh] md:max-w-3xl rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden"
+              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl flex flex-col overflow-hidden"
             >
               <div className="w-12 h-1.5 bg-line rounded-full mx-auto mt-4 mb-2 md:hidden" />
               <div className="overflow-y-auto flex-1 p-8 md:p-12 pb-32">

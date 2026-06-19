@@ -40,4 +40,6 @@ export interface UserProfile {
   imc?: number;
   tmb?: number;
   net?: number;
+  onboardingComplete?: boolean;
+  profileCompletedAt?: string;
 }

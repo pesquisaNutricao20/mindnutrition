@@ -72,4 +72,4 @@ export const APP_THEMES: AppTheme[] = [
   },
 ];
 
-export const DEFAULT_THEME_ID = 'mind';
+export const DEFAULT_THEME_ID = 'ocean';

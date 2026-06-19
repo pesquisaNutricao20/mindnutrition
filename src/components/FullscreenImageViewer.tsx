@@ -42,7 +42,7 @@ export function FullscreenImageViewer({ images, currentIndex, isOpen, onClose, o
         >
           <button
             onClick={onClose}
-            className="absolute top-6 right-6 z-10 w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            className="absolute top-6 right-6 z-10 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
           >
             <X size={24} />
           </button>
@@ -51,13 +51,13 @@ export function FullscreenImageViewer({ images, currentIndex, isOpen, onClose, o
             <>
               <button
                 onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex > 0 ? currentIndex - 1 : images.length - 1); }}
-                className="absolute left-6 z-10 w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                className="absolute left-6 z-10 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
               >
                 ←
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex < images.length - 1 ? currentIndex + 1 : 0); }}
-                className="absolute right-6 z-10 w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                className="absolute right-6 z-10 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
               >
                 →
               </button>

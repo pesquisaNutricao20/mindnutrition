@@ -25,6 +25,17 @@
   --paper-noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  text-size-adjust: 100%;
+}
+
 body {
   background-color: var(--paper);
   color: var(--ink);
@@ -32,6 +43,30 @@ body {
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
   position: relative;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+input,
+textarea,
+select {
+  min-width: 0;
 }
 
 ::selection {
@@ -67,7 +102,7 @@ body {
   font-family: var(--font-serif);
   font-weight: 400;
   font-style: italic;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .label-sm {
@@ -128,6 +163,10 @@ body {
   min-height: 100vh;
 }
 
+.app-main {
+  min-width: 0;
+}
+
 .app-topbar {
   position: fixed;
   top: 0;
@@ -154,7 +193,7 @@ body {
     flex-direction: row;
   }
   .app-sidebar {
-    width: 72px;
+    width: 84px;
     min-height: 100vh;
     position: fixed;
     left: 0;
@@ -169,11 +208,11 @@ body {
     background: var(--paper);
   }
   .app-main {
-    margin-left: 72px;
+    margin-left: 84px;
     flex: 1;
   }
   .app-topbar {
-    left: 72px;
+    left: 84px;
   }
   .mobile-nav {
     display: none !important;
@@ -182,6 +221,19 @@ body {
 @media (max-width: 767px) {
   .app-sidebar {
     display: none !important;
+  }
+
+  .app-main {
+    width: 100%;
+  }
+
+  .display-title {
+    font-size: clamp(2rem, 13vw, 3.25rem);
+    overflow-wrap: anywhere;
+  }
+
+  .label-sm {
+    letter-spacing: 0.08em;
   }
 }
 
@@ -317,4 +369,162 @@ body {
   border-radius: 1rem;
   padding: 0.5rem 1rem;
   display: inline-block;
+}
+
+/* ---------- Responsive product polish ---------- */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-card {
+  width: min(100%, 72rem);
+}
+
+.icon-button {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+  flex-shrink: 0;
+}
+
+.icon-button:hover {
+  background: color-mix(in srgb, var(--accent) 10%, white);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+
+.icon-button:active {
+  transform: scale(0.97);
+}
+
+.modal-shell {
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+.modal-panel {
+  width: 100%;
+  max-height: min(90dvh, 56rem);
+  overflow-y: auto;
+  border-radius: 1.75rem 1.75rem 1rem 1rem;
+}
+
+.modal-title {
+  font-size: clamp(1.35rem, 7vw, 2.5rem);
+  line-height: 1;
+}
+
+button,
+a {
+  overflow-wrap: anywhere;
+}
+
+.recharts-wrapper,
+.recharts-surface {
+  max-width: 100%;
+}
+
+.chart-frame {
+  width: 100%;
+  min-width: 0;
+  min-height: 10rem;
+  position: relative;
+}
+
+.chart-frame .recharts-responsive-container {
+  min-width: 0 !important;
+}
+
+.theme-animated-bg {
+  background:
+    radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 32%),
+    radial-gradient(circle at 85% 12%, color-mix(in srgb, var(--accent-pink) 18%, transparent), transparent 30%),
+    linear-gradient(135deg, var(--paper), color-mix(in srgb, var(--accent-light) 44%, white), var(--paper));
+  background-size: 140% 140%;
+  animation: themeFlow 14s ease-in-out infinite alternate;
+}
+
+.landing-gradient {
+  background:
+    radial-gradient(circle at 20% 18%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 34%),
+    radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--accent-pink) 18%, transparent), transparent 32%),
+    linear-gradient(150deg, var(--paper), color-mix(in srgb, var(--accent-light) 42%, white), var(--paper));
+}
+
+.send-gradient {
+  background: linear-gradient(135deg, var(--accent), var(--accent-pink), var(--accent));
+  background-size: 220% 220%;
+  animation: themeFlow 4s ease-in-out infinite alternate;
+}
+
+.chat-composer {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.chat-composer > div:first-child {
+  scrollbar-width: none;
+}
+
+.chat-composer > div:first-child::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes themeFlow {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+
+@media (max-width: 640px) {
+  .auth-page {
+    align-items: stretch;
+  }
+
+  .auth-card {
+    min-height: calc(100dvh - 3rem);
+  }
+
+  .mobile-nav button {
+    min-width: 0;
+  }
+
+  .mobile-nav span {
+    max-width: 4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .odometer-handle {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (min-width: 768px) {
+  .modal-shell {
+    align-items: center;
+    padding: 1.5rem;
+  }
+
+  .modal-panel {
+    border-radius: 2.5rem;
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
+@media (min-width: 1280px) {
+  .app-topbar {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
 }

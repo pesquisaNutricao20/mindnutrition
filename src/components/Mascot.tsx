@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import mascoteEyesOpen from '../assets/mascote_eyes_open.png';
 import mascoteEyesClosed from '../assets/mascote_eyes_closed.png';
-import mascoteFlying from '../assets/mascote_flying.png';
+import { FlyingMascotSprite } from './ui/FlyingMascotSprite';
 
 interface MascotProps {
   isLoading?: boolean;
@@ -43,11 +43,7 @@ export function MascotComponent({ isLoading = false, onComplete }: MascotProps) 
           transition={{ y: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }, opacity: { duration: 0.3 } }}
           className="relative"
         >
-          <img
-            src={mascoteFlying}
-            alt="Mascote voando"
-            className="w-40 h-40 md:w-56 md:h-56 object-contain"
-          />
+          <FlyingMascotSprite className="w-40 h-40 md:w-56 md:h-56 object-contain" />
           <motion.div
             className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-ink/10 rounded-full blur-sm"
             animate={{ scale: [1, 0.7, 1], opacity: [0.3, 0.1, 0.3] }}
@@ -97,11 +93,7 @@ export function MascotLoading({ onComplete }: { onComplete?: () => void }) {
         transition={{ y: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }, opacity: { duration: 0.3 } }}
         className="relative"
       >
-        <img
-          src={mascoteFlying}
-          alt="Mascote voando"
-          className="w-40 h-40 md:w-56 md:h-56 object-contain"
-        />
+        <FlyingMascotSprite className="w-40 h-40 md:w-56 md:h-56 object-contain" />
         <motion.div
           className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-ink/10 rounded-full blur-sm"
           animate={{ scale: [1, 0.7, 1], opacity: [0.3, 0.1, 0.3] }}
