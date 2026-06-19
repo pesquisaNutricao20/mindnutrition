@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -37,6 +37,26 @@ const passwordChecks = [
   { test: (value: string) => /[^A-Za-z\d]/.test(value), label: 'Simbolo' },
 ];
 
+const getAuthRedirectUrl = () => {
+  const configuredUrl =
+    import.meta.env.VITE_PUBLIC_SITE_URL ||
+    import.meta.env.VITE_APP_URL ||
+    import.meta.env.VITE_SITE_URL ||
+    '';
+  const fallbackUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const url = configuredUrl || fallbackUrl;
+
+  return url.replace(/\/+$/, '');
+};
+
+const getOAuthErrorMessage = (code: string | null, description: string | null) => {
+  if (code === 'bad_oauth_state') {
+    return 'O login com Google voltou para um endereço diferente ou expirou. Confira se a URL pública do app está liberada no Supabase e tente entrar novamente.';
+  }
+
+  return description || 'Não foi possível concluir o login com Google agora.';
+};
+
 export const AuthPage = ({
   userProfile,
   onAuthenticated,
@@ -57,6 +77,16 @@ export const AuthPage = ({
   const passwordScore = passwordChecks.filter((item) => item.test(password)).length;
   const passwordProgress = (passwordScore / passwordChecks.length) * 100;
   const supabaseSetupMessage = getSupabaseConfigMessage();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search || window.location.hash.replace(/^#/, ''));
+    const errorCode = params.get('error_code');
+    const errorDescription = params.get('error_description');
+    if (!errorCode && !params.get('error')) return;
+
+    setError(getOAuthErrorMessage(errorCode, errorDescription));
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, []);
 
   const handleSignupPhoto = async (files: FileList | null) => {
     const result = await readValidatedImages(files, 0);
@@ -166,7 +196,7 @@ export const AuthPage = ({
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: getAuthRedirectUrl(),
           queryParams: {
             access_type: 'offline',
             prompt: 'select_account',

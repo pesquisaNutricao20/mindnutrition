@@ -13,7 +13,6 @@ import {
   Meh,
   Coffee,
   Sun,
-  Moon,
   ArrowLeft,
   Settings,
   LogOut,
@@ -123,6 +122,234 @@ export function calculateNutritionalNeeds(
     net: Math.round(net)
   };
 }
+
+type MetricPoint = { date: string; value: number };
+type MealClassification = 'Física' | 'Emocional' | 'Não classificada';
+
+const clampNumber = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
+
+const averageNumbers = (values: Array<number | null | undefined>) => {
+  const validValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (!validValues.length) return null;
+  return validValues.reduce((sum, value) => sum + value, 0) / validValues.length;
+};
+
+const toNumberOrNull = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const normalizeText = (value: unknown) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
+const getLatestMetricValue = (items?: MetricPoint[]) => {
+  const latest = [...(items || [])].reverse().find(item => Number.isFinite(item.value) && item.value > 0);
+  return latest?.value || null;
+};
+
+const getMoodScore = (mood?: string | null) => {
+  const key = normalizeText(mood);
+  const moodScores: Record<string, number> = {
+    euforia: 90,
+    alegria: 84,
+    calmo: 76,
+    calma: 76,
+    neutro: 60,
+    ansioso: 36,
+    ansiedade: 36,
+    estresse: 32,
+    frustracao: 30,
+    culpa: 24,
+    tenso: 34,
+  };
+  return moodScores[key] ?? null;
+};
+
+const isEmotionallyChargedMood = (mood?: string | null) => {
+  const score = getMoodScore(mood);
+  return typeof score === 'number' && score <= 40;
+};
+
+const normalizeMealType = (type?: string | null): MealClassification => {
+  const value = normalizeText(type);
+  if (value.includes('fisica')) return 'Física';
+  if (value.includes('emocional')) return 'Emocional';
+  return 'Não classificada';
+};
+
+const inferMealType = (meal: any): MealClassification => {
+  const existingType = normalizeMealType(meal?.inferredType || meal?.type);
+  const preHunger = toNumberOrNull(meal?.preHunger);
+  const postHunger = toNumberOrNull(meal?.postHunger);
+  const satisfaction = toNumberOrNull(meal?.satisfaction);
+  const hasBehaviorSignals = [preHunger, postHunger, satisfaction].some(value => value !== null)
+    || Boolean(meal?.preMood || meal?.postMood || meal?.mood);
+
+  if (!hasBehaviorSignals) return existingType;
+
+  let physicalScore = 0;
+  let emotionalScore = 0;
+
+  if (preHunger !== null) {
+    if (preHunger >= 6) physicalScore += 3;
+    else if (preHunger === 5) physicalScore += 1;
+    else if (preHunger <= 3) emotionalScore += 2;
+  }
+
+  if (preHunger !== null && postHunger !== null) {
+    const hungerDrop = preHunger - postHunger;
+    if (hungerDrop >= 2) physicalScore += 2;
+    if (postHunger >= preHunger && preHunger <= 4) emotionalScore += 2;
+    else if (postHunger > preHunger) emotionalScore += 1;
+  }
+
+  if (satisfaction !== null) {
+    if (satisfaction >= 4) physicalScore += 1;
+    if (satisfaction <= 2) emotionalScore += 1;
+  }
+
+  if (isEmotionallyChargedMood(meal?.preMood) || isEmotionallyChargedMood(meal?.postMood) || isEmotionallyChargedMood(meal?.mood)) {
+    emotionalScore += 2;
+  }
+
+  if (existingType === 'Física') physicalScore += 1;
+  if (existingType === 'Emocional') emotionalScore += 1;
+
+  if (physicalScore >= 3 && physicalScore >= emotionalScore + 1) return 'Física';
+  if (emotionalScore >= 3 && emotionalScore >= physicalScore + 1) return 'Emocional';
+  return existingType;
+};
+
+const calculateProfileInsightScore = (profile: Partial<UserProfile>) => {
+  const latestWeight = getLatestMetricValue(profile.weightEvolution);
+  const latestWaist = getLatestMetricValue(profile.waistEvolution);
+  const latestHip = getLatestMetricValue(profile.hipEvolution);
+  const signals = [
+    Boolean(profile.name || profile.email),
+    Boolean(profile.age && profile.age > 0),
+    Boolean(profile.height && profile.height > 0),
+    Boolean(latestWeight),
+    Boolean(profile.gender),
+    Boolean(profile.activityLevel && profile.activityLevel > 0 && (profile.age || profile.gender || profile.objectives?.length)),
+    Boolean(profile.objectives?.length),
+    Boolean(profile.initialEmotions?.length),
+    Boolean(profile.triggers?.length),
+    Boolean(latestWaist && latestHip),
+  ];
+  const completed = signals.filter(Boolean).length;
+  if (completed <= 1) return 0;
+  return clampNumber(Math.round((completed / signals.length) * 78), 0, 78);
+};
+
+const getInitialMoodBaseline = (profile: Partial<UserProfile>) => {
+  const emotionScores = (profile.initialEmotions || []).map(emotion => getMoodScore(emotion));
+  return averageNumbers(emotionScores);
+};
+
+const calculateMealAwarenessScore = (meal: any) => {
+  const preHunger = toNumberOrNull(meal?.preHunger);
+  const postHunger = toNumberOrNull(meal?.postHunger);
+  const satisfaction = toNumberOrNull(meal?.satisfaction);
+  const hasMood = Boolean(meal?.preMood || meal?.postMood || meal?.mood);
+  const hasNotes = typeof meal?.notes === 'string' && meal.notes.trim().length > 0;
+  const hasPhoto = Array.isArray(meal?.photos) ? meal.photos.length > 0 : Boolean(meal?.image);
+
+  let completionScore = 0;
+  if (preHunger !== null && postHunger !== null) completionScore += 25;
+  else if (preHunger !== null || postHunger !== null) completionScore += 12;
+  if (hasMood) completionScore += 22;
+  if (satisfaction !== null) completionScore += 20;
+  if (hasNotes) completionScore += 23;
+  else if (hasPhoto) completionScore += 8;
+  if (inferMealType(meal) !== 'Não classificada') completionScore += 10;
+
+  if (preHunger !== null && postHunger !== null) {
+    const regulationScore = clampNumber(50 + ((preHunger - postHunger) * 12) + (((satisfaction || 3) - 3) * 8));
+    completionScore = (completionScore * 0.75) + (regulationScore * 0.25);
+  }
+
+  return clampNumber(Math.round(completionScore));
+};
+
+const calculateAwarenessScore = (profile: Partial<UserProfile>, meals: any[]) => {
+  if (meals.length) {
+    const mealScore = averageNumbers(meals.map(calculateMealAwarenessScore));
+    return clampNumber(Math.round(mealScore || 0));
+  }
+  return calculateProfileInsightScore(profile);
+};
+
+const buildRadarData = (profile: Partial<UserProfile>, meals: any[], awarenessScore: number) => {
+  const profileScore = calculateProfileInsightScore(profile);
+  const moodScore = averageNumbers(meals.flatMap(meal => [
+    getMoodScore(meal?.postMood),
+    getMoodScore(meal?.preMood),
+    getMoodScore(meal?.mood),
+  ])) ?? getInitialMoodBaseline(profile) ?? (profileScore ? 55 : 0);
+  const satisfactionScore = averageNumbers(meals.map(meal => {
+    const satisfaction = toNumberOrNull(meal?.satisfaction);
+    return satisfaction !== null ? satisfaction * 20 : null;
+  }));
+  const hungerRegulationScore = averageNumbers(meals.map(meal => {
+    const preHunger = toNumberOrNull(meal?.preHunger);
+    const postHunger = toNumberOrNull(meal?.postHunger);
+    if (preHunger === null || postHunger === null) return null;
+    return clampNumber(55 + ((preHunger - postHunger) * 10));
+  }));
+  const uniqueMealDays = new Set(meals.map(meal => {
+    const date = meal?.date ? new Date(meal.date) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('pt-BR') : null;
+  }).filter(Boolean));
+  const activityLevel = profile.activityLevel || 0;
+  const energyScore = profile.tmb && profile.net
+    ? clampNumber(48 + ((profile.net / profile.tmb) * 22), 35, 92)
+    : activityLevel
+      ? clampNumber(45 + ((activityLevel - 1.2) / 0.525) * 32, 38, 82)
+      : (profileScore ? 48 : 0);
+  const consistencyScore = meals.length
+    ? clampNumber((uniqueMealDays.size * 16) + (Math.min(meals.length, 8) * 4), 20, 100)
+    : (profileScore ? 32 : 0);
+
+  return [
+    { subject: 'Saciedade', A: Math.round(satisfactionScore ?? hungerRegulationScore ?? (profileScore ? 52 : 0)), B: 85, fullMark: 100 },
+    { subject: 'Consciência', A: awarenessScore, B: 88, fullMark: 100 },
+    { subject: 'Energia', A: Math.round(energyScore), B: 82, fullMark: 100 },
+    { subject: 'Humor', A: Math.round(clampNumber(moodScore)), B: 82, fullMark: 100 },
+    { subject: 'Constância', A: Math.round(consistencyScore), B: 80, fullMark: 100 },
+    { subject: 'Contexto', A: profileScore, B: 86, fullMark: 100 },
+  ];
+};
+
+const getWeightGoal = (profile: Partial<UserProfile>) => {
+  const latestWeight = getLatestMetricValue(profile.weightEvolution);
+  if (!latestWeight) return null;
+  const goals = profile.objectives || [];
+  if (goals.includes('Emagrecimento consciente')) return parseFloat((latestWeight * 0.95).toFixed(1));
+  if (goals.includes('Hipertrofia') || goals.includes('Ganho de peso')) return parseFloat((latestWeight * 1.05).toFixed(1));
+  const firstWeight = (profile.weightEvolution || []).find(item => item.value > 0)?.value;
+  return firstWeight && firstWeight !== latestWeight ? firstWeight : null;
+};
+
+const buildRcqData = (profile: Partial<UserProfile>) => {
+  const latestHip = getLatestMetricValue(profile.hipEvolution);
+  return (profile.waistEvolution || [])
+    .map(waist => {
+      const sameDateHip = (profile.hipEvolution || []).find(hip => hip.date === waist.date)?.value;
+      const hipValue = sameDateHip || latestHip;
+      return {
+        date: waist.date,
+        value: waist.value > 0 && hipValue ? parseFloat((waist.value / hipValue).toFixed(2)) : 0,
+      };
+    })
+    .filter(item => item.value > 0);
+};
 
 type ChartFrameProps = {
   className?: string;
@@ -249,31 +476,6 @@ const getPostLoginPage = (profile: Partial<UserProfile>): Page => (
 // Keep modal/card overlays as a dark scrim instead of backdrop blur; high blur is costly on mobile GPUs.
 const MODAL_BACKDROP_CLASS = 'absolute inset-0 bg-ink/85';
 
-const MOCK_EMOTIONAL_DATA = [
-  { day: 'Seg', humor: 40, fisico: 30, emocional: 70, mood: 'Calmo' },
-  { day: 'Ter', humor: 70, fisico: 20, emocional: 80, mood: 'Ansioso' },
-  { day: 'Qua', humor: 45, fisico: 50, emocional: 50, mood: 'Neutro' },
-  { day: 'Qui', humor: 90, fisico: 10, emocional: 90, mood: 'Tenso' },
-  { day: 'Sex', humor: 65, fisico: 60, emocional: 40, mood: 'Calmo' },
-  { day: 'Sáb', humor: 80, fisico: 30, emocional: 70, mood: 'Ansioso' },
-  { day: 'Dom', humor: 55, fisico: 70, emocional: 30, mood: 'Neutro' },
-];
-
-const MOCK_RADAR_DATA = [
-  { subject: 'Saciedade', A: 120, B: 110, fullMark: 150 },
-  { subject: 'Consciência', A: 98, B: 130, fullMark: 150 },
-  { subject: 'Energia', A: 86, B: 130, fullMark: 150 },
-  { subject: 'Humor', A: 99, B: 100, fullMark: 150 },
-  { subject: 'Digestão', A: 85, B: 90, fullMark: 150 },
-  { subject: 'Sono', A: 65, B: 85, fullMark: 150 },
-];
-
-const MOCK_PIE_DATA = [
-  { name: 'Fome Física', value: 400 },
-  { name: 'Fome Emocional', value: 300 },
-  { name: 'Fome Social', value: 200 },
-];
-
 const COLORS = ['var(--accent)', 'var(--accent-pink)', '#5A9485'];
 
 const MOCK_WEIGHT_DATA = [
@@ -284,25 +486,28 @@ const MOCK_WEIGHT_DATA = [
   { date: '29/04', value: 75.0 },
 ];
 
-const MOCK_MEALS = [
-  { time: '08:30', title: 'Café da Manhã', mood: 'Calmo', icon: Coffee, type: 'Física', image: 'https://images.unsplash.com/photo-1495214783159-3503fd1b572d?auto=format&fit=crop&q=80&w=800', notes: 'Aveia com frutas vermelhas. Me senti presente enquanto comia.' },
-  { time: '12:45', title: 'Almoço', mood: 'Neutro', icon: Sun, type: 'Física', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800', notes: 'Salada completa e uma proteína. Sem pressa hoje.' },
-  { time: '16:00', title: 'Lanche', mood: 'Ansioso', icon: Coffee, type: 'Emocional', image: 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?auto=format&fit=crop&q=80&w=800', notes: 'Estava ansioso com o trabalho e comi um cupcake.' },
-  { time: '20:15', title: 'Jantar', mood: 'Calmo', icon: Moon, type: 'Física', image: 'https://images.unsplash.com/photo-1476224203421-9ce393618115?auto=format&fit=crop&q=80&w=800', notes: 'Sopa reconfortante.' },
-];
+const isDemoWeightEvolution = (items?: MetricPoint[]) => (
+  Boolean(items?.length === MOCK_WEIGHT_DATA.length)
+  && MOCK_WEIGHT_DATA.every((mockItem, index) => items?.[index]?.date === mockItem.date && items?.[index]?.value === mockItem.value)
+);
+
+const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
+  const profileLooksIncomplete = !profile.onboardingComplete && !profile.profileCompletedAt && !profile.height;
+  if (!profileLooksIncomplete || !isDemoWeightEvolution(profile.weightEvolution)) return profile;
+  return {
+    ...profile,
+    weightEvolution: [],
+    waistEvolution: [],
+    hipEvolution: [],
+    age: profile.age === 25 ? 0 : profile.age,
+  };
+};
 
 const MOCK_CONTENT = [
   { id: 1, title: 'Comer Consciente', duration: '3 min', icon: GiOvermind, type: 'Artigo', image: 'https://images.unsplash.com/photo-1543362906-acfc16c67564?auto=format&fit=crop&q=80&w=800', summary: 'Descubra o poder de estar presente em cada garfada.' },
   { id: 2, title: 'Física vs Emocional', duration: '5 min', icon: Leaf, type: 'Guia', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800', summary: 'Aprenda a ouvir os sinais reais do seu corpo.' },
   { id: 3, title: 'Lidando com a Culpa', duration: '4 min', icon: Heart, type: 'Reflexão', image: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&q=80&w=800', summary: 'Transforme sua relação com o alimento e consigo mesmo.' },
   { id: 4, title: 'Sinais de Saciedade', duration: '2 min', icon: Sun, type: 'Prática', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800', summary: 'Dicas práticas para identificar quando parar.' }
-];
-
-const MOCK_FOODS_JSON = [
-  { id: 1, name: 'Maçã', calories: 52, macros: { carb: 14, protein: 0.3, fat: 0.2 } },
-  { id: 2, name: 'Banana', calories: 89, macros: { carb: 23, protein: 1.1, fat: 0.3 } },
-  { id: 3, name: 'Ovo Cozido', calories: 155, macros: { carb: 1.1, protein: 13, fat: 11 } },
-  { id: 4, name: 'Arroz Integral', calories: 111, macros: { carb: 23, protein: 2.6, fat: 0.9 } },
 ];
 
 // ---------- Sub-Components ----------
@@ -350,17 +555,17 @@ export default function App() {
     foods: [],
     comorbidities: [],
     height: 0,
-    weightEvolution: MOCK_WEIGHT_DATA,
-    waistEvolution: [{ date: '29/04', value: 88 }],
+    weightEvolution: [],
+    waistEvolution: [],
     armEvolution: [],
     abdomenEvolution: [],
-    hipEvolution: [{ date: '29/04', value: 104 }],
-    age: 25,
+    hipEvolution: [],
+    age: 0,
     activityLevel: 1.2
   });
 
   const persistUserProfile = async (profile: UserProfile, userId = currentUserId) => {
-    const profileToPersist = withProfileCompletionState(profile);
+    const profileToPersist = withProfileCompletionState(sanitizeProfileDefaults(profile));
     setUserProfile(profileToPersist);
     localStorage.setItem('nutriUser', JSON.stringify(profileToPersist));
     const sessionUserId = userId || (await getCurrentSession().catch(() => null))?.user?.id || null;
@@ -392,7 +597,7 @@ export default function App() {
       const savedMeals = localStorage.getItem('nutriMeals');
       if (saved) {
         try {
-          const savedProfile = withProfileCompletionState(JSON.parse(saved));
+          const savedProfile = withProfileCompletionState(sanitizeProfileDefaults(JSON.parse(saved)));
           setUserProfile(savedProfile);
           setSavedLoginNotice(true);
           setCurrentPage(prev => prev === 'landing' ? getPostLoginPage(savedProfile) : prev);
@@ -533,18 +738,50 @@ export default function App() {
 
   const renderTopNavbar = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage) || isLoading) return null;
+    const activeNavItem = navItems.find(item => item.id === currentPage);
+    const pageLabelMap: Partial<Record<Page, string>> = {
+      'meal-details': 'Detalhes',
+      'settings-account': 'Conta',
+      'settings-theme': 'Temas',
+      'settings-privacy': 'Privacidade',
+      'settings-help': 'Ajuda',
+    };
+    const pageLabel = activeNavItem?.label || pageLabelMap[currentPage] || 'Jornada';
+    const ActiveIcon = activeNavItem?.icon || Sparkles;
+
     return (
       <header className="app-topbar">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-accent text-paper flex items-center justify-center animated-gradient shrink-0">
+        <button
+          type="button"
+          onClick={() => setCurrentPage('dashboard')}
+          className="topbar-brand"
+          aria-label="Ir para o início"
+        >
+          <div className="topbar-mark">
             <BsFlower1 size={18} />
           </div>
           <div className="min-w-0">
-            <h1 className="font-bold text-base leading-tight truncate">Mind Nutrition</h1>
+            <span className="topbar-eyebrow">Mind Nutrition</span>
+            <h1 className="topbar-title">Oceano Claro</h1>
+          </div>
+        </button>
+
+        <div className="topbar-section">
+          <div className="topbar-section-icon">
+            <ActiveIcon size={18} />
+          </div>
+          <div className="min-w-0">
+            <span className="topbar-eyebrow">Você está em</span>
+            <strong className="topbar-page">{pageLabel}</strong>
           </div>
         </div>
-        <button onClick={() => setCurrentPage('profile')} className="w-10 h-10 rounded-full overflow-hidden border border-line bg-white shrink-0">
-          <ProfileAvatar photo={userProfile.photo} size="sm" className="border-0" />
+
+        <button onClick={() => setCurrentPage('profile')} className="topbar-profile">
+          <span className="hidden min-w-0 text-right sm:block">
+            <span className="topbar-eyebrow">Perfil</span>
+            <span className="topbar-user">{userProfile.name || 'Completar dados'}</span>
+          </span>
+          <ProfileAvatar photo={userProfile.photo} size="sm" className="border-0 shadow-sm" />
         </button>
       </header>
     );
@@ -643,13 +880,14 @@ export default function App() {
   const PageWrapper = ({ children, noPadding = false }: { children: React.ReactNode, noPadding?: boolean }) => {
     const hasTopbar = !['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage);
     const pagePadding = noPadding ? '' : `px-5 md:px-12 ${hasTopbar ? 'pt-28 md:pt-28' : 'pt-8 md:pt-12'}`;
+    const bottomPadding = noPadding ? '' : 'pb-32 md:pb-12';
     return (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -15 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`w-full min-h-screen  md:pb-0 ${pagePadding} max-w-6xl mx-auto`}
+        className={`w-full min-h-screen ${bottomPadding} ${pagePadding} max-w-6xl mx-auto`}
       >
         {children}
       </motion.div>
@@ -790,15 +1028,20 @@ export default function App() {
         setErrorMsg('Por favor, informe seu nome.');
         return;
       }
+      if (current.type === 'input_number' && current.field === 'age' && (!tempProfile.age || tempProfile.age < 10)) {
+        setErrorMsg('Informe uma idade válida para continuar.');
+        return;
+      }
       if (current.type === 'measurements') {
-        if (!tempProfile.height || tempProfile.weightEvolution[0].value === 0) {
+        const initialWeight = tempProfile.weightEvolution?.[0]?.value || 0;
+        if (!tempProfile.height || initialWeight <= 0) {
           setErrorMsg('Preencha altura e peso para continuar.');
           return;
         }
         
         // Calculate Nutritional Needs
         const result = calculateNutritionalNeeds(
-          tempProfile.weightEvolution[0].value,
+          initialWeight,
           tempProfile.height,
           tempProfile.age || 25,
           tempProfile.gender,
@@ -969,7 +1212,7 @@ export default function App() {
 
               return (
                 <div className="space-y-8">
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
                     <div>
                       <label className="label-sm">Altura (cm)</label>
                       <input type="number" placeholder="Ex: 170" className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-medium outline-none"
@@ -1036,7 +1279,7 @@ export default function App() {
 
         <MascotBubble userProfile={userProfile} onShowToast={toast} />
 
-        <section className="animated-gradient p-8 md:p-12 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
+        <section className="mobile-card-padding animated-gradient p-8 md:p-12 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
           <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
           <div className="relative z-10">
             <h3 className="label-sm mb-4 glass-badge font-bold">Reflexão do Dia</h3>
@@ -1051,7 +1294,7 @@ export default function App() {
         </section>
 
         <section>
-          <div className="flex items-center justify-between mb-6">
+          <div className="responsive-page-header mb-6">
             <div className="flex items-center gap-3">
               <BookOpen size={18} className="text-accent" />
               <h3 className="label-sm">Biblioteca</h3>
@@ -1079,7 +1322,7 @@ export default function App() {
         </section>
 
         <section>
-          <div className="flex items-center justify-between mb-6">
+          <div className="responsive-page-header mb-6">
             <div className="flex items-center gap-3">
               <Coffee size={18} className="text-accent" />
               <h3 className="label-sm">Entradas de Hoje</h3>
@@ -1099,23 +1342,27 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              loggedMeals.slice(0, 8).map((meal: any, i: number) => (
-                <div key={i} onClick={() => { setSelectedMeal(meal); setCurrentPage('meal-details'); }}
-                  className="p-4 px-6 border-b border-line last:border-0 flex items-center justify-between hover:bg-accent/5 transition-colors cursor-pointer">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${meal.type === 'Emocional' ? 'bg-accent-pink/20 text-accent-pink' : 'bg-accent/10 text-accent'}`}>
-                      {meal.icon ? <meal.icon size={20} /> : <Coffee size={20} />}
+              loggedMeals.slice(0, 8).map((meal: any, i: number) => {
+                const mealType = inferMealType(meal);
+                const MealIcon = meal.icon || (mealType === 'Física' ? TbHealthRecognition : mealType === 'Emocional' ? PiHeartbeat : Coffee);
+                return (
+                  <div key={i} onClick={() => { setSelectedMeal(meal); setCurrentPage('meal-details'); }}
+                    className="p-4 sm:px-6 border-b border-line last:border-0 flex items-center justify-between gap-3 hover:bg-accent/5 transition-colors cursor-pointer">
+                    <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${mealType === 'Emocional' ? 'bg-accent-pink/20 text-accent-pink' : mealType === 'Física' ? 'bg-accent/10 text-accent' : 'bg-ink/5 text-ink/50'}`}>
+                        <MealIcon size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="truncate font-bold text-base sm:text-lg">{meal.title || 'Refeição'}</h4>
+                        <p className="text-xs text-ink/50 font-medium">
+                          {meal.time || new Date(meal.date).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})} • {meal.postMood || meal.preMood || meal.mood || mealType}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-lg">{meal.title || 'Refeição'}</h4>
-                      <p className="text-xs text-ink/50 font-medium">
-                        {meal.time || new Date(meal.date).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})} • {meal.preMood || meal.mood || 'Registrado'}
-                      </p>
-                    </div>
+                    <ChevronRight size={18} className="text-ink/30" />
                   </div>
-                  <ChevronRight size={18} className="text-ink/30" />
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
@@ -1221,36 +1468,47 @@ export default function App() {
 
     return (
       <PageWrapper noPadding>
-        <div className="theme-animated-bg flex h-[100dvh] min-h-[100dvh] w-full max-w-6xl mx-auto flex-col overflow-hidden">
-          <header className="shrink-0 border-b border-line bg-white/80 px-3 py-3 shadow-sm backdrop-blur-xl sm:px-4 md:px-8 md:py-4">
-            <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3">
+        <div className="chat-shell flex h-[100svh] min-h-[100svh] w-full flex-col overflow-hidden">
+          <header className="chat-header shrink-0 px-3 py-2.5 sm:px-4 md:px-8 md:py-4">
+            <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 sm:gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <button onClick={() => setCurrentPage('dashboard')} className="icon-button h-11 w-11">
+                <button onClick={() => setCurrentPage('dashboard')} className="icon-button h-10 w-10 bg-white/85 sm:h-11 sm:w-11">
                   <ArrowLeft size={20} />
                 </button>
                 <div className="relative shrink-0">
-                  <img src={mascoteAi} alt="Nutri AI" className="h-20 w-20 rounded-full border border-line object-contain"/>
-                  <span className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-2 border-paper bg-green-400" />
+                  <div className="chat-ai-avatar">
+                    <img src={mascoteAi} alt="Nutri AI" className="h-full w-full object-contain" />
+                  </div>
+                  <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-paper bg-green-400" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
-                    <h2 className="truncate text-lg font-bold text-ink">Nutri AI</h2>
+                    <h2 className="truncate text-base font-bold text-ink sm:text-lg">Nutri AI</h2>
+                    <button
+                      type="button"
+                      onClick={() => setShowAiNotice(true)}
+                      className="rounded-full border border-accent-pink/30 bg-accent-pink/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-accent-pink transition-colors hover:bg-accent-pink/15"
+                    >
+                      Experimental
+                    </button>
                   </div>
-                  <p className="truncate text-[11px] font-bold text-accent">{typing ? 'Digitando...' : 'Apoio reflexivo com IA'}</p>
+                  <p className="truncate text-[11px] font-bold text-accent">{typing ? 'Respondendo...' : 'Apoio reflexivo, não clínico'}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleClearHistory}
-                className="icon-button h-11 w-11 text-red-500 hover:border-red-200 hover:bg-red-50"
-                aria-label="Limpar histórico do chat"
-              >
-                <Trash2 size={17} />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleClearHistory}
+                  className="icon-button h-10 w-10 bg-white/85 text-red-500 hover:border-red-200 hover:bg-red-50 sm:h-11 sm:w-11"
+                  aria-label="Limpar histórico do chat"
+                >
+                  <Trash2 size={17} />
+                </button>
+              </div>
             </div>
           </header>
 
-          <div ref={chatRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4 md:px-10 md:py-6">
+          <div ref={chatRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 md:px-10 md:py-6">
             {history.map((h, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
@@ -1287,28 +1545,29 @@ export default function App() {
             )}
           </div>
 
-          <div className="shrink-0 border-t border-line bg-paper/80 px-3 py-3 backdrop-blur-xl pb-safe sm:px-4 md:px-8">
-            <div className="chat-composer mx-auto w-full p-2.5 sm:p-3">
-              <div className="flex gap-2 overflow-x-auto px-1 pb-2">
+          <div className="chat-footer shrink-0 px-3 pt-2 sm:px-4 md:px-8">
+            <div className="chat-composer mx-auto w-full max-w-4xl p-2 sm:p-3">
+              <div className="chat-prompt-row flex gap-2 overflow-x-auto px-1 pb-2">
                 {quickPrompts.map(prompt => (
                   <button
                     key={prompt}
                     type="button"
                     onClick={() => setMsg(prompt)}
-                    className="shrink-0 rounded-full border border-line bg-paper/80 px-3.5 py-2 text-[11px] font-bold text-ink/60 transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent sm:text-xs"
+                    className="shrink-0 rounded-full border border-line bg-white/75 px-3.5 py-2 text-[11px] font-bold text-ink/60 transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent sm:text-xs"
                   >
                     {prompt}
                   </button>
                 ))}
               </div>
-              <div className="relative flex items-end gap-2 sm:gap-3">
+              <div className="relative mb-2 flex items-center justify-between gap-2 px-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink/35">Modelo</span>
                 <button
                   type="button"
                   onClick={() => setModelOpen(open => !open)}
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-line bg-white shadow-sm transition-colors hover:border-accent focus:border-accent focus:outline-none sm:h-14 sm:w-14"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-white shadow-sm transition-colors hover:border-accent focus:border-accent focus:outline-none"
                   aria-label={`Modelo selecionado: ${activeModel.label}`}
                 >
-                  <img src={activeModel.logo} alt="" className="h-6 w-6 rounded-lg object-contain sm:h-7 sm:w-7" />
+                  <img src={activeModel.logo} alt="" className="h-6 w-6 rounded-full bg-white object-contain" />
                 </button>
                 <AnimatePresence>
                   {modelOpen && (
@@ -1316,7 +1575,7 @@ export default function App() {
                       initial={{ opacity: 0, y: 6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                      className="absolute bottom-full left-0 z-50 mb-3 w-[min(20rem,calc(100vw-2rem))] rounded-3xl border border-line bg-white p-2 shadow-2xl sm:p-3"
+                      className="absolute bottom-full right-0 z-50 mb-3 w-[min(20rem,calc(100vw-2rem))] rounded-3xl border border-line bg-white p-2 shadow-2xl sm:p-3"
                     >
                       {aiModels.map(model => (
                         <button
@@ -1336,31 +1595,33 @@ export default function App() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                <textarea
+              </div>
+              <form
+                className="flex items-center gap-2 sm:gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSend();
+                }}
+              >
+                <input
+                  type="text"
                   value={msg}
-                  rows={1}
                   onChange={e => setMsg(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
                   placeholder="Escreva uma pergunta"
-                  className="max-h-32 min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-line bg-paper/80 px-3.5 py-3 text-[0.95rem] font-medium leading-relaxed shadow-inner shadow-ink/5 outline-none transition-colors placeholder:text-ink/35 focus:border-accent focus:bg-white sm:min-h-14 sm:px-5 sm:py-4 sm:text-base"
+                  className="h-12 min-w-0 flex-1 rounded-full border border-line bg-white/88 px-4 text-[0.95rem] font-medium shadow-inner shadow-ink/5 outline-none transition-colors placeholder:text-ink/35 focus:border-accent focus:bg-white sm:h-14 sm:px-5 sm:text-base"
+                  autoComplete="off"
                 />
                 <motion.button
-                  onClick={handleSend} disabled={!msg.trim() || typing}
+                  type="submit"
+                  disabled={!msg.trim() || typing}
                   whileTap={{ scale: 0.95 }}
-                  className="send-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg shadow-accent/25 transition-all disabled:opacity-40 sm:h-14 sm:w-14"
+                  className="send-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-lg shadow-accent/25 transition-all disabled:opacity-40 sm:h-14 sm:w-14"
                   aria-label="Enviar mensagem"
                 >
                   <Send size={18} className="-ml-0.5 sm:h-5 sm:w-5" />
                 </motion.button>
-              </div>
-              <p className="px-2 pt-2 text-center text-[10px] font-medium text-ink/35">
-                IA experimental. Use como apoio reflexivo, não como orientação clínica.
-              </p>
+              </form>
+              <p className="px-2 pt-1.5 text-center text-[10px] font-medium text-ink/35">IA experimental. Apoio reflexivo, não orientação clínica.</p>
             </div>
           </div>
           <AnimatePresence>
@@ -1430,18 +1691,18 @@ export default function App() {
             <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
               {step === 'pre' && (
                 <>
-                  <div className="bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
+                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
                     <h3 className="font-bold mb-6">De onde vem sua vontade de comer?</h3>
                     <HungerOdometer value={log.preHunger} onChange={v => setLog({ ...log, preHunger: v })} />
                   </div>
-                  <div className="bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
+                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
                     <h3 className="font-bold mb-4">Como você está se sentindo agora?</h3>
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="mood-grid">
                       {moods.map(m => (
                         <button key={m.label} onClick={() => setLog({ ...log, preMood: m.label })}
-                          className={`flex flex-col items-center gap-2 py-5 rounded-2xl border-2 transition-all ${log.preMood === m.label ? 'border-accent bg-accent/10 text-accent' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}>
+                          className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border-2 px-2 py-4 text-center transition-all ${log.preMood === m.label ? 'border-accent bg-accent/10 text-accent' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}>
                           <m.icon size={24} />
-                          <span className="text-[9px] font-bold">{m.label}</span>
+                          <span className="text-[10px] font-bold leading-tight">{m.label}</span>
                         </button>
                       ))}
                     </div>
@@ -1453,7 +1714,7 @@ export default function App() {
               )}
               {step === 'meal' && (
                 <>
-                  <div className="flex gap-4 w-full">
+                  <div className="meal-photo-actions w-full">
                     <button className="flex-1 aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-3 text-accent hover:bg-accent/10 transition-colors relative overflow-hidden">
                       <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" onChange={(e) => handleMealPhotos(e.target.files)} />
                       <Camera size={32} />
@@ -1466,7 +1727,7 @@ export default function App() {
                     </button>
                   </div>
                   <div className="rounded-[2rem] border border-line bg-white p-4">
-                    <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h3 className="font-bold text-sm">Fotos adicionadas</h3>
                         <p className="text-xs text-ink/45">JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB cada.</p>
@@ -1494,7 +1755,7 @@ export default function App() {
                     )}
                   </div>
                   <textarea placeholder="O que você está comendo? Quais as texturas e sabores?"
-                    className="w-full h-40 bg-paper border border-line rounded-[2rem] p-8 font-medium text-lg resize-none focus:outline-none focus:border-accent shadow-sm"
+                    className="w-full h-40 bg-paper border border-line rounded-[2rem] p-5 text-base font-medium resize-none focus:outline-none focus:border-accent shadow-sm sm:p-8 sm:text-lg"
                     value={log.notes} onChange={e => setLog({ ...log, notes: e.target.value })} />
                   <button onClick={() => setStep('post')} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg">
                     Finalizar Refeição
@@ -1503,25 +1764,25 @@ export default function App() {
               )}
               {step === 'post' && (
                 <>
-                  <div className="bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
+                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
                     <h3 className="font-bold mb-6">Reavalie sua fome (Saciedade)</h3>
                     <HungerOdometer value={log.postHunger} onChange={v => setLog({ ...log, postHunger: v })} />
                   </div>
-                  <div className="bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
+                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
                     <h3 className="font-bold mb-4">Como se sente após comer?</h3>
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="mood-grid">
                       {moods.map(m => (
                         <button key={m.label} onClick={() => setLog({ ...log, postMood: m.label })}
-                          className={`flex flex-col items-center gap-2 py-5 rounded-2xl border-2 transition-all ${log.postMood === m.label ? 'border-accent bg-accent/10 text-accent' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}>
+                          className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border-2 px-2 py-4 text-center transition-all ${log.postMood === m.label ? 'border-accent bg-accent/10 text-accent' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}>
                           <m.icon size={24} />
-                          <span className="text-[9px] font-bold">{m.label}</span>
+                          <span className="text-[10px] font-bold leading-tight">{m.label}</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
+                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
                     <h3 className="font-bold mb-4">Nível de Satisfação</h3>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-5 gap-2">
                       {[1, 2, 3, 4, 5].map(v => (
                         <button key={v} onClick={() => setLog({ ...log, satisfaction: v })}
                           className={`flex-1 py-5 rounded-2xl border-2 font-bold text-xl transition-all ${log.satisfaction === v ? 'bg-accent border-accent text-paper' : 'border-line bg-transparent hover:bg-line text-ink'}`}>
@@ -1531,7 +1792,18 @@ export default function App() {
                     </div>
                   </div>
                   <button onClick={() => {
-                    const newMeal = { ...log, title: 'Refeição', date: new Date().toISOString(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), type: log.preHunger >= 6 ? 'Física' : 'Emocional', image: log.photos[0] || '' };
+                    const inferredType = inferMealType(log);
+                    const newMeal = {
+                      ...log,
+                      title: 'Refeição',
+                      date: new Date().toISOString(),
+                      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                      type: inferredType,
+                      inferredType,
+                      mood: log.postMood || log.preMood,
+                      hungerDelta: log.postHunger - log.preHunger,
+                      image: log.photos[0] || ''
+                    };
                     saveMeal(newMeal);
                     setCurrentPage('dashboard');
                   }} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg animated-gradient">
@@ -1595,53 +1867,94 @@ export default function App() {
       updateEvolution('hipEvolution', newMetrics.hip);
 
       if (updatedProfile.height && newMetrics.weight) {
-        updatedProfile.imc = parseFloat((newMetrics.weight / Math.pow(updatedProfile.height / 100, 2)).toFixed(1));
+        const recalculatedNeeds = calculateNutritionalNeeds(
+          newMetrics.weight,
+          updatedProfile.height,
+          updatedProfile.age || 25,
+          updatedProfile.gender,
+          updatedProfile.activityLevel || 1.2,
+          updatedProfile.objectives || []
+        );
+        updatedProfile.imc = recalculatedNeeds.imc;
+        updatedProfile.tmb = recalculatedNeeds.tmb;
+        updatedProfile.net = recalculatedNeeds.net;
       }
 
       persistUserProfile(updatedProfile);
       setShowMetricsModal(false);
     };
 
+    const latestWeight = getLatestMetricValue(userProfile.weightEvolution);
+    const hasBodyBaseline = Boolean(userProfile.height && latestWeight);
+    const profileReadinessScore = calculateProfileInsightScore(userProfile);
+    const hasInitialInsightData = Boolean(hasBodyBaseline || profileReadinessScore > 0 || loggedMeals.length);
+    const mealTypes = loggedMeals.map((meal: any) => inferMealType(meal));
+    const physicalMeals = mealTypes.filter(type => type === 'Física').length;
+    const emotionalMeals = mealTypes.filter(type => type === 'Emocional').length;
+    const unclassifiedMeals = Math.max(loggedMeals.length - physicalMeals - emotionalMeals, 0);
+    const awarenessScore = calculateAwarenessScore(userProfile, loggedMeals);
+    const radarData = buildRadarData(userProfile, loggedMeals, awarenessScore);
+    const weightGoal = getWeightGoal(userProfile);
+    const rcqLimit = userProfile.gender === 'Feminino' ? 0.85 : 0.9;
+
     const imcData = (userProfile.weightEvolution || []).map(w => ({
       date: w.date,
       value: userProfile.height ? parseFloat((w.value / Math.pow(userProfile.height / 100, 2)).toFixed(1)) : 0
-    }));
+    })).filter(item => item.value > 0);
+    const hasWeightData = Boolean(userProfile.weightEvolution?.some(item => item.value > 0));
+    const hasImcData = imcData.length > 0;
 
-    const rcqData = (userProfile.waistEvolution || []).map(w => {
-      const h = (userProfile.hipEvolution || []).find(hip => hip.date === w.date);
-      return {
-        date: w.date,
-        value: h && h.value > 0 ? parseFloat((w.value / h.value).toFixed(2)) : 0
-      };
-    }).filter(d => d.value > 0);
-
-    const physicalMeals = loggedMeals.filter((meal: any) => meal.type === 'Física' || meal.type === 'Física').length;
-    const emotionalMeals = loggedMeals.filter((meal: any) => meal.type === 'Emocional').length;
+    const rcqData = buildRcqData(userProfile);
     const hungerPieData = [
       { name: 'Fome Física', value: physicalMeals },
       { name: 'Fome Emocional', value: emotionalMeals },
-      { name: 'Não classificada', value: Math.max(loggedMeals.length - physicalMeals - emotionalMeals, 0) },
+      { name: 'Não classificada', value: unclassifiedMeals },
     ].filter(item => item.value > 0);
     const chartPieData = hungerPieData.length ? hungerPieData : [{ name: 'Nenhuma refeição registrada', value: 1 }];
     const dayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const emotionalData = dayLabels.map((day, index) => {
       const meals = loggedMeals.filter((meal: any) => new Date(meal.date || Date.now()).getDay() === index);
+      const types = meals.map((meal: any) => inferMealType(meal));
+      const moodAverage = averageNumbers(meals.flatMap((meal: any) => [
+        getMoodScore(meal.postMood),
+        getMoodScore(meal.preMood),
+        getMoodScore(meal.mood),
+      ]));
       return {
         day,
-        fisico: meals.filter((meal: any) => meal.type === 'Física' || meal.type === 'Física').length,
-        emocional: meals.filter((meal: any) => meal.type === 'Emocional').length,
+        fisico: types.filter(type => type === 'Física').length,
+        emocional: types.filter(type => type === 'Emocional').length,
+        humor: moodAverage ? Math.round(moodAverage) : 0,
       };
     });
-    const awarenessScore = loggedMeals.length
-      ? Math.min(100, Math.round((loggedMeals.filter((meal: any) => meal.notes || meal.postMood || meal.satisfaction).length / loggedMeals.length) * 100))
-      : 0;
+    const hasMealData = loggedMeals.length > 0;
     const hasEnoughMealData = loggedMeals.length >= 3;
     const missingMealLogs = Math.max(3 - loggedMeals.length, 0);
+    const insightNotice = hasMealData
+      ? {
+        label: 'Amostra em construção',
+        title: 'Já existe leitura inicial, mas os padrões ainda precisam de mais contexto.',
+        description: `Ainda faltam ${missingMealLogs} registro${missingMealLogs === 1 ? '' : 's'} para comparar tendências com mais segurança. Os gráficos abaixo usam os sinais já preenchidos sem tratar isso como diagnóstico.`,
+        action: 'Registrar refeição',
+      }
+      : hasInitialInsightData
+        ? {
+          label: 'Dados iniciais disponíveis',
+          title: 'Já dá para gerar uma leitura inicial do perfil.',
+          description: 'Use essa leitura como ponto de partida. Registre refeições para revelar padrões de fome, humor, saciedade e constância ao longo dos dias.',
+          action: 'Registrar primeira refeição',
+        }
+        : {
+          label: 'Perfil incompleto',
+          title: 'Complete os dados iniciais para liberar os primeiros insights.',
+          description: 'Altura, peso, objetivo, emoções e gatilhos ajudam o app a calcular métricas corporais e personalizar a análise sem usar dados genéricos.',
+          action: 'Completar perfil',
+        };
 
     return (
     <PageWrapper>
       <div className="space-y-10">
-        <div className="flex items-center justify-between">
+        <div className="responsive-page-header">
           <div className="flex items-center gap-4">
             <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
               <ArrowLeft size={20} />
@@ -1669,141 +1982,167 @@ export default function App() {
                 <Activity size={26} />
               </div>
               <div className="flex-1">
-                <span className="label-sm text-accent">Dados insuficientes</span>
-                <h3 className="font-bold text-xl mt-2">Registre mais refeições para liberar insights confiáveis.</h3>
+                <span className="label-sm text-accent">{insightNotice.label}</span>
+                <h3 className="font-bold text-xl mt-2">{insightNotice.title}</h3>
                 <p className="text-sm text-ink/60 mt-2 leading-relaxed">
-                  Ainda faltam {missingMealLogs} registro{missingMealLogs === 1 ? '' : 's'} para comparar fome física, fome emocional e variação de humor com mais contexto.
+                  {insightNotice.description}
                 </p>
               </div>
-              <button onClick={() => setCurrentPage('meal-log')} className="bg-accent text-paper px-5 py-3 rounded-2xl font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors">
-                Registrar refeição
+              <button onClick={() => setCurrentPage(hasInitialInsightData ? 'meal-log' : 'diagnosis')} className="bg-accent text-paper px-5 py-3 rounded-2xl font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors">
+                {insightNotice.action}
               </button>
             </div>
           </section>
         )}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 min-w-0">
-          <div className="animated-gradient text-paper p-10 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
+          <div className="mobile-card-padding animated-gradient text-paper p-10 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
             <h3 className="label-sm text-paper mb-4 glass-badge inline-block self-start font-bold">Consciência Plena</h3>
             <div className="text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</div>
-            <p className="text-sm font-medium text-paper/90 leading-relaxed">{loggedMeals.length ? 'Baseado nas refeições registradas e nas emoções informadas.' : 'Registre refeições para gerar sua leitura de consciência.'}</p>
+            <p className="text-sm font-medium text-paper/90 leading-relaxed">
+              {loggedMeals.length
+                ? 'Baseado na completude dos registros, fome, humor, saciedade e notas.'
+                : hasInitialInsightData
+                  ? 'Leitura inicial baseada no perfil preenchido. Refeições registradas deixam o score mais preciso.'
+                  : 'Complete o perfil para iniciar uma leitura personalizada, sem dados demonstrativos.'}
+            </p>
           </div>
 
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
+          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
             <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent"><Brain size={18} /></span> Equilíbrio Mental vs Físico</h3>
-            {hasEnoughMealData ? (
+            {hasInitialInsightData ? (
             <ChartFrame className="h-64" minHeight={180}>
               {({ width, height }) => (
-                <RadarChart width={width} height={height} cx="50%" cy="50%" outerRadius="80%" data={MOCK_RADAR_DATA}>
+                <RadarChart width={width} height={height} cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                   <PolarGrid stroke="var(--line)" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--ink)' }} />
                   <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} isAnimationActive animationDuration={900} animationEasing="ease-out" />
-                  <Radar name="Meta" dataKey="B" stroke="var(--accent-pink)" fill="var(--accent-pink)" fillOpacity={0.1} isAnimationActive animationDuration={900} animationEasing="ease-out" />
+                  <Radar name="Referência" dataKey="B" stroke="var(--accent-pink)" fill="var(--accent-pink)" fillOpacity={0.1} isAnimationActive animationDuration={900} animationEasing="ease-out" />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none' }} />
                 </RadarChart>
               )}
             </ChartFrame>
             ) : (
-              <div className="min-h-64 rounded-3xl border border-dashed border-line bg-paper/70 p-8 flex flex-col justify-center">
-                <span className="label-sm text-accent">Aguardando registros</span>
-                <p className="font-bold text-xl mt-3">Este gráfico precisa de pelo menos 3 refeições registradas.</p>
-                <p className="text-sm text-ink/55 mt-2 leading-relaxed">Com poucos dados, a leitura emocional poderia induzir conclusões erradas. Registre algumas refeições com humor, fome e saciedade para ver padrões reais.</p>
+              <div className="min-h-64 rounded-3xl border border-dashed border-line bg-paper/70 p-5 sm:p-8 flex flex-col justify-center">
+                <span className="label-sm text-accent">Sem base inicial</span>
+                <p className="font-bold text-xl mt-3">Complete perfil ou registre uma refeição para iniciar o radar.</p>
+                <p className="text-sm text-ink/55 mt-2 leading-relaxed">O app não usa amostra falsa para preencher este gráfico. Altura, peso, objetivos, emoções ou registros reais já liberam uma primeira leitura.</p>
               </div>
             )}
           </div>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-6 min-w-0">
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
-            <div className="flex items-center justify-between mb-8">
+          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
+            <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-bold flex items-center gap-2"><span className="text-accent"><TbHealthRecognition size={20} /></span> Evolução do Peso Corporal</h3>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <span className="flex items-center gap-2 text-[10px] font-bold uppercase text-ink/40"><div className="w-2 h-2 rounded-full bg-accent"></div> Atual</span>
-                <span className="flex items-center gap-2 text-[10px] font-bold uppercase text-ink/40"><div className="w-2 h-2 rounded-full bg-accent-pink"></div> Meta</span>
+                {weightGoal && (
+                  <span className="flex items-center gap-2 text-[10px] font-bold uppercase text-ink/40"><div className="w-2 h-2 rounded-full bg-accent-pink"></div> Meta</span>
+                )}
               </div>
             </div>
-            <ChartFrame className="h-64" minHeight={180}>
-              {({ width, height }) => (
-                <AreaChart width={width} height={height} data={userProfile.weightEvolution}>
-                  <defs>
-                    <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                    </linearGradient>
-                    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                      <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="var(--accent)" floodOpacity="0.4" />
-                    </filter>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
-                  <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
-                    itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--accent)' }}
-                  />
-                  <ReferenceLine y={74} stroke="var(--accent-pink)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Meta (74kg)', fill: 'var(--accent-pink)', fontSize: 10, fontWeight: 'bold' }} />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="var(--accent)"
-                    strokeWidth={5}
-                    fillOpacity={1}
-                    fill="url(#colorWeight)"
-                    style={{ filter: 'url(#shadow)' }}
-                    dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 3 }}
-                    activeDot={{ r: 8, fill: 'var(--accent)', stroke: 'var(--paper)', strokeWidth: 4 }}
-                    isAnimationActive
-                    animationDuration={900}
-                    animationEasing="ease-out"
-                  />
-                </AreaChart>
-              )}
-            </ChartFrame>
+            {hasWeightData ? (
+              <ChartFrame className="h-64" minHeight={180}>
+                {({ width, height }) => (
+                  <AreaChart width={width} height={height} data={userProfile.weightEvolution}>
+                    <defs>
+                      <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                      </linearGradient>
+                      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="var(--accent)" floodOpacity="0.4" />
+                      </filter>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
+                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
+                      itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--accent)' }}
+                    />
+                    {weightGoal && (
+                      <ReferenceLine y={weightGoal} stroke="var(--accent-pink)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: `Meta (${weightGoal}kg)`, fill: 'var(--accent-pink)', fontSize: 10, fontWeight: 'bold' }} />
+                    )}
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="var(--accent)"
+                      strokeWidth={5}
+                      fillOpacity={1}
+                      fill="url(#colorWeight)"
+                      style={{ filter: 'url(#shadow)' }}
+                      dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 3 }}
+                      activeDot={{ r: 8, fill: 'var(--accent)', stroke: 'var(--paper)', strokeWidth: 4 }}
+                      isAnimationActive
+                      animationDuration={900}
+                      animationEasing="ease-out"
+                    />
+                  </AreaChart>
+                )}
+              </ChartFrame>
+            ) : (
+              <div className="min-h-64 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
+                <span className="label-sm text-accent">Sem peso registrado</span>
+                <p className="font-bold text-lg mt-2">Adicione seu peso para acompanhar tendência corporal.</p>
+                <p className="text-sm text-ink/55 mt-2">O gráfico não usa dados demonstrativos. A primeira medida já cria o ponto inicial da evolução.</p>
+              </div>
+            )}
           </div>
 
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
+          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
             <h3 className="font-bold flex items-center gap-2 mb-8"><span className="text-accent-pink"><Activity size={20} /></span> Evolução do IMC</h3>
-            <ChartFrame className="h-64" minHeight={180}>
-              {({ width, height }) => (
-                <AreaChart width={width} height={height} data={imcData}>
-                  <defs>
-                    <linearGradient id="colorIMC" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-pink)" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="var(--accent-pink)" stopOpacity={0} />
-                    </linearGradient>
-                    <filter id="shadowIMC" x="-20%" y="-20%" width="140%" height="140%">
-                      <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="var(--accent-pink)" floodOpacity="0.4" />
-                    </filter>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
-                  <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
-                    itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--accent-pink)' }}
-                  />
-                  <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Ideal Max (24.9)', fill: 'var(--accent)', fontSize: 10, fontWeight: 'bold' }} />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="var(--accent-pink)"
-                    strokeWidth={5}
-                    fillOpacity={1}
-                    fill="url(#colorIMC)"
-                    style={{ filter: 'url(#shadowIMC)' }}
-                    dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 3 }}
-                    activeDot={{ r: 8, fill: 'var(--accent-pink)', stroke: 'var(--paper)', strokeWidth: 4 }}
-                    isAnimationActive
-                    animationDuration={900}
-                    animationEasing="ease-out"
-                  />
-                </AreaChart>
-              )}
-            </ChartFrame>
+            {hasImcData ? (
+              <ChartFrame className="h-64" minHeight={180}>
+                {({ width, height }) => (
+                  <AreaChart width={width} height={height} data={imcData}>
+                    <defs>
+                      <linearGradient id="colorIMC" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-pink)" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="var(--accent-pink)" stopOpacity={0} />
+                      </linearGradient>
+                      <filter id="shadowIMC" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="var(--accent-pink)" floodOpacity="0.4" />
+                      </filter>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
+                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
+                      itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--accent-pink)' }}
+                    />
+                    <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Ideal Max (24.9)', fill: 'var(--accent)', fontSize: 10, fontWeight: 'bold' }} />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="var(--accent-pink)"
+                      strokeWidth={5}
+                      fillOpacity={1}
+                      fill="url(#colorIMC)"
+                      style={{ filter: 'url(#shadowIMC)' }}
+                      dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 3 }}
+                      activeDot={{ r: 8, fill: 'var(--accent-pink)', stroke: 'var(--paper)', strokeWidth: 4 }}
+                      isAnimationActive
+                      animationDuration={900}
+                      animationEasing="ease-out"
+                    />
+                  </AreaChart>
+                )}
+              </ChartFrame>
+            ) : (
+              <div className="min-h-64 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
+                <span className="label-sm text-accent-pink">IMC indisponível</span>
+                <p className="font-bold text-lg mt-2">Informe altura e peso para calcular o IMC.</p>
+                <p className="text-sm text-ink/55 mt-2">Esse indicador é uma triagem geral e fica mais útil quando acompanhado da evolução corporal.</p>
+              </div>
+            )}
           </div>
 
           {rcqData.length > 0 && (
-            <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
+            <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
               <h3 className="font-bold flex items-center gap-2 mb-8"><span className="text-ink/60"><Activity size={20} /></span> Evolução RCQ (Relação Cintura-Quadril)</h3>
               <ChartFrame className="h-64" minHeight={180}>
                 {({ width, height }) => (
@@ -1821,7 +2160,7 @@ export default function App() {
                       contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
                       itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--ink)' }}
                     />
-                    <ReferenceLine y={userProfile.gender === 'Feminino' ? 0.85 : 0.9} stroke="var(--accent-pink)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Risco Elevado', fill: 'var(--accent-pink)', fontSize: 10, fontWeight: 'bold' }} />
+                    <ReferenceLine y={rcqLimit} stroke="var(--accent-pink)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Risco Elevado', fill: 'var(--accent-pink)', fontSize: 10, fontWeight: 'bold' }} />
                     <Area
                       type="monotone"
                       dataKey="value"
@@ -1843,11 +2182,11 @@ export default function App() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 min-w-0">
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm flex flex-col min-w-0">
+          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm flex flex-col min-w-0">
             <h3 className="font-bold mb-4 flex items-center gap-2"><span className="text-accent-pink"><Zap size={18} /></span> Fontes de Fome</h3>
-            {hasEnoughMealData ? (
-            <div className="flex-1 flex items-center">
-              <ChartFrame className="h-44 w-1/2" minHeight={140}>
+            {hasMealData ? (
+            <div className="flex-1 flex flex-col gap-5 sm:flex-row sm:items-center">
+              <ChartFrame className="h-44 w-full sm:w-1/2" minHeight={140}>
                 {({ width, height }) => (
                   <PieChart width={width} height={height}>
                     <Pie data={chartPieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value" isAnimationActive animationDuration={750} animationEasing="ease-out">
@@ -1859,7 +2198,7 @@ export default function App() {
                   </PieChart>
                 )}
               </ChartFrame>
-              <div className="w-1/2 space-y-3">
+              <div className="w-full space-y-3 sm:w-1/2">
                 {chartPieData.map((item, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
@@ -1870,16 +2209,16 @@ export default function App() {
             </div>
             ) : (
               <div className="min-h-44 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
-                <span className="label-sm text-accent-pink">Sem amostra mínima</span>
-                <p className="font-bold text-lg mt-2">Ainda não há refeições suficientes para comparar fontes de fome.</p>
-                <p className="text-sm text-ink/55 mt-2">Registre fome antes e depois das próximas refeições para identificar padrões físicos, emocionais ou sociais.</p>
+                <span className="label-sm text-accent-pink">Sem refeições registradas</span>
+                <p className="font-bold text-lg mt-2">Registre uma refeição para comparar fontes de fome.</p>
+                <p className="text-sm text-ink/55 mt-2">A classificação considera fome antes/depois, humor e satisfação. Sem registro real, o app não cria uma proporção artificial.</p>
               </div>
             )}
           </div>
 
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
+          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
             <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Emocional</h3>
-            {hasEnoughMealData ? (
+            {hasMealData ? (
             <>
             <ChartFrame className="h-56" minHeight={160}>
               {({ width, height }) => (
@@ -1892,7 +2231,7 @@ export default function App() {
                 </BarChart>
               )}
             </ChartFrame>
-            <div className="flex justify-center gap-8 mt-6">
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mt-6">
               <span className="flex items-center gap-2 text-xs font-bold"><div className="w-4 h-4 rounded-full bg-accent"></div> Fome Física</span>
               <span className="flex items-center gap-2 text-xs font-bold"><div className="w-4 h-4 rounded-full bg-accent-pink"></div> Fome Emocional</span>
             </div>
@@ -1900,7 +2239,7 @@ export default function App() {
             ) : (
               <div className="min-h-56 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
                 <span className="label-sm text-accent-pink">Linha do tempo em espera</span>
-                <p className="font-bold text-lg mt-2">O gráfico semanal aparece quando houver registros distribuídos ao longo dos dias.</p>
+                <p className="font-bold text-lg mt-2">O gráfico semanal aparece após o primeiro registro de refeição.</p>
                 <p className="text-sm text-ink/55 mt-2">Use o registro de refeição para informar humor e saciedade. Esses dados tornam os insights mais úteis e menos genéricos.</p>
               </div>
             )}
@@ -1909,15 +2248,15 @@ export default function App() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Refeições', val: String(loggedMeals.length), icon: Coffee, trend: loggedMeals.length ? 'ativo' : 'zero' },
-            { label: 'Físicas', val: String(physicalMeals), icon: Activity, trend: `${Math.round((physicalMeals / Math.max(loggedMeals.length, 1)) * 100)}%` },
-            { label: 'Emocionais', val: String(emotionalMeals), icon: Heart, trend: `${Math.round((emotionalMeals / Math.max(loggedMeals.length, 1)) * 100)}%` },
-            { label: 'Foco', val: `${awarenessScore}%`, icon: TrendingUp, trend: loggedMeals.length ? 'real' : 'aguardando' },
+            { label: 'Refeições', val: String(loggedMeals.length), icon: Coffee, trend: hasEnoughMealData ? 'amostra' : hasMealData ? 'inicial' : 'zero' },
+            { label: 'Físicas', val: String(physicalMeals), icon: Activity, trend: hasMealData ? `${Math.round((physicalMeals / loggedMeals.length) * 100)}%` : 'sem dados' },
+            { label: 'Emocionais', val: String(emotionalMeals), icon: Heart, trend: hasMealData ? `${Math.round((emotionalMeals / loggedMeals.length) * 100)}%` : 'sem dados' },
+            { label: 'Foco', val: `${awarenessScore}%`, icon: TrendingUp, trend: hasMealData ? 'registros' : profileReadinessScore ? 'perfil' : 'pendente' },
           ].map((m, i) => (
-            <div key={i} className="bg-accent/5 p-6 rounded-3xl border border-accent/10">
+            <div key={i} className="bg-accent/5 p-4 sm:p-6 rounded-3xl border border-accent/10">
               <m.icon size={20} className="text-accent mb-3" />
               <div className="text-2xl font-display text-ink">{m.val}</div>
-              <div className="flex items-center justify-between mt-1">
+              <div className="flex flex-col gap-1 mt-1 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-[10px] font-bold text-ink/40 uppercase">{m.label}</span>
                 <span className="text-[10px] font-bold text-accent">{m.trend}</span>
               </div>
@@ -1934,11 +2273,11 @@ export default function App() {
               <h3 className="display-title modal-title mb-4 text-center">Atualizar Métricas</h3>
               <p className="text-center text-ink/60 mb-8 serif-body">Clique nas imagens para ver as instruções completas</p>
               <div className="space-y-6">
-                 <div className="flex gap-4 items-center bg-white p-4 rounded-3xl border border-line shadow-sm">
+                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
                     <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(0)}>
                       <img src={balancaImg} alt="Balança" className="w-full h-full object-cover" />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <label className="label-sm block mb-1">Peso (kg)</label>
                       <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
                         value={newMetrics.weight || ''}
@@ -1947,11 +2286,11 @@ export default function App() {
                     </div>
                  </div>
 
-                 <div className="flex gap-4 items-center bg-white p-4 rounded-3xl border border-line shadow-sm">
+                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
                     <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(2)}>
                       <img src={cinturaImg} alt="Cintura" className="w-full h-full object-cover" />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <label className="label-sm block mb-1">Cintura (cm)</label>
                       <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
                         value={newMetrics.waist || ''}
@@ -1960,11 +2299,11 @@ export default function App() {
                     </div>
                  </div>
 
-                 <div className="flex gap-4 items-center bg-white p-4 rounded-3xl border border-line shadow-sm">
+                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
                     <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(3)}>
                       <img src={abdomenImg} alt="Abdômen" className="w-full h-full object-cover" />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <label className="label-sm block mb-1">Abdômen (cm)</label>
                       <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
                         value={newMetrics.abdomen || ''}
@@ -1973,11 +2312,11 @@ export default function App() {
                     </div>
                  </div>
 
-                 <div className="flex gap-4 items-center bg-white p-4 rounded-3xl border border-line shadow-sm">
+                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
                     <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(4)}>
                       <img src={quadrilImg} alt="Quadril" className="w-full h-full object-cover" />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <label className="label-sm block mb-1">Quadril (cm)</label>
                       <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
                         value={newMetrics.hip || ''}
@@ -2036,7 +2375,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
             {adminArticles.map((item) => (
               <button key={item.id} onClick={() => setSelectedArticle(item)} className="group text-left bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm hover:shadow-lg transition-all">
                 <div className="h-44 w-full relative overflow-hidden">
@@ -2046,7 +2385,7 @@ export default function App() {
                     {item.type}
                   </div>
                 </div>
-                <div className="p-6">
+                <div className="p-5 sm:p-6">
                   <h3 className="font-bold text-xl mb-2 leading-tight">{item.title}</h3>
                   <p className="text-xs text-ink/60 line-clamp-2 mb-4 leading-relaxed">{item.summary}</p>
                   <div className="flex items-center gap-2 text-accent text-xs font-bold">
@@ -2063,7 +2402,9 @@ export default function App() {
 
   const MealDetailsPage = () => {
     if (!selectedMeal) return null;
-    const MealIcon = selectedMeal.icon || Coffee;
+    const mealType = inferMealType(selectedMeal);
+    const mealMood = selectedMeal.postMood || selectedMeal.preMood || selectedMeal.mood || 'Não informado';
+    const MealIcon = selectedMeal.icon || (mealType === 'Física' ? TbHealthRecognition : mealType === 'Emocional' ? PiHeartbeat : Coffee);
     const mealPhotos = selectedMeal.photos?.length ? selectedMeal.photos : (selectedMeal.image ? [selectedMeal.image] : []);
     return (
       <PageWrapper>
@@ -2078,7 +2419,7 @@ export default function App() {
             </div>
           </header>
 
-          <div className="bg-white border border-line rounded-[2.5rem] overflow-hidden shadow-sm">
+          <div className="bg-white border border-line rounded-[2rem] md:rounded-[2.5rem] overflow-hidden shadow-sm">
             <div className="h-64 md:h-96 w-full relative bg-accent/5">
               {mealPhotos[0] ? (
                 <img src={mealPhotos[0]} alt={selectedMeal.title} className="w-full h-full object-cover" />
@@ -2089,25 +2430,25 @@ export default function App() {
                 </div>
               )}
               <div className="absolute top-4 right-4 bg-paper/90 backdrop-blur-md px-4 py-2 rounded-full flex items-center gap-2 shadow-md">
-                <MealIcon size={16} className={selectedMeal.type === 'Física' ? 'text-accent' : 'text-accent-pink'} />
+                <MealIcon size={16} className={mealType === 'Física' ? 'text-accent' : mealType === 'Emocional' ? 'text-accent-pink' : 'text-ink/50'} />
                 <span className="text-xs font-bold uppercase">{selectedMeal.time}</span>
               </div>
             </div>
             
-            <div className="p-8 space-y-8">
-              <div className="flex gap-4">
+            <div className="p-5 sm:p-8 space-y-8">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex-1 bg-accent/5 rounded-3xl p-6 border border-accent/10">
                   <span className="label-sm text-accent mb-2 block">Tipo de Fome</span>
                   <div className="text-xl font-bold flex items-center gap-2">
-                    {selectedMeal.type === 'Física' ? <TbHealthRecognition size={24} /> : <PiHeartbeat size={24} />}
-                    {selectedMeal.type}
+                    {mealType === 'Física' ? <TbHealthRecognition size={24} /> : mealType === 'Emocional' ? <PiHeartbeat size={24} /> : <Coffee size={24} />}
+                    {mealType}
                   </div>
                 </div>
                 <div className="flex-1 bg-ink/5 rounded-3xl p-6 border border-line">
                   <span className="label-sm text-ink/50 mb-2 block">Estado Emocional</span>
                   <div className="text-xl font-bold flex items-center gap-2">
                     <Smile size={24} className="text-ink/70" />
-                    {selectedMeal.mood}
+                    {mealMood}
                   </div>
                 </div>
               </div>
@@ -2197,7 +2538,7 @@ export default function App() {
                 <button
                   key={item.key}
                   onClick={() => { setDraftProfile(userProfile); setName(userProfile.name); setEmail(userProfile.email); setEditMode(item.key as any); }}
-                  className="w-full p-6 bg-white border border-line rounded-3xl shadow-sm hover:border-accent hover:bg-accent/5 transition-all flex items-center gap-4 text-left"
+                  className="w-full p-5 sm:p-6 bg-white border border-line rounded-3xl shadow-sm hover:border-accent hover:bg-accent/5 transition-all flex items-center gap-4 text-left"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
                     <item.icon size={20} />
@@ -2245,7 +2586,7 @@ export default function App() {
 
               {editMode === 'all' && (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="label-sm text-ink/50">Idade</label>
                       <input type="number" value={draftProfile.age || ''} onChange={e => setDraftProfile(prev => ({ ...prev, age: parseFloat(e.target.value) || 0 }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
@@ -2286,7 +2627,7 @@ export default function App() {
                       <input value={((draftProfile[item.field as keyof UserProfile] as string[]) || []).join(', ')} onChange={e => updateDraftList(item.field as keyof UserProfile, e.target.value)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-base font-bold" />
                     </div>
                   ))}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
                       { field: 'weightEvolution', label: 'Peso (kg)' },
                       { field: 'waistEvolution', label: 'Cintura (cm)' },
@@ -2364,7 +2705,7 @@ export default function App() {
                 className={`w-full p-5 bg-white border rounded-3xl shadow-sm text-left transition-all ${active ? 'border-accent ring-4 ring-accent/10' : 'border-line hover:border-accent/50'}`}
               >
                 <div className="flex items-center justify-between gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="font-bold text-lg">{theme.name}</h3>
                     <p className="text-xs text-ink/50 font-medium mt-1">{theme.description}</p>
                   </div>
@@ -2431,8 +2772,8 @@ export default function App() {
           <h2 className="display-title text-5xl">Privacidade.</h2>
           <div className="space-y-6 max-w-md">
             {privacyOptions.map((item) => (
-              <button key={item.key} type="button" onClick={() => updatePrivacyPref(item.key)} className="w-full flex items-center justify-between gap-4 p-6 bg-white border border-line rounded-3xl shadow-sm text-left hover:border-accent/50 transition-colors">
-                <div>
+              <button key={item.key} type="button" onClick={() => updatePrivacyPref(item.key)} className="w-full flex items-center justify-between gap-4 p-5 sm:p-6 bg-white border border-line rounded-3xl shadow-sm text-left hover:border-accent/50 transition-colors">
+                <div className="min-w-0">
                   <h4 className="font-bold text-lg">{item.title}</h4>
                   <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
                 </div>
@@ -2457,30 +2798,30 @@ export default function App() {
         </button>
         <h2 className="display-title text-5xl">Ajuda.</h2>
         <div className="space-y-6 max-w-md">
-          <div className="bg-accent/10 border border-accent/20 p-6 rounded-3xl mb-8">
+          <div className="bg-accent/10 border border-accent/20 p-5 sm:p-6 rounded-3xl mb-8">
             <h3 className="font-bold text-xl mb-4 flex items-center gap-2"><Heart size={20} className="text-accent" /> Contato Humano</h3>
             <p className="text-sm text-ink/70 mb-6 font-medium">Nossa equipe clínica está pronta para te atender com todo cuidado e atenção.</p>
             
             <div className="space-y-4">
               <a href="https://wa.me/5511999999999" target="_blank" rel="noreferrer" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                 <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><FaWhatsapp size={20} /></div>
-                <div>
+                <div className="min-w-0">
                   <span className="block font-bold text-sm">WhatsApp da Clínica</span>
                   <span className="block text-xs text-ink/60">(11) 99999-9999</span>
                 </div>
               </a>
               <a href="tel:+551133333333" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                 <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><PhoneCall size={18} /></div>
-                <div>
+                <div className="min-w-0">
                   <span className="block font-bold text-sm">Telefone Fixo</span>
                   <span className="block text-xs text-ink/60">(11) 3333-3333</span>
                 </div>
               </a>
               <a href="mailto:contato@serenanutre.com" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                 <div className="w-10 h-10 bg-accent-pink/20 text-accent-pink rounded-full flex items-center justify-center"><Mail size={18} /></div>
-                <div>
+                <div className="min-w-0">
                   <span className="block font-bold text-sm">E-mail de Suporte</span>
-                  <span className="block text-xs text-ink/60">contato@serenanutre.com</span>
+                  <span className="block truncate text-xs text-ink/60">contato@serenanutre.com</span>
                 </div>
               </a>
             </div>
@@ -2490,8 +2831,8 @@ export default function App() {
             { title: 'Dúvidas Frequentes', desc: 'Respostas para as perguntas mais comuns.' },
             { title: 'Termos de Uso', desc: 'Nossas regras e responsabilidades.' }
           ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between p-6 bg-white border border-line rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition-all">
-              <div>
+            <div key={i} className="flex items-center justify-between gap-4 p-5 sm:p-6 bg-white border border-line rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition-all">
+              <div className="min-w-0">
                 <h4 className="font-bold text-lg">{item.title}</h4>
                 <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
               </div>
@@ -2508,6 +2849,16 @@ export default function App() {
     const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
     const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
     const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
+    const liveNeeds = latestWeight && userProfile.height
+      ? calculateNutritionalNeeds(
+        latestWeight,
+        userProfile.height,
+        userProfile.age || 25,
+        userProfile.gender,
+        userProfile.activityLevel || 1.2,
+        userProfile.objectives || []
+      )
+      : null;
     const [selectedMetric, setSelectedMetric] = useState<null | {
       label: string;
       val: string | number;
@@ -2519,7 +2870,7 @@ export default function App() {
     const profileMetrics = [
       {
         label: 'IMC',
-        val: userProfile.imc || '--',
+        val: userProfile.imc || liveNeeds?.imc || '--',
         tone: 'text-accent bg-accent/10 border-accent/20',
         title: 'Índice de Massa Corporal',
         description: 'O IMC cruza peso e altura para criar uma leitura geral do estado corporal. Ele é útil como triagem, mas não substitui uma avaliação profissional.',
@@ -2527,7 +2878,7 @@ export default function App() {
       },
       {
         label: 'TMB',
-        val: userProfile.tmb || '--',
+        val: userProfile.tmb || liveNeeds?.tmb || '--',
         tone: 'text-accent-pink bg-accent-pink/10 border-accent-pink/20',
         title: 'Taxa Metabólica Basal',
         description: 'A TMB estima quanta energia seu corpo usa em repouso para manter funções vitais, como respiração, circulação e temperatura corporal.',
@@ -2586,18 +2937,18 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <button onClick={() => setCurrentPage('settings-account')} className="shrink-0 px-5 py-3 rounded-2xl bg-ink text-paper text-sm font-bold inline-flex items-center gap-2 shadow-sm">
+            <button onClick={() => setCurrentPage('settings-account')} className="w-full shrink-0 px-5 py-3 rounded-2xl bg-ink text-paper text-sm font-bold inline-flex items-center justify-center gap-2 shadow-sm sm:w-auto">
               <Edit2 size={16} /> Editar
             </button>
           </div>
         </header>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <span className="label-sm text-accent">Toque nos indicadores para entender cada termo</span>
             <HelpCircle size={16} className="text-accent/70 shrink-0" />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {profileMetrics.map(item => (
               <button
                 key={item.label}
@@ -2645,7 +2996,7 @@ export default function App() {
 
         <div className="pt-2">
           <button onClick={() => toast('Mind Nutrition é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0.0', 'info', 5000)}
-            className="w-full py-4 flex items-center justify-center gap-2 text-ink/50 hover:text-accent font-medium transition-colors">
+            className="w-full py-4 flex items-center justify-center gap-2 text-center text-ink/50 hover:text-accent font-medium transition-colors">
             <HelpCircle size={18} /> Sobre o Mind Nutrition
           </button>
           <button onClick={() => setCurrentPage('landing')} className="w-full py-6 mt-4 flex items-center justify-center gap-3 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors shadow-sm">
@@ -2759,13 +3110,13 @@ export default function App() {
     return (
       <PageWrapper>
         <div className="space-y-10">
-          <header className="flex items-center justify-between">
+          <header className="responsive-page-header">
             <div>
               <h2 className="display-title text-4xl">Painel do Nutricionista</h2>
               <p className="serif-body text-xl text-ink/60 mt-1">Gerencie usuários e conteúdos</p>
             </div>
             <button onClick={() => { setAdminLoggedIn(false); localStorage.removeItem('nutriAdminLoggedIn'); setCurrentPage('landing'); }}
-              className="flex items-center gap-2 text-red-500 font-bold hover:bg-red-50 px-4 py-2 rounded-full transition-colors">
+              className="flex items-center justify-center gap-2 text-red-500 font-bold hover:bg-red-50 px-4 py-2 rounded-full transition-colors">
               <LogOut size={18} /> Sair
             </button>
           </header>
@@ -2841,13 +3192,13 @@ export default function App() {
             <div className="space-y-4">
               {adminUsers.map((user, idx) => (
                 <button key={idx} onClick={() => setSelectedUser(user)}
-                  className="w-full bg-white border border-line p-6 rounded-3xl shadow-sm hover:border-accent hover:shadow-md transition-all flex items-center gap-4 text-left">
+                  className="w-full bg-white border border-line p-5 sm:p-6 rounded-3xl shadow-sm hover:border-accent hover:shadow-md transition-all flex items-center gap-4 text-left">
                   <ProfileAvatar photo={user.photo} size="md" className="border-2 border-accent/20" />
-                  <div className="flex-1">
-                    <h4 className="font-bold text-lg">{user.name || 'Sem nome'}</h4>
-                    <p className="text-sm text-ink/50">{user.email || 'Sem e-mail'}</p>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="truncate font-bold text-lg">{user.name || 'Sem nome'}</h4>
+                    <p className="truncate text-sm text-ink/50">{user.email || 'Sem e-mail'}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="hidden text-right sm:block">
                     <p className="text-xs font-bold text-accent">{user.objectives?.[0] || 'Sem objetivo'}</p>
                     <p className="text-xs text-ink/40">IMC: {user.imc || '--'}</p>
                   </div>
@@ -2974,7 +3325,7 @@ export default function App() {
     return (
       <PageWrapper>
         <div className="space-y-10">
-          <div className="flex items-center justify-between">
+          <div className="responsive-page-header">
             <div className="flex items-center gap-4">
               <button onClick={() => setCurrentPage('admin-dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
                 <ArrowLeft size={20} />
@@ -2985,18 +3336,18 @@ export default function App() {
               </div>
             </div>
             <button onClick={() => setShowNewArticle(true)}
-              className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors flex items-center gap-2">
+              className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
               <PlusCircle size={18} /> Novo Artigo
             </button>
           </div>
 
           <div className="space-y-4">
             {adminArticles.map((article) => (
-              <div key={article.id} className="bg-white border border-line p-6 rounded-3xl shadow-sm flex items-center gap-4">
-                <img src={article.image} alt="" className="w-20 h-20 rounded-2xl object-cover" />
-                <div className="flex-1">
+              <div key={article.id} className="bg-white border border-line p-4 sm:p-6 rounded-3xl shadow-sm flex items-center gap-4">
+                <img src={article.image} alt="" className="w-16 h-16 rounded-2xl object-cover sm:w-20 sm:h-20" />
+                <div className="min-w-0 flex-1">
                   <span className="text-[10px] font-bold text-accent uppercase">{article.type}</span>
-                  <h4 className="font-bold text-lg">{article.title}</h4>
+                  <h4 className="truncate font-bold text-base sm:text-lg">{article.title}</h4>
                   <p className="text-xs text-ink/50 line-clamp-1">{article.summary}</p>
                 </div>
                 <button onClick={() => handleDeleteArticle(article.id)}

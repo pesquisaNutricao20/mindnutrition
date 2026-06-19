@@ -172,17 +172,132 @@ select {
   top: 0;
   left: 0;
   right: 0;
-  height: 72px;
+  height: 76px;
   z-index: 45;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(env(safe-area-inset-top, 0px) + 0.65rem) 1rem 0.65rem;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--paper) 88%, white);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 12px 30px rgba(0,0,0,0.04);
+  gap: 0.75rem;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.6rem) 1rem 0.6rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, white);
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--paper) 92%, white), color-mix(in srgb, var(--accent-light) 30%, white)),
+    color-mix(in srgb, var(--paper) 88%, white);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 18px 45px rgba(28, 42, 38, 0.08);
+}
+
+.topbar-brand,
+.topbar-profile,
+.topbar-section {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+}
+
+.topbar-brand,
+.topbar-profile {
+  border: 1px solid transparent;
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.topbar-brand {
+  gap: 0.7rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.35rem;
+  text-align: left;
+}
+
+.topbar-brand:hover,
+.topbar-profile:hover {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.topbar-brand:active,
+.topbar-profile:active {
+  transform: scale(0.985);
+}
+
+.topbar-mark {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-pink));
+  color: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 28%, transparent);
+  flex-shrink: 0;
+}
+
+.topbar-eyebrow {
+  display: block;
+  font-family: var(--font-outfit);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--ink) 42%, transparent);
+}
+
+.topbar-title,
+.topbar-page,
+.topbar-user {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.topbar-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.topbar-section {
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, white);
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+}
+
+.topbar-section-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, white);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.topbar-page {
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.topbar-profile {
+  gap: 0.65rem;
+  padding: 0.3rem 0.35rem 0.3rem 0.75rem;
+}
+
+.topbar-user {
+  max-width: 10rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.1;
 }
 
 .pb-safe {
@@ -428,6 +543,42 @@ a {
   overflow-wrap: anywhere;
 }
 
+.app-main *,
+.modal-panel * {
+  min-width: 0;
+}
+
+.responsive-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.responsive-card {
+  min-width: 0;
+}
+
+.mood-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.meal-photo-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.mobile-scroll-row {
+  scrollbar-width: none;
+}
+
+.mobile-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
 .recharts-wrapper,
 .recharts-surface {
   max-width: 100%;
@@ -453,6 +604,35 @@ a {
   animation: themeFlow 14s ease-in-out infinite alternate;
 }
 
+.chat-shell {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--paper) 92%, white), color-mix(in srgb, var(--accent-light) 42%, white) 44%, color-mix(in srgb, var(--accent-pink-light) 46%, white));
+}
+
+.chat-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, white);
+  background: color-mix(in srgb, var(--paper) 80%, white);
+  backdrop-filter: blur(20px) saturate(1.16);
+  -webkit-backdrop-filter: blur(20px) saturate(1.16);
+  box-shadow: 0 12px 35px rgba(28, 42, 38, 0.06);
+}
+
+.chat-ai-avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: rgba(255,255,255,0.7);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 16%, transparent);
+  overflow: hidden;
+  padding: 0.2rem;
+}
+
+.chat-footer {
+  padding-bottom: max(0.45rem, env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, color-mix(in srgb, var(--paper) 92%, white), color-mix(in srgb, var(--paper) 68%, transparent));
+}
+
 .landing-gradient {
   background:
     radial-gradient(circle at 20% 18%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 34%),
@@ -469,13 +649,17 @@ a {
 .chat-composer {
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  border: 1px solid color-mix(in srgb, var(--line) 82%, white);
+  border-radius: 1.8rem;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 16px 42px rgba(28, 42, 38, 0.1), inset 0 1px 0 rgba(255,255,255,0.7);
 }
 
-.chat-composer > div:first-child {
+.chat-prompt-row {
   scrollbar-width: none;
 }
 
-.chat-composer > div:first-child::-webkit-scrollbar {
+.chat-prompt-row::-webkit-scrollbar {
   display: none;
 }
 
@@ -485,6 +669,69 @@ a {
 }
 
 @media (max-width: 640px) {
+  .app-topbar {
+    height: 68px;
+    gap: 0.35rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+
+  .topbar-section {
+    display: none;
+  }
+
+  .topbar-brand {
+    gap: 0.5rem;
+    padding-right: 0.45rem;
+  }
+
+  .topbar-mark {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
+  .topbar-title {
+    max-width: 8rem;
+    font-size: 0.84rem;
+  }
+
+  .topbar-profile {
+    padding: 0.2rem;
+  }
+
+  .chat-ai-avatar {
+    width: 2.7rem;
+    height: 2.7rem;
+    border-radius: 1rem;
+  }
+
+  .chat-composer {
+    border-radius: 1.45rem;
+  }
+
+  .responsive-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mobile-card-padding {
+    padding: 1.25rem !important;
+    border-radius: 1.5rem !important;
+  }
+
+  .mood-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+
+  .meal-photo-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-frame {
+    min-height: 11rem;
+  }
+
   .auth-page {
     align-items: stretch;
   }
