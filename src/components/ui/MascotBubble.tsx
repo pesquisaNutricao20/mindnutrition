@@ -8,9 +8,10 @@ import type { UserProfile } from '../../types';
 interface MascotBubbleProps {
   userProfile: UserProfile;
   onShowToast: (message: string, type: 'info' | 'success' | 'error', duration?: number) => void;
+  onMoodShared: (mood: string) => void;
 }
 
-export const MascotBubble = ({ userProfile, onShowToast }: MascotBubbleProps) => {
+export const MascotBubble = ({ userProfile, onShowToast, onMoodShared }: MascotBubbleProps) => {
   const [moodInputOpen, setMoodInputOpen] = useState(false);
   const [currentMood, setCurrentMood] = useState('');
   const [eyesOpen, setEyesOpen] = useState(true);
@@ -25,7 +26,8 @@ export const MascotBubble = ({ userProfile, onShowToast }: MascotBubbleProps) =>
 
   const shareMood = () => {
     if (currentMood) {
-      onShowToast('Obrigado por compartilhar! O Nutri guardou isso com carinho.', 'success');
+      onMoodShared(currentMood.trim());
+      onShowToast('Obrigada por compartilhar. Esse check-in vai ajudar a contextualizar seus insights.', 'success');
       setMoodInputOpen(false);
       setCurrentMood('');
     }
@@ -46,7 +48,7 @@ export const MascotBubble = ({ userProfile, onShowToast }: MascotBubbleProps) =>
         </div>
         <div className="w-full flex-1">
           <h4 className="label-sm text-accent">Mascote Nutri</h4>
-          <p className="serif-body text-xl text-ink mt-1">"Ei {userProfile.name || 'amigo'}, como está seu coração hoje? Você está se sentindo bem?"</p>
+          <p className="serif-body text-xl text-ink mt-1">"Oi, {(userProfile.name || 'amigo').trim().split(/\s+/)[0]}! Estou aqui para acompanhar você. Como você está se sentindo neste momento?"</p>
           {!moodInputOpen ? (
             <button onClick={() => setMoodInputOpen(true)} className="mt-3 text-xs font-bold bg-accent text-paper px-4 py-2 rounded-full hover:bg-accent/90 transition-colors shadow-sm">
               Responder

@@ -13,6 +13,7 @@ import {
   Meh,
   Coffee,
   Sun,
+  Moon,
   ArrowLeft,
   Settings,
   LogOut,
@@ -24,19 +25,16 @@ import {
   Lock,
   Mail,
   Edit2,
-  MessageSquare,
-  Send,
-  Bot,
   CheckCircle,
   Brain,
   Zap,
   TrendingUp,
   HelpCircle,
+  Info,
   ArrowUpLeft,
   X,
   Palette,
-  Trash2,
-  ChevronDown
+  Trash2
 } from 'lucide-react';
 import { GiOvermind } from 'react-icons/gi';
 import { BsFlower1 } from 'react-icons/bs';
@@ -46,14 +44,11 @@ import { FaBrain, FaWhatsapp } from 'react-icons/fa';
 import { motion, AnimatePresence, useAnimation, useMotionValue } from 'motion/react';
 import { useToast } from './components/Toast';
 import { MascotComponent } from './components/Mascot';
-import { FullscreenImageViewer, MeasurementImageCard } from './components/FullscreenImageViewer';
 import { AuthPage } from './components/AuthPage';
 import { Avatar } from './components/ui/Avatar';
 import { ProfileAvatar } from './components/ui/ProfileAvatar';
 import { HungerOdometer } from './components/ui/HungerOdometer';
-import { TypewriterText } from './components/ui/TypewriterText';
 import { LoadingScreen } from './components/ui/LoadingScreen';
-import { MascotBubble } from './components/ui/MascotBubble';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
 import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL_PHOTOS } from './constants';
 import type { Page, UserProfile } from './types';
@@ -72,12 +67,6 @@ import {
 import mascoteEyesOpen from './assets/mascote_eyes_open.png';
 import mascoteEyesClosed from './assets/mascote_eyes_closed.png';
 import mascoteFlying from './assets/mascote_flying.png';
-import mascoteAi from './assets/mascote_ai3.png';
-import balancaImg from './assets/balanca.png';
-import fitaImg from './assets/fita.png';
-import cinturaImg from './assets/cintura.png';
-import abdomenImg from './assets/abdomen.png';
-import quadrilImg from './assets/quadril.png';
 import {
   BarChart,
   Bar,
@@ -110,7 +99,7 @@ export function calculateNutritionalNeeds(
   const imc = weight / (heightM * heightM);
 
   let tmb = (10 * weight) + (6.25 * heightCm) - (5 * age);
-  tmb = (gender === 'Masculino') ? tmb + 5 : tmb - 161;
+  tmb = (gender === 'Masculino' || gender === 'Homem') ? tmb + 5 : tmb - 161;
 
   let net = tmb * activityLevel;
   if (goals.includes('Emagrecimento consciente')) net -= 400;
@@ -159,13 +148,31 @@ const getMoodScore = (mood?: string | null) => {
   const moodScores: Record<string, number> = {
     euforia: 90,
     alegria: 84,
+    animado: 84,
+    animada: 84,
     calmo: 76,
     calma: 76,
+    "calmo(a)": 76,
     neutro: 60,
     ansioso: 36,
+    ansiosa: 36,
+    "ansioso(a)": 36,
     ansiedade: 36,
     estresse: 32,
+    "estressado(a)": 32,
+    estressado: 32,
+    estressada: 32,
     frustracao: 30,
+    "frustrado(a)": 30,
+    deprimido: 25,
+    deprimida: 25,
+    "deprimido(a)": 25,
+    solitario: 32,
+    solitaria: 32,
+    "solitario(a)": 32,
+    raivoso: 28,
+    raivosa: 28,
+    "raivoso(a)": 28,
     culpa: 24,
     tenso: 34,
   };
@@ -241,6 +248,7 @@ const calculateProfileInsightScore = (profile: Partial<UserProfile>) => {
     Boolean(profile.objectives?.length),
     Boolean(profile.initialEmotions?.length),
     Boolean(profile.triggers?.length),
+    Boolean(profile.checkIns?.length),
     Boolean(latestWaist && latestHip),
   ];
   const completed = signals.filter(Boolean).length;
@@ -249,6 +257,8 @@ const calculateProfileInsightScore = (profile: Partial<UserProfile>) => {
 };
 
 const getInitialMoodBaseline = (profile: Partial<UserProfile>) => {
+  const latestCheckIn = profile.checkIns?.[profile.checkIns.length - 1]?.mood;
+  if (latestCheckIn) return getMoodScore(latestCheckIn);
   const emotionScores = (profile.initialEmotions || []).map(emotion => getMoodScore(emotion));
   return averageNumbers(emotionScores);
 };
@@ -429,6 +439,7 @@ const mergeProfileData = (base: UserProfile, incoming?: Partial<UserProfile> | n
     'triggers',
     'foods',
     'comorbidities',
+    'checkIns',
     'weightEvolution',
     'waistEvolution',
     'armEvolution',
@@ -492,22 +503,64 @@ const isDemoWeightEvolution = (items?: MetricPoint[]) => (
 );
 
 const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
-  const profileLooksIncomplete = !profile.onboardingComplete && !profile.profileCompletedAt && !profile.height;
-  if (!profileLooksIncomplete || !isDemoWeightEvolution(profile.weightEvolution)) return profile;
-  return {
+  const currentDateLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const normalizeDates = (items: MetricPoint[] = []) => items.map(item => item.date === 'Hoje' ? { ...item, date: currentDateLabel } : item);
+  const normalizedProfile = {
     ...profile,
+    weightEvolution: normalizeDates(profile.weightEvolution),
+    waistEvolution: normalizeDates(profile.waistEvolution),
+    armEvolution: normalizeDates(profile.armEvolution),
+    abdomenEvolution: normalizeDates(profile.abdomenEvolution),
+    hipEvolution: normalizeDates(profile.hipEvolution),
+  };
+  const profileLooksIncomplete = !normalizedProfile.onboardingComplete && !normalizedProfile.profileCompletedAt && !normalizedProfile.height;
+  if (!profileLooksIncomplete || !isDemoWeightEvolution(normalizedProfile.weightEvolution)) return normalizedProfile;
+  return {
+    ...normalizedProfile,
     weightEvolution: [],
     waistEvolution: [],
     hipEvolution: [],
-    age: profile.age === 25 ? 0 : profile.age,
+    age: normalizedProfile.age === 25 ? 0 : normalizedProfile.age,
   };
 };
 
-const MOCK_CONTENT = [
-  { id: 1, title: 'Comer Consciente', duration: '3 min', icon: GiOvermind, type: 'Artigo', image: 'https://images.unsplash.com/photo-1543362906-acfc16c67564?auto=format&fit=crop&q=80&w=800', summary: 'Descubra o poder de estar presente em cada garfada.' },
-  { id: 2, title: 'Física vs Emocional', duration: '5 min', icon: Leaf, type: 'Guia', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800', summary: 'Aprenda a ouvir os sinais reais do seu corpo.' },
-  { id: 3, title: 'Lidando com a Culpa', duration: '4 min', icon: Heart, type: 'Reflexão', image: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&q=80&w=800', summary: 'Transforme sua relação com o alimento e consigo mesmo.' },
-  { id: 4, title: 'Sinais de Saciedade', duration: '2 min', icon: Sun, type: 'Prática', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800', summary: 'Dicas práticas para identificar quando parar.' }
+const DEFAULT_LIBRARY_ARTICLES = [
+  {
+    id: 'sono-ultraprocessados', title: 'Comida de tirar o sono', duration: '3 min', icon: Moon, type: 'Sono e alimentação', image: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&q=80&w=800',
+    summary: 'Como ultraprocessados, cafeína e refeições pesadas podem atrapalhar suas noites.',
+    content: [
+      'Os ultraprocessados podem interferir no funcionamento de hormônios como a melatonina, aumentar a inflamação e tornar a digestão mais lenta - fatores que podem incomodar na hora de dormir.',
+      'Refrigerantes e energéticos, doces e sobremesas, além de lanches tipo fast food, estão entre os exemplos citados por reunirem cafeína, açúcar, gordura e sal em níveis que podem prejudicar o relaxamento e o sono profundo.',
+      'Em vez de buscar perfeição, observe com curiosidade: o que você costuma comer e beber nas horas que antecedem o sono? Pequenos ajustes na rotina podem ser um bom ponto de partida.'
+    ], sourceLabel: 'Hospital Alemão Oswaldo Cruz', sourceUrl: 'https://www.hospitaloswaldocruz.org.br/imprensa/hospital-na-midia/comida-de-tirar-o-sono-como-os-ultraprocessados-prejudicam-as-suas-noites/'
+  },
+  {
+    id: 'sono-comportamento-alimentar', title: 'Sono, apetite e escolhas alimentares', duration: '5 min', icon: Coffee, type: 'Ciência do sono', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800',
+    summary: 'Entenda a relação entre menos sono, sinais de fome e escolhas alimentares.',
+    content: [
+      'A privação de sono pode aumentar a grelina, hormônio associado à fome, e reduzir a leptina, relacionada à saciedade. Essa combinação tende a intensificar o apetite.',
+      'Alterações no sono também podem influenciar o comportamento alimentar, favorecendo escolhas mais frequentes de alimentos doces e de maior densidade energética em momentos de cansaço.',
+      'Esse conhecimento não é motivo para culpa: ele ajuda a entender que sono, alimentação e emoções fazem parte da mesma rotina de cuidado.'
+    ], sourceLabel: 'Padrões de sono, comportamento alimentar e o risco de doenças não transmissíveis', sourceUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10255419/'
+  },
+  {
+    id: 'sono-dieta-saudavel', title: 'Qualidade do sono e dieta saudável', duration: '3 min', icon: Leaf, type: 'Revisão sistemática', image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&q=80&w=800',
+    summary: 'Boas noites de sono e uma alimentação equilibrada costumam caminhar juntas.',
+    content: [
+      'Uma revisão sistemática aponta que pessoas que relatam duração de sono curta têm menor probabilidade de manter uma dieta saudável, enquanto a boa qualidade do sono se associa a uma maior probabilidade de escolhas alimentares saudáveis.',
+      'A relação é de mão dupla: rotina, ambiente, estresse, refeições e descanso podem se influenciar. Por isso, vale olhar para a semana inteira, e não para uma única noite ou refeição.',
+      'Experimente escolher um pequeno cuidado possível hoje: reduzir telas perto de dormir, fazer uma refeição mais tranquila ou preparar um horário de descanso mais regular.'
+    ], sourceLabel: 'Impacto da alimentação associada ao hábito do sono: uma revisão sistemática'
+  },
+  {
+    id: 'sono-peso', title: 'Sono reduzido e ganho de peso', duration: '4 min', icon: Heart, type: 'Leitura científica', image: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=800',
+    summary: 'Por que noites curtas podem mexer com a fome e o apetite por doces e carboidratos.',
+    content: [
+      'Estudos reunidos em uma revisão apontam que a privação crônica de sono pode influenciar o peso por efeitos no apetite, na atividade física e na termorregulação.',
+      'Em um estudo citado, comparar quatro horas com dez horas de sono ao longo de dois dias aumentou fome e apetite, especialmente por alimentos ricos em gordura e carboidratos, junto a alterações em grelina e leptina.',
+      'Cuidar do sono não é uma regra rígida nem uma solução isolada. É uma forma gentil de apoiar o corpo e tornar as escolhas alimentares um pouco mais fáceis.'
+    ], sourceLabel: 'Duração reduzida do sono e ganho de peso: uma revisão sistemática', sourceUrl: 'https://docs.google.com/document/d/1cALISiOtVT7v5QywW867eYoB7ayQe_EAfd8bDaPUJ1Y/edit?tab=t.0'
+  }
 ];
 
 // ---------- Sub-Components ----------
@@ -535,14 +588,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [adminArticles, setAdminArticles] = useState<any[]>(() => {
-    const saved = localStorage.getItem('nutriArticles');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((item: any) => ({ ...item, icon: Library }));
-      } catch { return [...MOCK_CONTENT]; }
-    }
-    return [...MOCK_CONTENT];
+    return [...DEFAULT_LIBRARY_ARTICLES];
   });
   const [userProfile, setUserProfile] = useState<UserProfile>({
     name: '',
@@ -554,6 +600,7 @@ export default function App() {
     triggers: [],
     foods: [],
     comorbidities: [],
+    checkIns: [],
     height: 0,
     weightEvolution: [],
     waistEvolution: [],
@@ -731,13 +778,12 @@ export default function App() {
     { id: 'dashboard', icon: Home, label: 'Início' },
     { id: 'progress', icon: Activity, label: 'Insights' },
     { id: 'meal-log', icon: PlusCircle, label: 'Registrar', primary: true },
-    { id: 'chat', icon: MessageSquare, label: 'Nutri AI' },
     { id: 'content', icon: Library, label: 'Biblioteca' },
     { id: 'profile', icon: User, label: 'Perfil' },
   ];
 
   const renderTopNavbar = () => {
-    if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage) || isLoading) return null;
+    if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
     const activeNavItem = navItems.find(item => item.id === currentPage);
     const pageLabelMap: Partial<Record<Page, string>> = {
       'meal-details': 'Detalhes',
@@ -762,7 +808,7 @@ export default function App() {
           </div>
           <div className="min-w-0">
             <span className="topbar-eyebrow">Mind Nutrition</span>
-            <h1 className="topbar-title">Oceano Claro</h1>
+            <h1 className="topbar-title">Mind Nutrition</h1>
           </div>
         </button>
 
@@ -796,10 +842,12 @@ export default function App() {
           return (
             <button
               key={item.id}
-              onClick={() => setCurrentPage(item.id as Page)}
-              className={`relative w-14 h-14 mb-2 flex items-center justify-center rounded-2xl transition-all ${isActive ? 'bg-accent/20 text-accent' : 'text-ink/60 hover:bg-ink/5 hover:text-ink'
+              onClick={() => !item.disabled && setCurrentPage(item.id as Page)}
+              disabled={item.disabled}
+              aria-label={item.disabled ? 'Nutri AI temporariamente indisponível' : item.label}
+              className={`relative w-14 h-14 mb-2 flex items-center justify-center rounded-2xl transition-all ${item.disabled ? 'cursor-not-allowed opacity-35' : isActive ? 'bg-accent/20 text-accent' : 'text-ink/60 hover:bg-ink/5 hover:text-ink'
                 }`}
-              title={item.label}
+              title={item.disabled ? 'Nutri AI temporariamente indisponível' : item.label}
             >
               {item.primary ? (
                 <div className="w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center shadow-md hover:scale-105 transition-transform">
@@ -826,7 +874,7 @@ export default function App() {
 
   const renderMobileNav = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
-    if (currentPage === 'meal-log' || currentPage === 'chat') return null;
+    if (currentPage === 'meal-log') return null;
 
     // Mobile nav shows 5 items max for better UX
     const mobileItems = navItems.filter(i => i.id !== 'profile');
@@ -841,8 +889,9 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setCurrentPage(item.id as Page)}
-                  className="relative -top-4 w-16 h-16 rounded-full bg-accent text-paper flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform border-4 border-paper"
+                  onClick={() => !item.disabled && setCurrentPage(item.id as Page)}
+                  disabled={item.disabled}
+                  className={`relative -top-4 w-16 h-16 rounded-full flex items-center justify-center border-4 border-paper transition-transform ${item.disabled ? 'cursor-not-allowed bg-ink/20 text-ink/35' : 'bg-accent text-paper shadow-lg hover:scale-105 active:scale-95'}`}
                 >
                   <item.icon size={28} />
                 </button>
@@ -852,9 +901,11 @@ export default function App() {
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentPage(item.id as Page)}
-                className={`flex flex-col items-center justify-center w-14 h-14 rounded-full gap-0.5 transition-colors ${isActive ? 'text-accent' : 'text-ink/50 hover:text-ink'
-                  }`}
+                onClick={() => !item.disabled && setCurrentPage(item.id as Page)}
+                disabled={item.disabled}
+                aria-label={item.disabled ? 'Nutri AI temporariamente indisponível' : item.label}
+                className={`flex flex-col items-center justify-center w-14 h-14 rounded-full gap-0.5 transition-colors ${item.disabled ? 'cursor-not-allowed text-ink/25' : isActive ? 'text-accent' : 'text-ink/50 hover:text-ink'
+                }`}
               >
                 <div className="relative p-2 rounded-full flex items-center justify-center">
                   {isActive && (
@@ -926,7 +977,7 @@ export default function App() {
                   Um diálogo autêntico com seu próprio corpo.
                 </p>
                 <p className="text-ink/70 font-medium text-sm md:text-base leading-relaxed">
-                  Vá além do ruído das dietas. Descubra uma abordagem psicológica e gentil para sua alimentação.
+                  Uma abordagem gentil para a sua alimentação. Experimente refletir sobre o que você está sentindo e avalie se precisa, de fato, comer.
                 </p>
               </div>
 
@@ -1004,19 +1055,18 @@ export default function App() {
 
     const steps = [
       { id: 'name', title: "Como prefere ser chamado?", subtitle: "Sua identidade é essencial.", type: 'input', field: 'name', placeholder: 'Seu nome ou apelido' },
-      { id: 'age', title: "Qual a sua idade?", subtitle: "Para calcularmos suas necessidades basais.", type: 'input_number', field: 'age', placeholder: 'Ex: 25' },
-      { id: 'gender', title: "Como você se identifica?", subtitle: "Tratamento preferencial.", type: 'options', field: 'gender', options: ["Masculino", "Feminino", "Não-binário", "Prefiro não identificar"] },
-      { id: 'activity', title: "Qual seu nível de atividade física?", subtitle: "Impacta seu metabolismo diário.", type: 'options_activity', field: 'activityLevel', options: [
+      { id: 'gender', title: "Como você se identifica?", subtitle: "Escolha a opção que melhor representa você.", type: 'options', field: 'gender', options: ["Homem", "Mulher", "Não Binário(a)", "Outro", "Prefiro não informar"] },
+      { id: 'basics', title: "Sobre sua rotina", subtitle: "Esses dados ajudam a personalizar o cuidado, sem metas rígidas.", type: 'basic', options: [
         { label: "Sedentário (pouco ou nenhum)", value: 1.2 },
         { label: "Levemente ativo (1-3 dias/sem)", value: 1.375 },
         { label: "Moderadamente ativo (3-5 dias/sem)", value: 1.55 },
         { label: "Muito ativo (6-7 dias/sem)", value: 1.725 }
       ]},
-      { id: 'emotions', title: "Como se sente ultimamente?", subtitle: "Selecione quantos quiser.", type: 'multiselect', field: 'initialEmotions', options: ["Estresse", "Alegria", "Frustração", "Ansiedade", "Calma"] },
-      { id: 'comorbidities', title: "Você possui alguma condição de saúde?", subtitle: "Isso nos ajuda a personalizar seu cuidado.", type: 'multiselect', field: 'comorbidities', options: ["Nenhuma", "Diabetes", "Hipertensão", "Ansiedade/Depressão", "Outros"] },
-      { id: 'triggers', title: "Você come sem fome quando sente...", subtitle: "Identificando gatilhos.", type: 'multiselect', field: 'triggers', options: ["Tédio", "Solidão", "Cansaço", "Estresse", "Ansiedade"] },
-      { id: 'foods', title: "O que busca nesses momentos?", subtitle: "Padrões de escolha.", type: 'multiselect', field: 'foods', options: ["Café", "Doces", "Massas", "Salgadinhos", "Fast Food"] },
-      { id: 'objectives', title: "Qual seu objetivo?", subtitle: "Podemos focar em mais de um.", type: 'multiselect', field: 'objectives', options: ["Hipertrofia", "Ganho de peso", "Emagrecimento consciente", "Melhorar relação com a comida"] },
+      { id: 'emotions', title: "Como você se sente ultimamente?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'initialEmotions', options: ["Estressado(a)", "Frustrado(a)", "Deprimido(a)", "Solitário(a)", "Ansioso(a)", "Raivoso(a)", "Alegre", "Animado(a)", "Calmo(a)", "Outro"] },
+      { id: 'comorbidities', title: "Você possui alguma condição de saúde?", subtitle: "Marque uma ou mais opções para personalizarmos seu cuidado.", type: 'multiselect', field: 'comorbidities', options: ["Não possuo nenhuma condição", "Sou diabético(a)", "Sou hipertenso(a)", "Tenho alterações da tireoide", "Tenho transtornos emocionais", "Outro"] },
+      { id: 'triggers', title: "Quais emoções você costuma sentir antes de comer sem fome física?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'triggers', options: ["Tédio", "Cansaço", "Raiva", "Tristeza", "Ansiedade", "Alegria", "Outro"] },
+      { id: 'foods', title: "Quando sente vontade de comer por causa das suas emoções, quais alimentos você procura?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'foods', options: ["Doces", "Salgados", "Massas", "Salgadinhos", "Fast food", "Outro"] },
+      { id: 'objectives', title: "Qual é o seu principal objetivo com este aplicativo?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'objectives', options: ["Emagrecimento consciente", "Melhorar a relação com a comida", "Ganho de peso", "Hipertrofia", "Cuidar da minha saúde", "Outro"] },
       { id: 'measurements', title: "Suas medidas iniciais", subtitle: "Para acompanhar sua evolução com gentileza.", type: 'measurements' }
     ];
 
@@ -1028,9 +1078,11 @@ export default function App() {
         setErrorMsg('Por favor, informe seu nome.');
         return;
       }
-      if (current.type === 'input_number' && current.field === 'age' && (!tempProfile.age || tempProfile.age < 10)) {
+      if ((current.type === 'input_number' && current.field === 'age') || current.type === 'basic') {
+        if (!tempProfile.age || tempProfile.age < 10) {
         setErrorMsg('Informe uma idade válida para continuar.');
         return;
+        }
       }
       if (current.type === 'measurements') {
         const initialWeight = tempProfile.weightEvolution?.[0]?.value || 0;
@@ -1144,13 +1196,42 @@ export default function App() {
               </div>
             )}
 
+            {current.type === 'basic' && (
+              <div className="space-y-6">
+                <div>
+                  <label className="label-sm">Qual é a sua idade?</label>
+                  <input
+                    type="number"
+                    placeholder="Ex: 25"
+                    className="mt-2 w-full py-4 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-medium"
+                    value={tempProfile.age || ''}
+                    onChange={(e) => { setTempProfile({ ...tempProfile, age: parseFloat(e.target.value) }); setErrorMsg(''); }}
+                  />
+                </div>
+                <div>
+                  <label className="label-sm mb-3 block">Como é sua rotina de atividade física?</label>
+                  <div className="grid gap-2">
+                    {current.options?.map((opt: any) => (
+                      <button key={opt.label} type="button" onClick={() => setTempProfile({ ...tempProfile, activityLevel: opt.value })}
+                        className={`w-full rounded-2xl border-2 p-4 text-left text-sm font-medium transition-colors ${tempProfile.activityLevel === opt.value ? 'border-accent bg-accent/10 text-accent' : 'border-line hover:border-accent'}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={handleNext} className={`w-full py-5 text-paper rounded-full font-bold uppercase tracking-widest text-sm transition-colors ${tempProfile.age ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
+                  Continuar
+                </button>
+              </div>
+            )}
+
             {current.type === 'multiselect' && (
               <div className="space-y-6">
                 <div className="grid gap-3">
                   {current.options?.map((opt: any) => {
-                    const isOther = opt === 'Outros';
+                    const isOther = String(opt).startsWith('Outro');
                     const arr = (tempProfile[current.field as keyof UserProfile] as string[]) || [];
-                    const selected = arr.includes(opt) || (isOther && arr.some(i => i.startsWith('Outros')));
+                    const selected = arr.includes(opt) || (isOther && arr.some(i => i.startsWith('Outro')));
                     
                     return (
                       <div key={String(opt)}>
@@ -1158,9 +1239,9 @@ export default function App() {
                           onClick={() => {
                             if (isOther) {
                               if (selected) {
-                                setTempProfile({ ...tempProfile, [current.field!]: arr.filter(i => !i.startsWith('Outros')) });
+                                setTempProfile({ ...tempProfile, [current.field!]: arr.filter(i => !i.startsWith('Outro')) });
                               } else {
-                                setTempProfile({ ...tempProfile, [current.field!]: [...arr, 'Outros: '] });
+                                setTempProfile({ ...tempProfile, [current.field!]: [...arr, 'Outro: '] });
                               }
                             } else {
                               const nextArr = selected ? arr.filter(i => i !== opt) : [...arr, opt];
@@ -1178,10 +1259,10 @@ export default function App() {
                               autoFocus
                               placeholder="Descreva..."
                               className="w-full mt-3 p-4 border-2 border-line rounded-xl bg-transparent focus:border-accent outline-none font-medium"
-                              value={arr.find(i => i.startsWith('Outros'))?.replace('Outros: ', '') || ''}
+                              value={arr.find(i => i.startsWith('Outro'))?.replace(/^Outro[s]?: /, '') || ''}
                               onChange={(e) => {
-                                const newArr = arr.filter(i => !i.startsWith('Outros'));
-                                newArr.push('Outros: ' + e.target.value);
+                                const newArr = arr.filter(i => !i.startsWith('Outro'));
+                                newArr.push('Outro: ' + e.target.value);
                                 setTempProfile({ ...tempProfile, [current.field!]: newArr });
                               }}
                             />
@@ -1198,18 +1279,6 @@ export default function App() {
             )}
 
             {current.type === 'measurements' && (() => {
-              const h = tempProfile.height || 0;
-              const w = tempProfile.weightEvolution?.[0]?.value || 0;
-              const imc = h > 0 && w > 0 ? (w / Math.pow(h / 100, 2)).toFixed(1) : null;
-              let imcStatus = '';
-              if (imc) {
-                const val = parseFloat(imc);
-                if (val < 18.5) imcStatus = 'Abaixo do peso';
-                else if (val < 25) imcStatus = 'Peso ideal';
-                else if (val < 30) imcStatus = 'Sobrepeso';
-                else imcStatus = 'Obesidade';
-              }
-
               return (
                 <div className="space-y-8">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
@@ -1221,22 +1290,14 @@ export default function App() {
                     <div>
                       <label className="label-sm">Peso (kg)</label>
                       <input type="number" placeholder="Ex: 70.5" className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-medium outline-none"
-                        onChange={(e) => { setTempProfile({ ...tempProfile, weightEvolution: [{ date: 'Hoje', value: parseFloat(e.target.value) }] }); setErrorMsg(''); }} />
+                        onChange={(e) => { setTempProfile({ ...tempProfile, weightEvolution: [{ date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value: parseFloat(e.target.value) }] }); setErrorMsg(''); }} />
                     </div>
                   </div>
                   
-                  {imc && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-accent/10 border border-accent/30 rounded-[2rem] flex flex-col items-center gap-2">
-                      <span className="label-sm text-accent">Seu IMC Atual</span>
-                      <div className="text-5xl font-display text-ink">{imc}</div>
-                      <span className="text-sm font-bold bg-white px-4 py-1.5 rounded-full shadow-sm text-accent">{imcStatus}</span>
-                    </motion.div>
-                  )}
-
                   <div className="p-5 bg-accent-pink/10 border border-accent-pink/30 rounded-2xl flex gap-4">
                     <BookOpen className="text-accent-pink shrink-0" />
                     <p className="text-sm font-medium text-ink/80 leading-relaxed">
-                      Sua altura e peso nos ajudam a entender sua jornada corporal e personalizar as recomendações.
+                      Sua altura e peso nos ajudam a personalizar as recomendações. Essas medidas ficam privadas no seu perfil e não definem seu valor ou sua jornada.
                     </p>
                   </div>
                   <button onClick={handleNext} className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg hover:bg-accent/90">
@@ -1253,12 +1314,20 @@ export default function App() {
 
   const Dashboard = () => {
     const [quoteIndex, setQuoteIndex] = useState(0);
+    const [appRating, setAppRating] = useState<number | null>(() => {
+      const savedRating = localStorage.getItem('nutriAppFeedback');
+      return savedRating ? Number(savedRating) : null;
+    });
     const quotes = [
-      "A consciência é o primeiro passo para a cura. Observe sem julgar.",
-      "Nutrir o corpo é um ato de amor próprio. Faça as pazes com seu prato.",
-      "Você não tem fome de comida, tem fome de afeto, de calma, de presença.",
-      "Pequenas pausas mudam grandes impulsos. Respire antes de comer."
+      'Hoje você não precisa resolver toda a sua vida. Precisa apenas cuidar do próximo passo.',
+      'Compaixão por si mesmo é simplesmente dar a si a mesma bondade que daríamos aos outros. - Kristin Neff',
+      'Você não pode parar as ondas, mas pode aprender a surfar. - Jon Kabat-Zinn',
+      'A esperança pode tornar o momento presente menos difícil de suportar. - Thich Nhat Hanh'
     ];
+    const awarenessScore = calculateAwarenessScore(userProfile, loggedMeals);
+    const profileProgress = calculateProfileInsightScore(userProfile);
+    const latestMood = userProfile.checkIns?.[userProfile.checkIns.length - 1]?.mood;
+    const firstName = userProfile.name?.trim().split(/\s+/)[0] || 'você';
 
     useEffect(() => {
       const interval = setInterval(() => {
@@ -1277,20 +1346,49 @@ export default function App() {
           </h2>
         </header>
 
-        <MascotBubble userProfile={userProfile} onShowToast={toast} />
-
         <section className="mobile-card-padding animated-gradient p-8 md:p-12 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
           <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
-          <div className="relative z-10">
-            <h3 className="label-sm mb-4 glass-badge font-bold">Reflexão do Dia</h3>
-            <div className="min-h-[6rem] md:min-h-[5rem] flex items-center">
-              <AnimatePresence mode="wait">
-                <motion.p key={quoteIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="serif-body text-2xl md:text-3xl leading-relaxed drop-shadow-sm">
-                  "{quotes[quoteIndex]}"
-                </motion.p>
-              </AnimatePresence>
+          <div className="relative z-10 grid gap-8 lg:grid-cols-[1.35fr_0.85fr] lg:items-end">
+            <div>
+              <h3 className="label-sm mb-4 glass-badge font-bold">Reflexão do dia</h3>
+              <div className="min-h-[7rem] flex items-center">
+                <AnimatePresence mode="wait">
+                  <motion.p key={quoteIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="serif-body text-2xl md:text-3xl leading-relaxed drop-shadow-sm">
+                    “{quotes[quoteIndex]}”
+                  </motion.p>
+                </AnimatePresence>
+              </div>
+              <button onClick={() => setCurrentPage('meal-log')} className="mt-7 inline-flex items-center gap-2 rounded-full bg-paper px-5 py-3 text-sm font-bold text-ink transition-transform hover:scale-[1.02]">
+                <PlusCircle size={17} /> Fazer uma pausa antes de comer
+              </button>
+            </div>
+            <div className="rounded-[1.75rem] border border-white/20 bg-white/12 p-5 backdrop-blur-sm">
+              <p className="text-sm font-bold text-paper/80">Hoje, {firstName}</p>
+              <p className="mt-2 text-xl font-bold">{latestMood ? `Você registrou: ${latestMood}` : 'Seu espaço está pronto para começar.'}</p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-black/10 p-3"><span className="block text-2xl font-bold">{loggedMeals.length}</span><span className="text-[10px] font-bold uppercase tracking-wide text-paper/70">registros</span></div>
+                <div className="rounded-2xl bg-black/10 p-3"><span className="block text-2xl font-bold">{awarenessScore}%</span><span className="text-[10px] font-bold uppercase tracking-wide text-paper/70">consciência</span></div>
+              </div>
             </div>
           </div>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <button onClick={() => setCurrentPage('meal-log')} className="group rounded-[1.75rem] border border-line bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent"><Coffee size={20} /></span>
+            <h3 className="mt-5 font-bold">Registrar uma refeição</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink/55">Observe fome, humor e saciedade no seu ritmo.</p>
+          </button>
+          <button onClick={() => setCurrentPage('progress')} className="group rounded-[1.75rem] border border-line bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-pink/15 text-accent-pink"><TrendingUp size={20} /></span>
+            <h3 className="mt-5 font-bold">Ver sinais da jornada</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink/55">{profileProgress ? 'Acompanhe sua leitura atual com contexto.' : 'Complete o perfil para liberar uma leitura inicial.'}</p>
+          </button>
+          <button onClick={() => setCurrentPage('content')} className="group rounded-[1.75rem] border border-line bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent"><BookOpen size={20} /></span>
+            <h3 className="mt-5 font-bold">Cuidar do sono</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink/55">Leituras breves sobre sono, apetite e alimentação.</p>
+          </button>
         </section>
 
         <section>
@@ -1302,7 +1400,7 @@ export default function App() {
             <button onClick={() => setCurrentPage('content')} className="text-xs font-bold text-accent hover:underline">Ver tudo</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {adminArticles.slice(0, 3).map((post) => (
+            {DEFAULT_LIBRARY_ARTICLES.slice(0, 3).map((post) => (
               <button
                 key={post.id}
                 onClick={() => { setSelectedArticle(post); setCurrentPage('content'); }}
@@ -1364,6 +1462,27 @@ export default function App() {
                 );
               })
             )}
+
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+          <p className="label-sm text-accent">Sua experiência</p>
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-ink/65">Como está sendo usar o aplicativo?</p>
+            <div className="flex gap-2" aria-label="Avalie o aplicativo de 1 a 5">
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => { setAppRating(rating); localStorage.setItem('nutriAppFeedback', String(rating)); toast('Obrigada pela avaliação!', 'success'); }}
+                  className={`h-10 w-10 rounded-full border text-sm font-bold transition-colors ${appRating === rating ? 'border-accent bg-accent text-paper' : 'border-line bg-paper text-ink/55 hover:border-accent'}`}
+                  aria-label={`${rating} de 5`}
+                >
+                  {rating}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
       </div>
@@ -1371,288 +1490,10 @@ export default function App() {
     );
   };
 
-  const AIChat = () => {
-    const { toast } = useToast();
-    const [msg, setMsg] = useState('');
-    const [typing, setTyping] = useState(false);
-    const [selectedModel, setSelectedModel] = useState('gemini-3-flash-preview');
-    const [modelOpen, setModelOpen] = useState(false);
-    const [showAiNotice, setShowAiNotice] = useState(false);
-    const [history, setHistory] = useState<{ sender: 'user' | 'bot', text: string }[]>(() => {
-      const saved = localStorage.getItem('nutriChatHistory');
-      if (saved) return JSON.parse(saved);
-      return [
-        { sender: 'bot', text: `Olá ${userProfile.name || 'amigo'}! Sou uma assistente experimental do Mind Nutrition. Posso ajudar você a refletir sobre registros, padrões de fome e próximos passos, mas minhas respostas não substituem orientação profissional.` }
-      ];
-    });
-    const chatRef = useRef<HTMLDivElement>(null);
-    const isFirstRender = useRef(true);
-    const [fullscreenImg, setFullscreenImg] = useState(false);
-    const aiModels = [
-      { id: 'gemini-3-flash-preview', label: 'Gemini', desc: 'Rápido e equilibrado', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-avatar/avatars/gemini.webp' },
-      { id: 'kimi-k2.6', label: 'Kimi', desc: 'Leitura longa e contexto', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kimi.png' },
-      { id: 'gemma-3', label: 'Gemma', desc: 'Respostas compactas', logo: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/gemma-color.png' },
-    ];
-    const activeModel = aiModels.find(model => model.id === selectedModel) || aiModels[0];
-    const quickPrompts = [
-      'O que meus registros sugerem?',
-      'Ajude-me a diferenciar fome física e emocional',
-      'Crie uma reflexão curta para antes da refeição',
-    ];
-
-    useEffect(() => {
-      localStorage.setItem('nutriChatHistory', JSON.stringify(history));
-    }, [history]);
-
-    useEffect(() => {
-      if (isFirstRender.current) { isFirstRender.current = false; return; }
-      chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' });
-    }, [history, typing]);
-
-    const handleClearHistory = () => {
-      setHistory([{ sender: 'bot', text: `Histórico apagado. Olá ${userProfile.name || 'amigo'}! Posso ajudar com uma reflexão experimental sobre seus registros de alimentação consciente.` }]);
-      toast('Histórico limpo!', 'heart');
-    };
-
-    const handleSend = async () => {
-      if (!msg.trim()) return;
-      const userMessage = msg.trim();
-      setHistory(prev => [...prev, { sender: 'user', text: userMessage }]);
-      setMsg('');
-      setTyping(true);
-
-      const contextData = `
-        Perfil do Usuário:
-        Nome: ${userProfile.name}
-        Idade: ${userProfile.age}
-        Altura: ${userProfile.height}cm
-        Peso Atual: ${userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value || '--'}kg
-        Cintura: ${userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value || '--'}cm
-        Quadril: ${userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value || '--'}cm
-        Objetivo: ${userProfile.objectives?.join(', ')}
-        Condições: ${userProfile.comorbidities?.join(', ')}
-        Gatilhos Emocionais: ${userProfile.triggers?.join(', ')}
-      `;
-
-      try {
-        const ollamaHistory = history.map(h => ({
-          role: h.sender === 'user' ? 'user' : 'assistant',
-          content: h.text
-        }));
-
-        const response = await fetch('http://localhost:11434/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: `Você é a Nutri AI, uma assistente experimental, gentil e compreensiva de nutrição consciente. Não dê diagnóstico, prescrição, plano médico ou promessa clínica. Diga quando houver poucos dados e convide o usuário a registrar mais refeições. Use os dados a seguir apenas para personalizar reflexões:\n${contextData}` },
-              ...ollamaHistory,
-              { role: 'user', content: userMessage }
-            ],
-            stream: false
-          })
-        });
-
-        if (!response.ok) throw new Error('Failed to fetch');
-
-        const data = await response.json();
-        setHistory(prev => [...prev, { sender: 'bot', text: data.message.content }]);
-      } catch (err) {
-        setHistory(prev => [...prev, { sender: 'bot', text: 'Não consegui conectar ao serviço experimental de IA agora. Se estiver usando Ollama localmente, verifique se ele está rodando em http://localhost:11434.' }]);
-        toast('Erro de conexão com a IA', 'error');
-      } finally {
-        setTyping(false);
-      }
-    };
-
-    return (
-      <PageWrapper noPadding>
-        <div className="chat-shell flex h-[100svh] min-h-[100svh] w-full flex-col overflow-hidden">
-          <header className="chat-header shrink-0 px-3 py-2.5 sm:px-4 md:px-8 md:py-4">
-            <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 sm:gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <button onClick={() => setCurrentPage('dashboard')} className="icon-button h-10 w-10 bg-white/85 sm:h-11 sm:w-11">
-                  <ArrowLeft size={20} />
-                </button>
-                <div className="relative shrink-0">
-                  <div className="chat-ai-avatar">
-                    <img src={mascoteAi} alt="Nutri AI" className="h-full w-full object-contain" />
-                  </div>
-                  <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-paper bg-green-400" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h2 className="truncate text-base font-bold text-ink sm:text-lg">Nutri AI</h2>
-                    <button
-                      type="button"
-                      onClick={() => setShowAiNotice(true)}
-                      className="rounded-full border border-accent-pink/30 bg-accent-pink/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-accent-pink transition-colors hover:bg-accent-pink/15"
-                    >
-                      Experimental
-                    </button>
-                  </div>
-                  <p className="truncate text-[11px] font-bold text-accent">{typing ? 'Respondendo...' : 'Apoio reflexivo, não clínico'}</p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleClearHistory}
-                  className="icon-button h-10 w-10 bg-white/85 text-red-500 hover:border-red-200 hover:bg-red-50 sm:h-11 sm:w-11"
-                  aria-label="Limpar histórico do chat"
-                >
-                  <Trash2 size={17} />
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div ref={chatRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 md:px-10 md:py-6">
-            {history.map((h, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                className={`flex w-full min-w-0 gap-2 sm:gap-3 ${h.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                {h.sender === 'bot' && (
-                  <img src={mascoteAi} alt="Nutri AI" className="mt-auto h-9 w-9 shrink-0 rounded-2xl bg-accent/10 object-contain p-1 shadow-sm sm:h-10 sm:w-10" />
-                )}
-                {h.sender === 'user' && (
-                  <ProfileAvatar photo={userProfile.photo} size="sm" className="rounded-2xl shrink-0 mt-auto shadow-sm border border-line" />
-                )}
-                <div className={`max-w-[calc(100%-3rem)] whitespace-pre-wrap break-words rounded-3xl px-4 py-3 text-[0.92rem] font-medium leading-relaxed shadow-sm sm:px-5 sm:py-4 md:max-w-[min(72%,42rem)] md:text-base ${
-                  h.sender === 'user' ? 'bg-accent text-white rounded-br-md' : 'bg-white border border-line text-ink rounded-bl-md'
-                }`}>
-                  {h.sender === 'bot' && i === history.length - 1 && !typing ? (
-                    <TypewriterText text={h.text} />
-                  ) : h.text}
-                </div>
-              </motion.div>
-            ))}
-            {typing && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                className="flex gap-2 sm:gap-3">
-                <img src={mascoteAi} alt="Nutri AI" className="h-9 w-9 shrink-0 rounded-2xl bg-accent/10 object-contain p-1 shadow-sm sm:h-10 sm:w-10" />
-                <div className="flex items-center gap-1.5 rounded-3xl rounded-bl-md border border-line bg-white px-5 py-4 shadow-sm">
-                  {[0, 1, 2].map(i => (
-                    <motion.div key={i} className="w-2 h-2 rounded-full bg-accent/40"
-                      animate={{ y: [0, -6, 0] }}
-                      transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }} />
-                  ))}
-                  <span className="ml-2 label-sm text-accent animate-pulse">Pensando...</span>
-                </div>
-              </motion.div>
-            )}
-          </div>
-
-          <div className="chat-footer shrink-0 px-3 pt-2 sm:px-4 md:px-8">
-            <div className="chat-composer mx-auto w-full max-w-4xl p-2 sm:p-3">
-              <div className="chat-prompt-row flex gap-2 overflow-x-auto px-1 pb-2">
-                {quickPrompts.map(prompt => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => setMsg(prompt)}
-                    className="shrink-0 rounded-full border border-line bg-white/75 px-3.5 py-2 text-[11px] font-bold text-ink/60 transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent sm:text-xs"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-              <div className="relative mb-2 flex items-center justify-between gap-2 px-1">
-                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink/35">Modelo</span>
-                <button
-                  type="button"
-                  onClick={() => setModelOpen(open => !open)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-white shadow-sm transition-colors hover:border-accent focus:border-accent focus:outline-none"
-                  aria-label={`Modelo selecionado: ${activeModel.label}`}
-                >
-                  <img src={activeModel.logo} alt="" className="h-6 w-6 rounded-full bg-white object-contain" />
-                </button>
-                <AnimatePresence>
-                  {modelOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                      className="absolute bottom-full right-0 z-50 mb-3 w-[min(20rem,calc(100vw-2rem))] rounded-3xl border border-line bg-white p-2 shadow-2xl sm:p-3"
-                    >
-                      {aiModels.map(model => (
-                        <button
-                          key={model.id}
-                          type="button"
-                          onClick={() => { setSelectedModel(model.id); setModelOpen(false); }}
-                          className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-accent/10 ${selectedModel === model.id ? 'bg-accent/10 text-accent ring-1 ring-accent/20' : 'text-ink'}`}
-                        >
-                          <img src={model.logo} alt="" className="h-8 w-8 rounded-xl border border-line bg-white object-contain" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-bold">{model.label}</span>
-                            <span className="mt-0.5 block truncate text-[11px] font-medium text-ink/45">{model.desc}</span>
-                          </span>
-                          {selectedModel === model.id && <CheckCircle size={16} className="text-accent" />}
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <form
-                className="flex items-center gap-2 sm:gap-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleSend();
-                }}
-              >
-                <input
-                  type="text"
-                  value={msg}
-                  onChange={e => setMsg(e.target.value)}
-                  placeholder="Escreva uma pergunta"
-                  className="h-12 min-w-0 flex-1 rounded-full border border-line bg-white/88 px-4 text-[0.95rem] font-medium shadow-inner shadow-ink/5 outline-none transition-colors placeholder:text-ink/35 focus:border-accent focus:bg-white sm:h-14 sm:px-5 sm:text-base"
-                  autoComplete="off"
-                />
-                <motion.button
-                  type="submit"
-                  disabled={!msg.trim() || typing}
-                  whileTap={{ scale: 0.95 }}
-                  className="send-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-lg shadow-accent/25 transition-all disabled:opacity-40 sm:h-14 sm:w-14"
-                  aria-label="Enviar mensagem"
-                >
-                  <Send size={18} className="-ml-0.5 sm:h-5 sm:w-5" />
-                </motion.button>
-              </form>
-              <p className="px-2 pt-1.5 text-center text-[10px] font-medium text-ink/35">IA experimental. Apoio reflexivo, não orientação clínica.</p>
-            </div>
-          </div>
-          <AnimatePresence>
-            {showAiNotice && (
-              <div className="modal-shell fixed inset-0 z-50 flex">
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowAiNotice(false)} />
-                <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-md bg-paper p-6 shadow-2xl">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <span className="label-sm text-accent-pink">Experimental</span>
-                      <h3 className="modal-title font-bold mt-2">Assistente em teste.</h3>
-                    </div>
-                    <button type="button" onClick={() => setShowAiNotice(false)} className="icon-button">
-                      <X size={18} />
-                    </button>
-                  </div>
-                  <p className="mt-5 text-sm leading-relaxed text-ink/65">
-                    Apoio reflexivo, não orientação clínica. Para sintomas, medicação, restrições alimentares ou transtornos alimentares, procure um profissional de saúde.
-                  </p>
-                </motion.div>
-              </div>
-            )}
-          </AnimatePresence>
-        </div>
-      </PageWrapper>
-    );
-  };
-
   const MealLog = () => {
     const { toast } = useToast();
     const [step, setStep] = useState<'pre' | 'meal' | 'post'>('pre');
+    const [showHungerGuide, setShowHungerGuide] = useState(false);
     const [log, setLog] = useState<{ preHunger: number; preMood: string; postHunger: number; postMood: string; satisfaction: number; notes: string; photos: string[] }>({ preHunger: 5, preMood: 'Neutro', postHunger: 5, postMood: 'Neutro', satisfaction: 3, notes: '', photos: [] });
 
     const handleMealPhotos = async (files: FileList | null) => {
@@ -1667,11 +1508,14 @@ export default function App() {
     };
 
     const moods = [
-      { label: 'Euforia', icon: Sparkles },
-      { label: 'Alegria', icon: Smile },
+      { label: 'Alegre', icon: Smile },
+      { label: 'Calmo(a)', icon: Sun },
       { label: 'Neutro', icon: Meh },
-      { label: 'Frustração', icon: Frown },
-      { label: 'Culpa', icon: PiHeartbeat }
+      { label: 'Ansioso(a)', icon: PiHeartbeat },
+      { label: 'Estressado(a)', icon: Zap },
+      { label: 'Frustrado(a)', icon: Frown },
+      { label: 'Triste', icon: Frown },
+      { label: 'Cansado(a)', icon: Coffee }
     ];
 
     return (
@@ -1692,7 +1536,12 @@ export default function App() {
               {step === 'pre' && (
                 <>
                   <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-bold mb-6">De onde vem sua vontade de comer?</h3>
+                    <div className="mb-6 flex items-center justify-between gap-3">
+                      <h3 className="font-bold">De onde vem sua vontade de comer?</h3>
+                      <button type="button" onClick={() => setShowHungerGuide(true)} className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-2 text-xs font-bold text-accent hover:bg-accent/15">
+                        <HelpCircle size={15} /> Diferenciar fomes
+                      </button>
+                    </div>
                     <HungerOdometer value={log.preHunger} onChange={v => setLog({ ...log, preHunger: v })} />
                   </div>
                   <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
@@ -1781,12 +1630,21 @@ export default function App() {
                     </div>
                   </div>
                   <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-bold mb-4">Nível de Satisfação</h3>
-                    <div className="grid grid-cols-5 gap-2">
-                      {[1, 2, 3, 4, 5].map(v => (
-                        <button key={v} onClick={() => setLog({ ...log, satisfaction: v })}
-                          className={`flex-1 py-5 rounded-2xl border-2 font-bold text-xl transition-all ${log.satisfaction === v ? 'bg-accent border-accent text-paper' : 'border-line bg-transparent hover:bg-line text-ink'}`}>
-                          {v}
+                    <h3 className="font-bold mb-1">Como você se sente após comer?</h3>
+                    <p className="mb-4 text-sm leading-relaxed text-ink/55">Avalie o quanto esta refeição atendeu às suas necessidades físicas.</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {[
+                        { value: 0, label: 'Nada satisfeito(a)' },
+                        { value: 1, label: 'Muito pouco satisfeito(a)' },
+                        { value: 2, label: 'Pouco satisfeito(a)' },
+                        { value: 3, label: 'Moderadamente satisfeito(a)' },
+                        { value: 4, label: 'Satisfeito(a)' },
+                        { value: 5, label: 'Muito satisfeito(a)' },
+                      ].map(({ value, label }) => (
+                        <button key={value} onClick={() => setLog({ ...log, satisfaction: value })}
+                          className={`min-h-20 rounded-2xl border-2 px-3 py-3 text-left transition-all ${log.satisfaction === value ? 'bg-accent border-accent text-paper' : 'border-line bg-transparent hover:bg-line text-ink'}`}>
+                          <span className="block text-lg font-bold">{value}</span>
+                          <span className="mt-1 block text-[10px] font-bold leading-tight">{label}</span>
                         </button>
                       ))}
                     </div>
@@ -1805,6 +1663,7 @@ export default function App() {
                       image: log.photos[0] || ''
                     };
                     saveMeal(newMeal);
+                    toast('Registro salvo. Seus insights foram atualizados.', 'success');
                     setCurrentPage('dashboard');
                   }} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg animated-gradient">
                     Salvar Registro Diário
@@ -1813,6 +1672,44 @@ export default function App() {
               )}
             </motion.div>
           </AnimatePresence>
+          <AnimatePresence>
+            {showHungerGuide && (
+              <div className="modal-shell fixed inset-0 z-50 flex">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowHungerGuide(false)} />
+                <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <span className="label-sm text-accent">Pausa de observação</span>
+                      <h3 className="modal-title mt-2 font-bold">Fome física ou emocional?</h3>
+                    </div>
+                    <button type="button" onClick={() => setShowHungerGuide(false)} className="icon-button h-10 w-10"><X size={18} /></button>
+                  </div>
+                  <p className="mt-4 text-sm leading-relaxed text-ink/60">Não há resposta certa. Use estes sinais apenas como apoio para se escutar com mais gentileza.</p>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <section className="rounded-3xl border border-accent/20 bg-accent/5 p-5">
+                      <h4 className="font-bold text-accent">🍽 Fome física</h4>
+                      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink/70">
+                        <li>• Estômago vazio ou roncando.</li>
+                        <li>• Faz algumas horas desde a última refeição.</li>
+                        <li>• Falta de energia.</li>
+                        <li>• Aceitaria diferentes tipos de alimento.</li>
+                      </ul>
+                    </section>
+                    <section className="rounded-3xl border border-accent-pink/25 bg-accent-pink/10 p-5">
+                      <h4 className="font-bold text-accent-pink">💭 Fome emocional</h4>
+                      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink/70">
+                        <li>• Vontade ligada a ansiedade, estresse, tristeza, tédio ou preocupação.</li>
+                        <li>• Desejo por um alimento específico.</li>
+                        <li>• Vontade que surgiu de repente.</li>
+                        <li>• Sem sinais físicos claros de fome.</li>
+                      </ul>
+                    </section>
+                  </div>
+                  <button type="button" onClick={() => setShowHungerGuide(false)} className="mt-6 w-full rounded-full bg-accent py-4 text-sm font-bold text-paper">Voltar ao registro</button>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       </PageWrapper>
     );
@@ -1820,7 +1717,6 @@ export default function App() {
 
   const ProgressPage = () => {
     const [showMetricsModal, setShowMetricsModal] = useState(false);
-    const [fullscreenImages, setFullscreenImages] = useState<{images: any[], index: number, open: boolean}>({ images: [], index: 0, open: false });
     const [newMetrics, setNewMetrics] = useState({
       weight: userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value || 0,
       waist: userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value || 0,
@@ -1828,18 +1724,12 @@ export default function App() {
       abdomen: userProfile.abdomenEvolution?.[userProfile.abdomenEvolution.length - 1]?.value || 0,
       hip: userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value || 0,
     });
-
-    const measurementImages = [
-      { src: balancaImg, title: 'Balança Digital', description: 'Utilize uma balança digital para medir seu peso corporal. Preferencialmente pela manhã, em jejum e após ir ao banheiro.' },
-      { src: fitaImg, title: 'Fita Métrica', description: 'Utilize uma fita métrica flexível e inelástica para suas medições corporais.' },
-      { src: cinturaImg, title: 'Medida da Cintura', description: 'Utilize uma fita métrica flexível na parte mais estreita do tronco, geralmente localizada um pouco acima do umbigo e abaixo das costelas.' },
-      { src: abdomenImg, title: 'Medida do Abdômen', description: 'Utilize uma fita métrica inelástica, posicione-a no ponto médio entre a última costela e a crista ilíaca (osso do quadril) ou na altura do umbigo, em pé e sem apertar a pele. A medição deve ser feita no final da expiração.' },
-      { src: quadrilImg, title: 'Medida do Quadril', description: 'Posicione-se em pé, com os pés juntos, e passe uma fita métrica flexível em torno da parte mais larga das nádegas (geralmente na altura da maior curvatura do bumbum), garantindo que a fita esteja reta e paralela ao solo.' },
-    ];
-
-    const openFullscreen = (index: number) => {
-      setFullscreenImages({ images: measurementImages, index, open: true });
-    };
+    const metricFields = [
+      { key: 'weight', label: 'Peso', unit: 'kg', icon: TbHealthRecognition, hint: 'Registre em condições parecidas para comparar a evolução.' },
+      { key: 'waist', label: 'Cintura', unit: 'cm', icon: Activity, hint: 'Use uma fita flexível, sem apertar a pele.' },
+      { key: 'abdomen', label: 'Abdômen', unit: 'cm', icon: PiHeartbeat, hint: 'Meça de pé, ao final de uma expiração confortável.' },
+      { key: 'hip', label: 'Quadril', unit: 'cm', icon: TrendingUp, hint: 'Passe a fita pela região mais larga do quadril.' },
+    ] as const;
 
     useEffect(() => {
       if (showMetricsModal) {
@@ -1895,7 +1785,7 @@ export default function App() {
     const awarenessScore = calculateAwarenessScore(userProfile, loggedMeals);
     const radarData = buildRadarData(userProfile, loggedMeals, awarenessScore);
     const weightGoal = getWeightGoal(userProfile);
-    const rcqLimit = userProfile.gender === 'Feminino' ? 0.85 : 0.9;
+    const rcqLimit = userProfile.gender === 'Feminino' || userProfile.gender === 'Mulher' ? 0.85 : 0.9;
 
     const imcData = (userProfile.weightEvolution || []).map(w => ({
       date: w.date,
@@ -2009,7 +1899,8 @@ export default function App() {
           </div>
 
           <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
-            <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent"><Brain size={18} /></span> Equilíbrio Mental vs Físico</h3>
+            <h3 className="font-bold mb-2 flex items-center gap-2"><span className="text-accent"><Brain size={18} /></span> Sinais da sua jornada</h3>
+            <p className="mb-5 text-sm leading-relaxed text-ink/55">Leitura indicativa de saciedade, consciência, energia, humor, constância e contexto. O polígono mostra somente os sinais preenchidos por você.</p>
             {hasInitialInsightData ? (
             <ChartFrame className="h-64" minHeight={180}>
               {({ width, height }) => (
@@ -2017,8 +1908,7 @@ export default function App() {
                   <PolarGrid stroke="var(--line)" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--ink)' }} />
                   <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} isAnimationActive animationDuration={900} animationEasing="ease-out" />
-                  <Radar name="Referência" dataKey="B" stroke="var(--accent-pink)" fill="var(--accent-pink)" fillOpacity={0.1} isAnimationActive animationDuration={900} animationEasing="ease-out" />
-                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none' }} />
+                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }} formatter={(value: number) => [`${value}%`, 'Seu registro']} />
                 </RadarChart>
               )}
             </ChartFrame>
@@ -2029,6 +1919,10 @@ export default function App() {
                 <p className="text-sm text-ink/55 mt-2 leading-relaxed">O app não usa amostra falsa para preencher este gráfico. Altura, peso, objetivos, emoções ou registros reais já liberam uma primeira leitura.</p>
               </div>
             )}
+            <div className="mt-5 flex items-start gap-3 rounded-2xl bg-accent/5 p-4 text-xs leading-relaxed text-ink/65">
+              <Info size={16} className="mt-0.5 shrink-0 text-accent" />
+              <span>No celular, toque nos pontos do gráfico para ver o valor de cada sinal. Quanto mais registros reais, mais útil fica esta leitura.</span>
+            </div>
           </div>
         </div>
 
@@ -2043,6 +1937,8 @@ export default function App() {
                 )}
               </div>
             </div>
+            {weightGoal && <p className="-mt-4 mb-5 text-xs leading-relaxed text-ink/50">A linha rosa é uma estimativa ligada ao objetivo escolhido e serve apenas como referência de acompanhamento.</p>}
+            <p className="mb-5 text-sm leading-relaxed text-ink/55">Cada ponto representa uma medida registrada. Toque ou passe o cursor pelos pontos para comparar data e valor.</p>
             {hasWeightData ? (
               <ChartFrame className="h-64" minHeight={180}>
                 {({ width, height }) => (
@@ -2093,7 +1989,8 @@ export default function App() {
           </div>
 
           <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
-            <h3 className="font-bold flex items-center gap-2 mb-8"><span className="text-accent-pink"><Activity size={20} /></span> Evolução do IMC</h3>
+            <h3 className="font-bold flex items-center gap-2 mb-2"><span className="text-accent-pink"><Activity size={20} /></span> Evolução do IMC</h3>
+            <p className="mb-6 text-sm leading-relaxed text-ink/55">Uma triagem geral calculada a partir de altura e peso. Acompanhe a tendência, sem transformar um número em julgamento.</p>
             {hasImcData ? (
               <ChartFrame className="h-64" minHeight={180}>
                 {({ width, height }) => (
@@ -2143,7 +2040,8 @@ export default function App() {
 
           {rcqData.length > 0 && (
             <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
-              <h3 className="font-bold flex items-center gap-2 mb-8"><span className="text-ink/60"><Activity size={20} /></span> Evolução RCQ (Relação Cintura-Quadril)</h3>
+              <h3 className="font-bold flex items-center gap-2 mb-2"><span className="text-ink/60"><Activity size={20} /></span> Evolução RCQ (Relação Cintura-Quadril)</h3>
+              <p className="mb-6 text-sm leading-relaxed text-ink/55">Compara as medidas de cintura e quadril registradas na mesma data. A linha pontilhada é apenas uma referência de triagem.</p>
               <ChartFrame className="h-64" minHeight={180}>
                 {({ width, height }) => (
                   <AreaChart width={width} height={height} data={rcqData}>
@@ -2183,7 +2081,8 @@ export default function App() {
 
         <div className="grid md:grid-cols-2 gap-6 min-w-0">
           <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm flex flex-col min-w-0">
-            <h3 className="font-bold mb-4 flex items-center gap-2"><span className="text-accent-pink"><Zap size={18} /></span> Fontes de Fome</h3>
+            <h3 className="font-bold mb-2 flex items-center gap-2"><span className="text-accent-pink"><Zap size={18} /></span> Fontes de Fome</h3>
+            <p className="mb-4 text-sm leading-relaxed text-ink/55">Mostra como os registros foram classificados a partir de fome, humor e satisfação. É uma leitura de padrão, não um rótulo.</p>
             {hasMealData ? (
             <div className="flex-1 flex flex-col gap-5 sm:flex-row sm:items-center">
               <ChartFrame className="h-44 w-full sm:w-1/2" minHeight={140}>
@@ -2217,7 +2116,8 @@ export default function App() {
           </div>
 
           <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
-            <h3 className="font-bold mb-6 flex items-center gap-2"><span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Emocional</h3>
+            <h3 className="font-bold mb-2 flex items-center gap-2"><span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Emocional</h3>
+            <p className="mb-5 text-sm leading-relaxed text-ink/55">Compare, ao longo da semana, os registros associados à fome física e à fome emocional. Toque em cada coluna para detalhar o dia.</p>
             {hasMealData ? (
             <>
             <ChartFrame className="h-56" minHeight={160}>
@@ -2269,94 +2169,50 @@ export default function App() {
         {showMetricsModal && (
           <div className="modal-shell fixed inset-0 z-50 flex">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
-            <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative bg-paper max-w-2xl p-5 md:p-12 pb-8 shadow-2xl">
-              <h3 className="display-title modal-title mb-4 text-center">Atualizar Métricas</h3>
-              <p className="text-center text-ink/60 mb-8 serif-body">Clique nas imagens para ver as instruções completas</p>
-              <div className="space-y-6">
-                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
-                    <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(0)}>
-                      <img src={balancaImg} alt="Balança" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <label className="label-sm block mb-1">Peso (kg)</label>
-                      <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
-                        value={newMetrics.weight || ''}
-                        onChange={e => setNewMetrics({...newMetrics, weight: parseFloat(e.target.value) || 0})}
+            <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative w-full max-w-3xl bg-paper p-5 shadow-2xl sm:p-7 md:p-10">
+              <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button absolute right-5 top-5 h-10 w-10"><X size={18} /></button>
+              <div className="pr-12">
+                <span className="label-sm text-accent">Acompanhamento corporal</span>
+                <h3 className="display-title modal-title mt-2">Atualizar métricas</h3>
+                <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink/60">Registre apenas o que fizer sentido para você. Comparar medidas em condições parecidas ajuda a perceber tendências, não a buscar perfeição.</p>
+              </div>
+              <div className="mt-7 grid gap-3 sm:grid-cols-2">
+                {metricFields.map((field) => {
+                  const MetricIcon = field.icon;
+                  return (
+                    <label key={field.key} className="group rounded-3xl border border-line bg-white p-4 transition-colors hover:border-accent/45 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10">
+                      <span className="flex items-start gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent"><MetricIcon size={20} /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-baseline justify-between gap-2"><span className="font-bold">{field.label}</span><span className="text-xs font-bold text-ink/40">{field.unit}</span></span>
+                          <span className="mt-1 block text-xs leading-relaxed text-ink/50">{field.hint}</span>
+                        </span>
+                      </span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={newMetrics[field.key] || ''}
+                        onChange={e => setNewMetrics({ ...newMetrics, [field.key]: parseFloat(e.target.value) || 0 })}
+                        placeholder="0"
+                        className="mt-4 w-full border-b-2 border-line bg-transparent py-2 text-2xl font-bold outline-none transition-colors placeholder:text-ink/20 focus:border-accent"
                       />
-                    </div>
-                 </div>
-
-                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
-                    <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(2)}>
-                      <img src={cinturaImg} alt="Cintura" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <label className="label-sm block mb-1">Cintura (cm)</label>
-                      <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
-                        value={newMetrics.waist || ''}
-                        onChange={e => setNewMetrics({...newMetrics, waist: parseFloat(e.target.value) || 0})}
-                      />
-                    </div>
-                 </div>
-
-                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
-                    <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(3)}>
-                      <img src={abdomenImg} alt="Abdômen" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <label className="label-sm block mb-1">Abdômen (cm)</label>
-                      <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
-                        value={newMetrics.abdomen || ''}
-                        onChange={e => setNewMetrics({...newMetrics, abdomen: parseFloat(e.target.value) || 0})}
-                      />
-                    </div>
-                 </div>
-
-                 <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-line shadow-sm">
-                    <div className="w-20 h-20 rounded-2xl shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity" onClick={() => openFullscreen(4)}>
-                      <img src={quadrilImg} alt="Quadril" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <label className="label-sm block mb-1">Quadril (cm)</label>
-                      <input type="number" className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent outline-none font-display text-2xl" 
-                        value={newMetrics.hip || ''}
-                        onChange={e => setNewMetrics({...newMetrics, hip: parseFloat(e.target.value) || 0})}
-                      />
-                    </div>
-                 </div>
-
-                 <div className="pt-4">
-                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-                     {measurementImages.map((img, idx) => (
-                       <MeasurementImageCard
-                         key={idx}
-                         imageSrc={img.src}
-                         title={img.title}
-                         description={img.description}
-                         onClick={() => openFullscreen(idx)}
-                       />
-                     ))}
-                   </div>
-                 </div>
-
-                 <div className="pt-2">
-                   <button onClick={handleSaveMetrics} className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-xl hover:shadow-2xl transition-all">
-                     Salvar Métricas
-                   </button>
-                 </div>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="mt-5 flex items-start gap-3 rounded-2xl bg-accent/5 p-4 text-xs leading-relaxed text-ink/60">
+                <Info size={16} className="mt-0.5 shrink-0 text-accent" />
+                <span>As informações ficam no seu perfil para compor os gráficos de evolução. Você pode atualizar somente uma medida por vez.</span>
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => setShowMetricsModal(false)} className="rounded-full border border-line px-5 py-4 text-sm font-bold text-ink/60 hover:bg-white">Cancelar</button>
+                <button onClick={handleSaveMetrics} className="rounded-full bg-accent px-5 py-4 text-sm font-bold text-paper shadow-lg shadow-accent/20 transition-transform hover:scale-[1.01]">Salvar métricas</button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      <FullscreenImageViewer
-        images={fullscreenImages.images}
-        currentIndex={fullscreenImages.index}
-        isOpen={fullscreenImages.open}
-        onClose={() => setFullscreenImages(prev => ({ ...prev, open: false }))}
-        onNavigate={(index) => setFullscreenImages(prev => ({ ...prev, index }))}
-      />
     </PageWrapper>
   );
 };
@@ -2376,7 +2232,7 @@ export default function App() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-            {adminArticles.map((item) => (
+            {DEFAULT_LIBRARY_ARTICLES.map((item) => (
               <button key={item.id} onClick={() => setSelectedArticle(item)} className="group text-left bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm hover:shadow-lg transition-all">
                 <div className="h-44 w-full relative overflow-hidden">
                   <div className="absolute inset-0 bg-ink/20 group-hover:bg-transparent transition-colors z-10" />
@@ -3442,11 +3298,6 @@ export default function App() {
           {currentPage === 'meal-log' && <MealLog key="meal-log" />}
           {currentPage === 'content' && <ContentPage key="content" />}
           {currentPage === 'progress' && <ProgressPage key="progress" />}
-          {currentPage === 'chat' && (
-            <motion.div key="chat" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.3 }} className="w-full">
-              <AIChat />
-            </motion.div>
-          )}
           {currentPage === 'profile' && <ProfilePage key="profile" />}
           {currentPage === 'settings-account' && <AccountSettings key="account" />}
           {currentPage === 'settings-theme' && <ThemeSettings key="themes" />}
@@ -3485,18 +3336,20 @@ export default function App() {
                   <img src={selectedArticle.image} alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="prose prose-xl max-w-none text-ink/90">
-                  <p className="drop-cap serif-body text-2xl leading-relaxed mb-8">
-                    A relação com a comida é um reflexo profundo de nossas emoções. Quando o estresse ataca, o prato muitas vezes se torna um refúgio.
-                  </p>
-                  <p className="text-xl leading-relaxed mb-6 font-medium">
-                    A prática do <strong>mindful eating</strong> (comer consciente) propõe uma pausa. Não se trata de dietas restritivas, mas de ouvir os sinais do seu corpo.
-                  </p>
-                  <div className="p-10 bg-accent/10 border-l-8 border-accent rounded-r-[2rem] my-12 serif-body text-2xl text-ink shadow-inner">
-                    "Você não tem fome de comida, tem fome de afeto, de calma, de presença."
-                  </div>
-                  <p className="text-xl leading-relaxed">
-                    Na próxima refeição, antes de dar a primeira garfada, feche os olhos por 5 segundos. Pergunte-se: "Como está minha fome física agora? De 0 a 10?". Esse pequeno espaço de tempo é o suficiente para retomar o controle.
-                  </p>
+                  {(selectedArticle.content || [
+                    selectedArticle.summary || 'Use este espaço como uma pausa para observar sua relação com a alimentação com mais gentileza.',
+                    'As informações da Biblioteca servem para apoiar sua reflexão e não substituem acompanhamento profissional individualizado.'
+                  ]).map((paragraph: string, index: number) => (
+                    <p key={index} className={index === 0 ? 'drop-cap serif-body text-2xl leading-relaxed mb-8' : 'text-xl leading-relaxed mb-6 font-medium'}>{paragraph}</p>
+                  ))}
+                  {selectedArticle.sourceLabel && (
+                    <div className="mt-10 rounded-3xl border border-line bg-white p-5 text-sm leading-relaxed text-ink/65">
+                      <span className="label-sm text-accent">Fonte</span>
+                      {selectedArticle.sourceUrl ? (
+                        <a href={selectedArticle.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block font-bold text-accent hover:underline">{selectedArticle.sourceLabel}</a>
+                      ) : <p className="mt-2 font-bold">{selectedArticle.sourceLabel}</p>}
+                    </div>
+                  )}
                 </div>
                 <button onClick={closeArticle} className="mt-16 w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-xl">
                   Concluir Leitura Consciente

@@ -7,7 +7,6 @@ export type Page =
   | 'meal-details'
   | 'content'
   | 'progress'
-  | 'chat'
   | 'profile'
   | 'settings-account'
   | 'settings-notifications'
@@ -29,6 +28,7 @@ export interface UserProfile {
   triggers: string[];
   foods: string[];
   comorbidities: string[];
+  checkIns: { date: string; mood: string }[];
   height: number;
   weightEvolution: { date: string; value: number }[];
   waistEvolution: { date: string; value: number }[];

@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   Camera,
   CheckCircle2,
+  Eye,
+  EyeOff,
   HelpCircle,
   Lock,
   LogIn,
@@ -65,6 +67,7 @@ export const AuthPage = ({
 }: AuthPageProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -360,8 +363,8 @@ export const AuthPage = ({
                 <ProfileAvatar photo={signupPhoto} size="lg" className="border-0" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-sm">Foto de perfil</p>
-                <p className="text-xs text-ink/50 mt-1">JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB.</p>
+                <p className="font-bold text-sm">Foto de perfil <span className="font-medium text-ink/45">(opcional)</span></p>
+                <p className="text-xs text-ink/50 mt-1">Você pode continuar sem foto. JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB.</p>
                 <label className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-2xl bg-accent/10 text-accent text-xs font-bold cursor-pointer hover:bg-accent/15">
                   <Camera size={14} /> Escolher foto
                   <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleSignupPhoto(e.target.files)} />
@@ -400,13 +403,21 @@ export const AuthPage = ({
                 <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35" />
                 <input
                   id="auth-password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(event) => { setPassword(event.target.value); setError(''); }}
                   placeholder="Sua senha aqui"
                   autoComplete={isLogin ? 'current-password' : 'new-password'}
-                  className="w-full rounded-2xl border border-line bg-paper py-4 pl-12 pr-4 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
+                  className="w-full rounded-2xl border border-line bg-paper py-4 pl-12 pr-12 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-2 text-ink/45 transition-colors hover:bg-white hover:text-accent"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
               {!isLogin && (
                 <motion.div
