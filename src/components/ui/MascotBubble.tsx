@@ -40,9 +40,6 @@ export const MascotBubble = ({ userProfile, onShowToast, onMoodShared }: MascotB
 
   return (
     <div className="bg-accent/10 border border-accent/20 p-5 sm:p-6 rounded-[2rem] sm:rounded-[2.5rem] relative overflow-hidden group">
-      <div className="absolute top-2 right-2 p-2 opacity-10 pointer-events-none w-28 h-28">
-        <img src={iconApp} alt="" className="w-full h-full object-contain" />
-      </div>
       <div className="flex flex-col items-start gap-4 relative z-10 sm:flex-row sm:items-center sm:gap-6">
         <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-inner shrink-0 overflow-hidden sm:w-24 sm:h-24">
           <img

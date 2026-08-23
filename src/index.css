@@ -91,6 +91,14 @@ select {
   text-transform: uppercase;
 }
 
+/* Logo wordmark — rendered in Camel Case, never uppercase */
+.logo-wordmark {
+  font-family: var(--font-display);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
 .logo-title {
   font-family: var(--font-display);
   line-height: 0.92;
@@ -224,14 +232,17 @@ select {
 .topbar-mark {
   width: 2.35rem;
   height: 2.35rem;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-pink));
-  color: var(--paper);
+  border-radius: 0.65rem;
+  background: #ffffff;
+  color: var(--accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 14%, transparent);
   flex-shrink: 0;
+  overflow: hidden;
+  padding: 0.3rem;
 }
 
 .topbar-eyebrow {
@@ -359,9 +370,38 @@ select {
 }
 
 /* ---------- Scrollbar ---------- */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 50%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  /* margin keeps thumb away from rounded container edges */
+  margin-block: 6px;
+  margin-inline: 2px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 9999px;
+  /* transparent border creates an inset clip so thumb never touches the container border */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 /* ---------- Animations ---------- */
 .spin-slow { animation: spin 10s linear infinite; }

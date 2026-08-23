@@ -1191,12 +1191,12 @@ export default function App() {
           className="topbar-brand"
           aria-label="Ir para o início"
         >
-          <div className="topbar-mark overflow-hidden p-1.5 bg-white border border-accent/20">
-            <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain" />
+          <div className="topbar-mark">
+            <img src={iconApp} alt="Mind Nutrition" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
-            <span className="topbar-eyebrow text-accent">Mind Nutrition</span>
-            <h1 className="topbar-title font-title">Mind Nutrition</h1>
+            <span className="topbar-eyebrow">Seu app de nutrição</span>
+            <h1 className="topbar-title logo-wordmark">Mind Nutrition</h1>
           </div>
         </button>
 

@@ -308,12 +308,12 @@ export const AuthPage = ({
         <div className="p-5 pt-20 md:p-8">
           <div className="md:mt-0">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-accent/10 p-2 flex items-center justify-center border border-accent/20">
-                <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain" />
+              <div className="w-12 h-12 rounded-2xl bg-white p-2 flex items-center justify-center border border-accent/20 shadow-2xs overflow-hidden shrink-0">
+                <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain bg-white block" />
               </div>
               <div>
-                <span className="label-sm text-accent">Mind Nutrition</span>
-                <p className="text-xs font-bold text-ink/40">Abordagem Gentil</p>
+                <span className="logo-wordmark text-base font-bold text-ink">Mind Nutrition</span>
+                <p className="text-[11px] font-bold text-accent uppercase tracking-wider">Abordagem Gentil</p>
               </div>
             </div>
             <div className="relative mx-auto mb-4 h-24 md:hidden">
