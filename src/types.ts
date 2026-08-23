@@ -18,6 +18,22 @@ export type Page =
   | 'admin-users'
   | 'admin-articles';
 
+export interface DailyNote {
+  id: string;
+  date: string;
+  text: string;
+  mood?: string;
+  createdAt: string;
+}
+
+export interface SleepLog {
+  id: string;
+  date: string;
+  hours: number;
+  quality: 'Ruim' | 'Regular' | 'Bom' | 'Excelente';
+  notes?: string;
+}
+
 export interface UserProfile {
   name: string;
   email: string;
@@ -29,6 +45,8 @@ export interface UserProfile {
   foods: string[];
   comorbidities: string[];
   checkIns: { date: string; mood: string }[];
+  dailyNotes?: DailyNote[];
+  sleepLogs?: SleepLog[];
   height: number;
   weightEvolution: { date: string; value: number }[];
   waistEvolution: { date: string; value: number }[];

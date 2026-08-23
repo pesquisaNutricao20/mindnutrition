@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Anton&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Basic&family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Anton", sans-serif;
+  --font-display: "Basic", sans-serif;
+  --font-title: "Basic", sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Libre Baskerville", serif;
   --font-outfit: "Outfit", sans-serif;
@@ -718,3 +719,15 @@ a {
     padding-right: 2rem;
   }
 }
+
+/* Button & interactive element tactile feedback */
+button:active:not(:disabled),
+.touch-press:active {
+  transform: scale(0.97);
+  transition: transform 100ms ease;
+}
+
+.swipe-tab-container {
+  touch-action: pan-y pinch-zoom;
+}
+

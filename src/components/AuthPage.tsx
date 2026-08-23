@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getFriendlySupabaseError, getSupabaseConfigMessage, supabase } from '../lib/supabase';
 import googleLogo from '../assets/google_logo.svg';
+import iconApp from '../assets/logo/icon_app.png';
 import { ProfileAvatar } from './ui/ProfileAvatar';
 import { FlyingMascotSprite } from './ui/FlyingMascotSprite';
 import { DEFAULT_PROFILE_PHOTO, MAX_IMAGE_SIZE_MB, readValidatedImages } from '../constants';
@@ -306,6 +307,15 @@ export const AuthPage = ({
 
         <div className="p-5 pt-20 md:p-8">
           <div className="md:mt-0">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-accent/10 p-2 flex items-center justify-center border border-accent/20">
+                <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain" />
+              </div>
+              <div>
+                <span className="label-sm text-accent">Mind Nutrition</span>
+                <p className="text-xs font-bold text-ink/40">Abordagem Gentil</p>
+              </div>
+            </div>
             <div className="relative mx-auto mb-4 h-24 md:hidden">
               <div className="absolute inset-x-16 bottom-2 h-10 rounded-full bg-accent/15 blur-2xl" />
               <motion.div

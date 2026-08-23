@@ -26,32 +26,35 @@ import {
   Mail,
   Edit2,
   CheckCircle,
+  CheckCircle2,
   Brain,
   Zap,
   TrendingUp,
   HelpCircle,
   Info,
-  ArrowUpLeft,
   X,
   Palette,
-  Trash2
+  Trash2,
+  PenTool,
+  BedDouble,
+  MessageSquare,
+  Compass,
+  AlertCircle
 } from 'lucide-react';
-import { GiOvermind } from 'react-icons/gi';
 import { BsFlower1 } from 'react-icons/bs';
 import { TbHealthRecognition } from 'react-icons/tb';
 import { PiHeartbeat } from 'react-icons/pi';
 import { FaBrain, FaWhatsapp } from 'react-icons/fa';
 import { motion, AnimatePresence, useAnimation, useMotionValue } from 'motion/react';
 import { useToast } from './components/Toast';
-import { MascotComponent } from './components/Mascot';
 import { AuthPage } from './components/AuthPage';
-import { Avatar } from './components/ui/Avatar';
 import { ProfileAvatar } from './components/ui/ProfileAvatar';
 import { HungerOdometer } from './components/ui/HungerOdometer';
 import { LoadingScreen } from './components/ui/LoadingScreen';
+import { MascotBubble } from './components/ui/MascotBubble';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
 import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL_PHOTOS } from './constants';
-import type { Page, UserProfile } from './types';
+import type { Page, UserProfile, DailyNote, SleepLog } from './types';
 import {
   deleteCurrentUserData,
   getFriendlySupabaseError,
@@ -64,9 +67,7 @@ import {
   supabase,
   upsertProfile,
 } from './lib/supabase';
-import mascoteEyesOpen from './assets/mascote_eyes_open.png';
-import mascoteEyesClosed from './assets/mascote_eyes_closed.png';
-import mascoteFlying from './assets/mascote_flying.png';
+import iconApp from './assets/logo/icon_app.png';
 import {
   BarChart,
   Bar,
@@ -92,7 +93,7 @@ export function calculateNutritionalNeeds(
   age: number, 
   gender: string, 
   activityLevel: number,
-  goals: string[]
+  goals: string[] = []
 ) {
   if (!weight || !heightCm || !age) return { imc: 0, tmb: 0, net: 0 };
   const heightM = heightCm / 100;
@@ -101,7 +102,7 @@ export function calculateNutritionalNeeds(
   let tmb = (10 * weight) + (6.25 * heightCm) - (5 * age);
   tmb = (gender === 'Masculino' || gender === 'Homem') ? tmb + 5 : tmb - 161;
 
-  let net = tmb * activityLevel;
+  let net = tmb * (activityLevel || 1.2);
   if (goals.includes('Emagrecimento consciente')) net -= 400;
   if (goals.includes('Hipertrofia') || goals.includes('Ganho de peso')) net += 400;
 
@@ -114,6 +115,31 @@ export function calculateNutritionalNeeds(
 
 type MetricPoint = { date: string; value: number };
 type MealClassification = 'Física' | 'Emocional' | 'Não classificada';
+
+export const HUNGER_DEFINITIONS = {
+  fisica: {
+    title: 'Fome fisiológica (Física)',
+    description: 'A fome fisiológica caracteriza-se pela necessidade biológica de ingestão de alimentos para manutenção das demandas energéticas e nutricionais do organismo, apresentando-se geralmente de maneira gradual e sendo reduzida após a ingestão alimentar.',
+    signals: [
+      'Aparece gradualmente ao longo do tempo',
+      'Estômago vazio, sensação física de abertura ou ronco',
+      'Aceita diferentes opções de alimentos saudáveis',
+      'Reduzida e satisfeita após a ingestão alimentar',
+      'Sensação de saciedade sem sentimento de culpa'
+    ]
+  },
+  emocional: {
+    title: 'Fome emocional',
+    description: 'A fome emocional refere-se ao comportamento de comer desencadeado ou influenciado por estados emocionais, como ansiedade, tristeza, estresse, frustração ou tédio, podendo acontecer independentemente da necessidade energética e estar associado à busca por alimentos específicos e mais palatáveis.',
+    signals: [
+      'Surge de repente com sensação de urgência',
+      'Busca por alimentos específicos e muito palatáveis (doces, massas, salgados)',
+      'Desencadeada por sentimentos (ansiedade, estresse, tédio, solidão)',
+      'Pode persistir mesmo após o estômago estar cheio',
+      'Frequentemente acompanhada por culpa ou arrependimento'
+    ]
+  }
+};
 
 const clampNumber = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 
@@ -141,6 +167,32 @@ const normalizeText = (value: unknown) => String(value || '')
 const getLatestMetricValue = (items?: MetricPoint[]) => {
   const latest = [...(items || [])].reverse().find(item => Number.isFinite(item.value) && item.value > 0);
   return latest?.value || null;
+};
+
+const parseDateForSorting = (dateStr: string) => {
+  if (!dateStr) return 0;
+  if (dateStr === 'Hoje') return Date.now();
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 2) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const currentYear = new Date().getFullYear();
+      return new Date(currentYear, month, day).getTime();
+    }
+    if (parts.length === 3) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const year = parseInt(parts[2], 10);
+      return new Date(year < 100 ? 2000 + year : year, month, day).getTime();
+    }
+  }
+  const parsed = new Date(dateStr).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const sortMetricsChronologically = (items: MetricPoint[] = []) => {
+  return [...items].sort((a, b) => parseDateForSorting(a.date) - parseDateForSorting(b.date));
 };
 
 const getMoodScore = (mood?: string | null) => {
@@ -175,6 +227,9 @@ const getMoodScore = (mood?: string | null) => {
     "raivoso(a)": 28,
     culpa: 24,
     tenso: 34,
+    cansado: 40,
+    "cansado(a)": 40,
+    triste: 30
   };
   return moodScores[key] ?? null;
 };
@@ -186,7 +241,7 @@ const isEmotionallyChargedMood = (mood?: string | null) => {
 
 const normalizeMealType = (type?: string | null): MealClassification => {
   const value = normalizeText(type);
-  if (value.includes('fisica')) return 'Física';
+  if (value.includes('fisica') || value.includes('fisiologica')) return 'Física';
   if (value.includes('emocional')) return 'Emocional';
   return 'Não classificada';
 };
@@ -199,7 +254,7 @@ const inferMealType = (meal: any): MealClassification => {
   const hasBehaviorSignals = [preHunger, postHunger, satisfaction].some(value => value !== null)
     || Boolean(meal?.preMood || meal?.postMood || meal?.mood);
 
-  if (!hasBehaviorSignals) return existingType;
+  if (!hasBehaviorSignals) return existingType !== 'Não classificada' ? existingType : 'Física';
 
   let physicalScore = 0;
   let emotionalScore = 0;
@@ -229,9 +284,9 @@ const inferMealType = (meal: any): MealClassification => {
   if (existingType === 'Física') physicalScore += 1;
   if (existingType === 'Emocional') emotionalScore += 1;
 
-  if (physicalScore >= 3 && physicalScore >= emotionalScore + 1) return 'Física';
-  if (emotionalScore >= 3 && emotionalScore >= physicalScore + 1) return 'Emocional';
-  return existingType;
+  if (physicalScore >= 3 && physicalScore >= emotionalScore) return 'Física';
+  if (emotionalScore >= 3 && emotionalScore > physicalScore) return 'Emocional';
+  return existingType !== 'Não classificada' ? existingType : 'Física';
 };
 
 const calculateProfileInsightScore = (profile: Partial<UserProfile>) => {
@@ -349,7 +404,7 @@ const getWeightGoal = (profile: Partial<UserProfile>) => {
 
 const buildRcqData = (profile: Partial<UserProfile>) => {
   const latestHip = getLatestMetricValue(profile.hipEvolution);
-  return (profile.waistEvolution || [])
+  const unsorted = (profile.waistEvolution || [])
     .map(waist => {
       const sameDateHip = (profile.hipEvolution || []).find(hip => hip.date === waist.date)?.value;
       const hipValue = sameDateHip || latestHip;
@@ -359,6 +414,7 @@ const buildRcqData = (profile: Partial<UserProfile>) => {
       };
     })
     .filter(item => item.value > 0);
+  return sortMetricsChronologically(unsorted);
 };
 
 type ChartFrameProps = {
@@ -440,6 +496,8 @@ const mergeProfileData = (base: UserProfile, incoming?: Partial<UserProfile> | n
     'foods',
     'comorbidities',
     'checkIns',
+    'dailyNotes',
+    'sleepLogs',
     'weightEvolution',
     'waistEvolution',
     'armEvolution',
@@ -484,86 +542,101 @@ const getPostLoginPage = (profile: Partial<UserProfile>): Page => (
   isProfileComplete(profile) ? 'dashboard' : 'diagnosis'
 );
 
-// Keep modal/card overlays as a dark scrim instead of backdrop blur; high blur is costly on mobile GPUs.
 const MODAL_BACKDROP_CLASS = 'absolute inset-0 bg-ink/85';
-
-const COLORS = ['var(--accent)', 'var(--accent-pink)', '#5A9485'];
-
-const MOCK_WEIGHT_DATA = [
-  { date: '01/04', value: 76.5 },
-  { date: '08/04', value: 76.0 },
-  { date: '15/04', value: 75.8 },
-  { date: '22/04', value: 75.3 },
-  { date: '29/04', value: 75.0 },
-];
-
-const isDemoWeightEvolution = (items?: MetricPoint[]) => (
-  Boolean(items?.length === MOCK_WEIGHT_DATA.length)
-  && MOCK_WEIGHT_DATA.every((mockItem, index) => items?.[index]?.date === mockItem.date && items?.[index]?.value === mockItem.value)
-);
+const COLORS = ['#6BAF9E', '#C9A3B5', '#5A9485', '#8EBAAA', '#D6EDE6'];
 
 const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
   const currentDateLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const normalizeDates = (items: MetricPoint[] = []) => items.map(item => item.date === 'Hoje' ? { ...item, date: currentDateLabel } : item);
-  const normalizedProfile = {
-    ...profile,
-    weightEvolution: normalizeDates(profile.weightEvolution),
-    waistEvolution: normalizeDates(profile.waistEvolution),
-    armEvolution: normalizeDates(profile.armEvolution),
-    abdomenEvolution: normalizeDates(profile.abdomenEvolution),
-    hipEvolution: normalizeDates(profile.hipEvolution),
-  };
-  const profileLooksIncomplete = !normalizedProfile.onboardingComplete && !normalizedProfile.profileCompletedAt && !normalizedProfile.height;
-  if (!profileLooksIncomplete || !isDemoWeightEvolution(normalizedProfile.weightEvolution)) return normalizedProfile;
   return {
-    ...normalizedProfile,
-    weightEvolution: [],
-    waistEvolution: [],
-    hipEvolution: [],
-    age: normalizedProfile.age === 25 ? 0 : normalizedProfile.age,
+    ...profile,
+    weightEvolution: sortMetricsChronologically(normalizeDates(profile.weightEvolution)),
+    waistEvolution: sortMetricsChronologically(normalizeDates(profile.waistEvolution)),
+    armEvolution: sortMetricsChronologically(normalizeDates(profile.armEvolution)),
+    abdomenEvolution: sortMetricsChronologically(normalizeDates(profile.abdomenEvolution)),
+    hipEvolution: sortMetricsChronologically(normalizeDates(profile.hipEvolution)),
   };
 };
 
 const DEFAULT_LIBRARY_ARTICLES = [
   {
-    id: 'sono-ultraprocessados', title: 'Comida de tirar o sono', duration: '3 min', icon: Moon, type: 'Sono e alimentação', image: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&q=80&w=800',
+    id: 'fome-fisica-emocional',
+    title: 'Fome Física vs Fome Emocional',
+    duration: '4 min',
+    icon: Heart,
+    type: 'Consciência Alimentar',
+    image: 'https://images.unsplash.com/photo-1543362906-acfc16c67564?auto=format&fit=crop&q=80&w=800',
+    summary: 'Aprenda a diferenciar os sinais do seu corpo e acolher suas vontades com gentileza.',
+    content: [
+      'A fome fisiológica caracteriza-se pela necessidade biológica de ingestão de alimentos para manutenção das demandas energéticas e nutricionais do organismo, apresentando-se geralmente de maneira gradual e sendo reduzida após a ingestão alimentar.',
+      'A fome emocional refere-se ao comportamento de comer desencadeado ou influenciado por estados emocionais, como ansiedade, tristeza, estresse, frustração ou tédio, podendo acontecer independentemente da necessidade energética e estar associado à busca por alimentos específicos e mais palatáveis.',
+      'Observar a origem da sua vontade de comer não serve para você se julgar ou se restringir. Serve para dar ao corpo exatamente o que ele precisa: alimento nutritivo quando há fome biológica, ou descanso, acolhimento e carinho quando há uma necessidade emocional.'
+    ],
+    sourceLabel: 'Prof. Wanderleia da Consolação Paiva'
+  },
+  {
+    id: 'mindful-eating-pausa',
+    title: 'Mindful Eating: A Arte da Pausa',
+    duration: '3 min',
+    icon: Leaf,
+    type: 'Prática Consciente',
+    image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&q=80&w=800',
+    summary: 'Como três respirações profundas antes da refeição transformam sua digestão e saciedade.',
+    content: [
+      'Comer no piloto automático, olhando telas ou sob pressa, impede o cérebro de registrar os sinais naturais de saciedade emitidos pelo estômago e pelo trato gastrointestinal.',
+      'Fazer uma breve pausa de 30 segundos antes da primeira garfada: observar as cores, os aromas e agradecer pelo prato ativa o sistema nervoso parassimpático, preparando as enzimas digestivas.',
+      'Comer devagar e saborear cada textura traz satisfação genuína com quantidades confortáveis de comida.'
+    ],
+    sourceLabel: 'Abordagem Mind Nutrition'
+  },
+  {
+    id: 'sono-ultraprocessados',
+    title: 'Comida de tirar o sono',
+    duration: '3 min',
+    icon: Moon,
+    type: 'Sono e alimentação',
+    image: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&q=80&w=800',
     summary: 'Como ultraprocessados, cafeína e refeições pesadas podem atrapalhar suas noites.',
     content: [
       'Os ultraprocessados podem interferir no funcionamento de hormônios como a melatonina, aumentar a inflamação e tornar a digestão mais lenta - fatores que podem incomodar na hora de dormir.',
       'Refrigerantes e energéticos, doces e sobremesas, além de lanches tipo fast food, estão entre os exemplos citados por reunirem cafeína, açúcar, gordura e sal em níveis que podem prejudicar o relaxamento e o sono profundo.',
       'Em vez de buscar perfeição, observe com curiosidade: o que você costuma comer e beber nas horas que antecedem o sono? Pequenos ajustes na rotina podem ser um bom ponto de partida.'
-    ], sourceLabel: 'Hospital Alemão Oswaldo Cruz', sourceUrl: 'https://www.hospitaloswaldocruz.org.br/imprensa/hospital-na-midia/comida-de-tirar-o-sono-como-os-ultraprocessados-prejudicam-as-suas-noites/'
+    ],
+    sourceLabel: 'Hospital Alemão Oswaldo Cruz',
+    sourceUrl: 'https://www.hospitaloswaldocruz.org.br/imprensa/hospital-na-midia/comida-de-tirar-o-sono-como-os-ultraprocessados-prejudicam-as-suas-noites/'
   },
   {
-    id: 'sono-comportamento-alimentar', title: 'Sono, apetite e escolhas alimentares', duration: '5 min', icon: Coffee, type: 'Ciência do sono', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800',
+    id: 'sono-comportamento-alimentar',
+    title: 'Sono, apetite e escolhas alimentares',
+    duration: '5 min',
+    icon: Coffee,
+    type: 'Ciência do sono',
+    image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800',
     summary: 'Entenda a relação entre menos sono, sinais de fome e escolhas alimentares.',
     content: [
       'A privação de sono pode aumentar a grelina, hormônio associado à fome, e reduzir a leptina, relacionada à saciedade. Essa combinação tende a intensificar o apetite.',
       'Alterações no sono também podem influenciar o comportamento alimentar, favorecendo escolhas mais frequentes de alimentos doces e de maior densidade energética em momentos de cansaço.',
       'Esse conhecimento não é motivo para culpa: ele ajuda a entender que sono, alimentação e emoções fazem parte da mesma rotina de cuidado.'
-    ], sourceLabel: 'Padrões de sono, comportamento alimentar e o risco de doenças não transmissíveis', sourceUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10255419/'
+    ],
+    sourceLabel: 'Padrões de sono, comportamento alimentar e o risco de doenças não transmissíveis',
+    sourceUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10255419/'
   },
   {
-    id: 'sono-dieta-saudavel', title: 'Qualidade do sono e dieta saudável', duration: '3 min', icon: Leaf, type: 'Revisão sistemática', image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&q=80&w=800',
-    summary: 'Boas noites de sono e uma alimentação equilibrada costumam caminhar juntas.',
+    id: 'autocompaixao-alimentacao',
+    title: 'Autocompaixão contra o ciclo de dietas',
+    duration: '4 min',
+    icon: Sparkles,
+    type: 'Cuidado Emocional',
+    image: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=800',
+    summary: 'Por que a autocrítica piora a compulsão e como a gentileza restaura o equilíbrio.',
     content: [
-      'Uma revisão sistemática aponta que pessoas que relatam duração de sono curta têm menor probabilidade de manter uma dieta saudável, enquanto a boa qualidade do sono se associa a uma maior probabilidade de escolhas alimentares saudáveis.',
-      'A relação é de mão dupla: rotina, ambiente, estresse, refeições e descanso podem se influenciar. Por isso, vale olhar para a semana inteira, e não para uma única noite ou refeição.',
-      'Experimente escolher um pequeno cuidado possível hoje: reduzir telas perto de dormir, fazer uma refeição mais tranquila ou preparar um horário de descanso mais regular.'
-    ], sourceLabel: 'Impacto da alimentação associada ao hábito do sono: uma revisão sistemática'
-  },
-  {
-    id: 'sono-peso', title: 'Sono reduzido e ganho de peso', duration: '4 min', icon: Heart, type: 'Leitura científica', image: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=800',
-    summary: 'Por que noites curtas podem mexer com a fome e o apetite por doces e carboidratos.',
-    content: [
-      'Estudos reunidos em uma revisão apontam que a privação crônica de sono pode influenciar o peso por efeitos no apetite, na atividade física e na termorregulação.',
-      'Em um estudo citado, comparar quatro horas com dez horas de sono ao longo de dois dias aumentou fome e apetite, especialmente por alimentos ricos em gordura e carboidratos, junto a alterações em grelina e leptina.',
-      'Cuidar do sono não é uma regra rígida nem uma solução isolada. É uma forma gentil de apoiar o corpo e tornar as escolhas alimentares um pouco mais fáceis.'
-    ], sourceLabel: 'Duração reduzida do sono e ganho de peso: uma revisão sistemática', sourceUrl: 'https://docs.google.com/document/d/1cALISiOtVT7v5QywW867eYoB7ayQe_EAfd8bDaPUJ1Y/edit?tab=t.0'
+      'Dietas restritivas e regras extremas geram estresse mental. Quando um deslize acontece, a autocrítica frequente desencadeia a sensação de fracasso e novos episódios de exagero.',
+      'A autocompaixão consiste em tratar a si mesmo com a mesma bondade que você ofereceria a um amigo querido em um momento difícil.',
+      'Cada dia e cada refeição são uma nova oportunidade para recomeçar com calma e carinho com seu corpo.'
+    ],
+    sourceLabel: 'Dr. Kristin Neff - Mindful Self-Compassion'
   }
 ];
-
-// ---------- Sub-Components ----------
 
 export default function App() {
   const { toast } = useToast();
@@ -580,8 +653,11 @@ export default function App() {
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [savedLoginNotice, setSavedLoginNotice] = useState(false);
   const [themeId, setThemeId] = useState(() => localStorage.getItem('mindTheme') || DEFAULT_THEME_ID);
+  const [showHungerModal, setShowHungerModal] = useState(false);
+  const [showTutorialModal, setShowTutorialModal] = useState(false);
+  const [showDailyDiaryModal, setShowDailyDiaryModal] = useState(false);
+  const [showSleepModal, setShowSleepModal] = useState(false);
   const [adminLoggedIn, setAdminLoggedIn] = useState(() => localStorage.getItem('nutriAdminLoggedIn') === 'true');
   const [adminUsers, setAdminUsers] = useState<any[]>(() => {
     const saved = localStorage.getItem('nutriAllUsers');
@@ -601,6 +677,8 @@ export default function App() {
     foods: [],
     comorbidities: [],
     checkIns: [],
+    dailyNotes: [],
+    sleepLogs: [],
     height: 0,
     weightEvolution: [],
     waistEvolution: [],
@@ -610,6 +688,38 @@ export default function App() {
     age: 0,
     activityLevel: 1.2
   });
+
+  // Touch Swipe for mobile tab navigation
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+
+  const mainTabs: Page[] = ['dashboard', 'progress', 'content', 'profile'];
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchEndX.current === null) return;
+    const distance = touchStartX.current - touchEndX.current;
+    const isLeftSwipe = distance > 70;
+    const isRightSwipe = distance < -70;
+    const currentIndex = mainTabs.indexOf(currentPage);
+
+    if (currentIndex >= 0) {
+      if (isLeftSwipe && currentIndex < mainTabs.length - 1) {
+        setCurrentPage(mainTabs[currentIndex + 1]);
+      } else if (isRightSwipe && currentIndex > 0) {
+        setCurrentPage(mainTabs[currentIndex - 1]);
+      }
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
 
   const persistUserProfile = async (profile: UserProfile, userId = currentUserId) => {
     const profileToPersist = withProfileCompletionState(sanitizeProfileDefaults(profile));
@@ -646,7 +756,6 @@ export default function App() {
         try {
           const savedProfile = withProfileCompletionState(sanitizeProfileDefaults(JSON.parse(saved)));
           setUserProfile(savedProfile);
-          setSavedLoginNotice(true);
           setCurrentPage(prev => prev === 'landing' ? getPostLoginPage(savedProfile) : prev);
         } catch {}
       }
@@ -662,7 +771,6 @@ export default function App() {
             const metadataName = metadata.full_name || metadata.name || metadata.display_name || '';
             const metadataPhoto = metadata.avatar_url || metadata.picture || '';
             setCurrentUserId(session.user.id);
-            setSavedLoginNotice(true);
             const remoteProfile = await loadProfile(session.user.id).catch(() => null);
             const remoteMeals = isSupabaseDataSyncAvailable()
               ? await loadMeals(session.user.id).catch(() => [])
@@ -679,20 +787,6 @@ export default function App() {
                 setCurrentPage(page => page === 'landing' || page === 'dashboard' ? getPostLoginPage(hydrated) : page);
                 return hydrated;
               });
-            } else if (session.user.email && active) {
-              setUserProfile(prev => {
-                const hydrated = withProfileCompletionState(mergeProfileData(prev, {
-                  email: session.user.email || prev.email,
-                  name: prev.name || metadataName,
-                  photo: prev.photo && prev.photo !== DEFAULT_PROFILE_PHOTO ? prev.photo : metadataPhoto || prev.photo,
-                }));
-                localStorage.setItem('nutriUser', JSON.stringify(hydrated));
-                upsertProfile(session.user.id, session.user.email || hydrated.email, hydrated as unknown as Record<string, unknown>).catch((err) => {
-                  console.info('Supabase profile sync skipped:', getFriendlySupabaseError(err));
-                });
-                setCurrentPage(page => page === 'landing' || page === 'dashboard' ? getPostLoginPage(hydrated) : page);
-                return hydrated;
-              });
             }
             if (remoteMeals.length && active) {
               setLoggedMeals(remoteMeals);
@@ -704,7 +798,7 @@ export default function App() {
         }
       }
 
-      setTimeout(() => active && setIsLoading(false), 900);
+      setTimeout(() => active && setIsLoading(false), 600);
     };
     hydrate();
     return () => { active = false; };
@@ -723,18 +817,11 @@ export default function App() {
       localStorage.setItem('nutriAllUsers', JSON.stringify(allUsers));
       setAdminUsers(allUsers);
     }
-  }, [userProfile]);
+  }, [userProfile, isLoading]);
 
   useEffect(() => {
     localStorage.setItem('nutriArticles', JSON.stringify(adminArticles));
   }, [adminArticles]);
-
-  useEffect(() => {
-    const targetPath = ['admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) ? '/nutricionista' : '/';
-    if (window.location.pathname !== targetPath) {
-      window.history.replaceState({}, '', targetPath);
-    }
-  }, [currentPage]);
 
   const articleControls = useAnimation();
   const articleY = useMotionValue(0);
@@ -772,6 +859,39 @@ export default function App() {
     }
   };
 
+  const addDailyNote = (noteText: string, mood?: string) => {
+    if (!noteText.trim()) return;
+    const newNote: DailyNote = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      text: noteText.trim(),
+      mood: mood || 'Neutro',
+      createdAt: new Date().toISOString()
+    };
+    const updated = {
+      ...userProfile,
+      dailyNotes: [newNote, ...(userProfile.dailyNotes || [])]
+    };
+    persistUserProfile(updated);
+    toast('Anotação do dia salva no seu diário!', 'success');
+  };
+
+  const addSleepLog = (hours: number, quality: 'Ruim' | 'Regular' | 'Bom' | 'Excelente', notes?: string) => {
+    const newLog: SleepLog = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      hours,
+      quality,
+      notes: notes?.trim()
+    };
+    const updated = {
+      ...userProfile,
+      sleepLogs: [newLog, ...(userProfile.sleepLogs || [])]
+    };
+    persistUserProfile(updated);
+    toast('Registro de sono adicionado!', 'success');
+  };
+
   // ---------- Navigation ----------
 
   const navItems = [
@@ -803,12 +923,12 @@ export default function App() {
           className="topbar-brand"
           aria-label="Ir para o início"
         >
-          <div className="topbar-mark">
-            <BsFlower1 size={18} />
+          <div className="topbar-mark overflow-hidden p-1.5 bg-white border border-accent/20">
+            <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
-            <span className="topbar-eyebrow">Mind Nutrition</span>
-            <h1 className="topbar-title">Mind Nutrition</h1>
+            <span className="topbar-eyebrow text-accent">Mind Nutrition</span>
+            <h1 className="topbar-title font-title">Mind Nutrition</h1>
           </div>
         </button>
 
@@ -822,13 +942,25 @@ export default function App() {
           </div>
         </div>
 
-        <button onClick={() => setCurrentPage('profile')} className="topbar-profile">
-          <span className="hidden min-w-0 text-right sm:block">
-            <span className="topbar-eyebrow">Perfil</span>
-            <span className="topbar-user">{userProfile.name || 'Completar dados'}</span>
-          </span>
-          <ProfileAvatar photo={userProfile.photo} size="sm" className="border-0 shadow-sm" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowHungerModal(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold hover:bg-accent/20 transition-colors"
+            title="Diferenciar Fome Física e Emocional"
+          >
+            <HelpCircle size={15} />
+            <span className="hidden md:inline">Fome Física x Emocional</span>
+          </button>
+
+          <button onClick={() => setCurrentPage('profile')} className="topbar-profile">
+            <span className="hidden min-w-0 text-right sm:block">
+              <span className="topbar-eyebrow">Perfil</span>
+              <span className="topbar-user">{userProfile.name || 'Completar dados'}</span>
+            </span>
+            <ProfileAvatar photo={userProfile.photo} size="sm" className="border-0 shadow-sm" />
+          </button>
+        </div>
       </header>
     );
   };
@@ -837,20 +969,21 @@ export default function App() {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
     return (
       <aside className="app-sidebar">
+        <div className="w-12 h-12 mb-6 rounded-2xl overflow-hidden p-1 border border-accent/20 bg-white shadow-sm flex items-center justify-center">
+          <img src={iconApp} alt="Mind Nutrition" className="w-full h-full object-contain" />
+        </div>
         {navItems.map((item) => {
           const isActive = currentPage === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => !item.disabled && setCurrentPage(item.id as Page)}
-              disabled={item.disabled}
-              aria-label={item.disabled ? 'Nutri AI temporariamente indisponível' : item.label}
-              className={`relative w-14 h-14 mb-2 flex items-center justify-center rounded-2xl transition-all ${item.disabled ? 'cursor-not-allowed opacity-35' : isActive ? 'bg-accent/20 text-accent' : 'text-ink/60 hover:bg-ink/5 hover:text-ink'
-                }`}
-              title={item.disabled ? 'Nutri AI temporariamente indisponível' : item.label}
+              onClick={() => setCurrentPage(item.id as Page)}
+              aria-label={item.label}
+              className={`relative w-14 h-14 mb-2 flex items-center justify-center rounded-2xl transition-all ${isActive ? 'bg-accent/20 text-accent' : 'text-ink/60 hover:bg-ink/5 hover:text-ink'}`}
+              title={item.label}
             >
               {item.primary ? (
-                <div className="w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center shadow-md hover:scale-105 transition-transform">
+                <div className="w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-transform">
                   <item.icon size={24} />
                 </div>
               ) : (
@@ -873,51 +1006,47 @@ export default function App() {
   };
 
   const renderMobileNav = () => {
-    if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
-    if (currentPage === 'meal-log') return null;
+    if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'meal-log'].includes(currentPage) || isLoading) return null;
 
-    // Mobile nav shows 5 items max for better UX
-    const mobileItems = navItems.filter(i => i.id !== 'profile');
-
+    // Mobile nav contains 5 symmetrical items: Início, Insights, Registrar (Center), Biblioteca, Perfil
     return (
-      <div className="mobile-nav fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pb-safe pointer-events-none">
-        <nav className="pointer-events-auto flex h-16 w-full max-w-[24rem] items-center justify-around rounded-full border border-white/60 bg-paper/72 px-2 shadow-[0_18px_45px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-          {mobileItems.map((item) => {
+      <div className="mobile-nav fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 pb-safe pointer-events-none">
+        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/70 bg-paper/90 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+          {navItems.map((item) => {
             const isActive = currentPage === item.id;
 
             if (item.primary) {
               return (
-                <button
-                  key={item.id}
-                  onClick={() => !item.disabled && setCurrentPage(item.id as Page)}
-                  disabled={item.disabled}
-                  className={`relative -top-4 w-16 h-16 rounded-full flex items-center justify-center border-4 border-paper transition-transform ${item.disabled ? 'cursor-not-allowed bg-ink/20 text-ink/35' : 'bg-accent text-paper shadow-lg hover:scale-105 active:scale-95'}`}
-                >
-                  <item.icon size={28} />
-                </button>
+                <div key={item.id} className="flex justify-center items-center">
+                  <button
+                    onClick={() => setCurrentPage('meal-log')}
+                    className="relative -top-5 w-14 h-14 rounded-full flex items-center justify-center border-4 border-paper bg-accent text-paper shadow-lg hover:scale-105 active:scale-95 transition-transform"
+                    aria-label="Registrar Refeição"
+                  >
+                    <PlusCircle size={30} />
+                  </button>
+                </div>
               );
             }
 
             return (
               <button
                 key={item.id}
-                onClick={() => !item.disabled && setCurrentPage(item.id as Page)}
-                disabled={item.disabled}
-                aria-label={item.disabled ? 'Nutri AI temporariamente indisponível' : item.label}
-                className={`flex flex-col items-center justify-center w-14 h-14 rounded-full gap-0.5 transition-colors ${item.disabled ? 'cursor-not-allowed text-ink/25' : isActive ? 'text-accent' : 'text-ink/50 hover:text-ink'
-                }`}
+                onClick={() => setCurrentPage(item.id as Page)}
+                aria-label={item.label}
+                className={`flex flex-col items-center justify-center h-14 rounded-full gap-0.5 transition-colors ${isActive ? 'text-accent font-bold' : 'text-ink/50 hover:text-ink'}`}
               >
-                <div className="relative p-2 rounded-full flex items-center justify-center">
+                <div className="relative p-1 rounded-full flex items-center justify-center">
                   {isActive && (
                     <motion.div
                       layoutId="mob-nav-active"
-                      className="absolute inset-0 rounded-full bg-accent/12"
+                      className="absolute inset-0 rounded-full bg-accent/15"
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <item.icon size={21} strokeWidth={isActive ? 2.6 : 2.1} className="relative z-10" />
+                  <item.icon size={20} strokeWidth={isActive ? 2.6 : 2} className="relative z-10" />
                 </div>
-                <span className="text-[8px] font-bold leading-none">{item.label}</span>
+                <span className="text-[9px] font-bold leading-none">{item.label}</span>
               </button>
             );
           })}
@@ -926,26 +1055,272 @@ export default function App() {
     );
   };
 
-  // ---------- Transitions ----------
-
   const PageWrapper = ({ children, noPadding = false }: { children: React.ReactNode, noPadding?: boolean }) => {
-    const hasTopbar = !['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'chat'].includes(currentPage);
-    const pagePadding = noPadding ? '' : `px-5 md:px-12 ${hasTopbar ? 'pt-28 md:pt-28' : 'pt-8 md:pt-12'}`;
-    const bottomPadding = noPadding ? '' : 'pb-32 md:pb-12';
+    const hasTopbar = !['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage);
+    const pagePadding = noPadding ? '' : `px-4 sm:px-8 md:px-12 ${hasTopbar ? 'pt-24 md:pt-28' : 'pt-8 md:pt-12'}`;
+    const bottomPadding = noPadding ? '' : 'pb-28 md:pb-16';
     return (
       <motion.div
-        initial={{ opacity: 0, y: 15 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -15 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`w-full min-h-screen ${bottomPadding} ${pagePadding} max-w-6xl mx-auto`}
+        exit={{ opacity: 0, y: -12 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+        className={`w-full min-h-screen ${bottomPadding} ${pagePadding} max-w-6xl mx-auto swipe-tab-container`}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {children}
       </motion.div>
     );
   };
 
-  // ---------- Components ----------
+  // ---------- Modal: Definições de Fome (Prof. Wanderleia) ----------
+
+  const renderHungerGuideModal = () => (
+    <AnimatePresence>
+      {showHungerModal && (
+        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowHungerModal(false)} />
+          <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="label-sm text-accent">Pausa de Observação & Orientação</span>
+                <h3 className="modal-title font-title mt-2 text-2xl sm:text-3xl font-bold">Fome Física x Fome Emocional</h3>
+              </div>
+              <button type="button" onClick={() => setShowHungerModal(false)} className="icon-button h-10 w-10"><X size={18} /></button>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-ink/70">
+              Escute os sinais do seu corpo com carinho. Use estas orientações para identificar sua real necessidade no momento:
+            </p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <section className="rounded-3xl border border-accent/25 bg-accent/5 p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-3 h-3 rounded-full bg-accent inline-block" />
+                  <h4 className="font-bold text-accent text-base sm:text-lg">{HUNGER_DEFINITIONS.fisica.title}</h4>
+                </div>
+                <p className="text-xs sm:text-sm text-ink/80 leading-relaxed italic mb-3">
+                  "{HUNGER_DEFINITIONS.fisica.description}"
+                </p>
+                <ul className="space-y-1.5 text-xs text-ink/70">
+                  {HUNGER_DEFINITIONS.fisica.signals.map((s, idx) => (
+                    <li key={idx} className="flex items-start gap-1.5">• <span>{s}</span></li>
+                  ))}
+                </ul>
+              </section>
+              <section className="rounded-3xl border border-accent-pink/30 bg-accent-pink/10 p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-3 h-3 rounded-full bg-accent-pink inline-block" />
+                  <h4 className="font-bold text-accent-pink text-base sm:text-lg">{HUNGER_DEFINITIONS.emocional.title}</h4>
+                </div>
+                <p className="text-xs sm:text-sm text-ink/80 leading-relaxed italic mb-3">
+                  "{HUNGER_DEFINITIONS.emocional.description}"
+                </p>
+                <ul className="space-y-1.5 text-xs text-ink/70">
+                  {HUNGER_DEFINITIONS.emocional.signals.map((s, idx) => (
+                    <li key={idx} className="flex items-start gap-1.5">• <span>{s}</span></li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+            <button type="button" onClick={() => setShowHungerModal(false)} className="mt-6 w-full rounded-full bg-accent py-4 text-sm font-bold text-paper shadow-md hover:bg-accent/90">
+              Entendi, obrigado(a)
+            </button>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
+  // ---------- Modal: Tutorial / Onboarding Passo a Passo ----------
+
+  const renderTutorialModal = () => (
+    <AnimatePresence>
+      {showTutorialModal && (
+        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowTutorialModal(false)} />
+          <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="label-sm text-accent">Boas-vindas</span>
+                <h3 className="modal-title font-title mt-1 text-2xl font-bold">Como Funciona o Mind Nutrition?</h3>
+              </div>
+              <button type="button" onClick={() => setShowTutorialModal(false)} className="icon-button h-10 w-10"><X size={18} /></button>
+            </div>
+            <div className="mt-6 space-y-4">
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-line">
+                <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0 font-bold">1</div>
+                <div>
+                  <h4 className="font-bold text-sm">Pausa & Observação Pré-Refeição</h4>
+                  <p className="text-xs text-ink/65 mt-1">Antes de comer, reserve 30 segundos para avaliar sua fome de 0 a 10 e reconhecer suas emoções.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-line">
+                <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0 font-bold">2</div>
+                <div>
+                  <h4 className="font-bold text-sm">Registro Gentil da Refeição</h4>
+                  <p className="text-xs text-ink/65 mt-1">Tire fotos, anote sabores e texturas sem foco em calorias ou regras rígidas.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-line">
+                <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0 font-bold">3</div>
+                <div>
+                  <h4 className="font-bold text-sm">Saciedade & Autoconhecimento</h4>
+                  <p className="text-xs text-ink/65 mt-1">Após comer, avalie seu nível de satisfação (0 a 5) e veja seus padrões no painel de Insights.</p>
+                </div>
+              </div>
+            </div>
+            <button type="button" onClick={() => setShowTutorialModal(false)} className="mt-6 w-full rounded-full bg-accent py-4 text-sm font-bold text-paper shadow-md hover:bg-accent/90">
+              Começar a Explorar
+            </button>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
+  // ---------- Modal: Diário do Dia ----------
+
+  const renderDailyDiaryModal = () => {
+    const [diaryText, setDiaryText] = useState('');
+    const [diaryMood, setDiaryMood] = useState('Calmo(a)');
+    return (
+      <AnimatePresence>
+        {showDailyDiaryModal && (
+          <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowDailyDiaryModal(false)} />
+            <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span className="label-sm text-accent">Diário Livre</span>
+                  <h3 className="modal-title font-title mt-1 text-2xl font-bold">Anotações & Reflexões do Dia</h3>
+                </div>
+                <button type="button" onClick={() => setShowDailyDiaryModal(false)} className="icon-button h-10 w-10"><X size={18} /></button>
+              </div>
+              <p className="mt-2 text-xs text-ink/60">
+                Escreva situações, sentimentos ou acontecimentos que influenciaram suas escolhas e sua alimentação hoje.
+              </p>
+              <div className="mt-4 space-y-4">
+                <textarea
+                  value={diaryText}
+                  onChange={(e) => setDiaryText(e.target.value)}
+                  placeholder="Como foi o seu dia? Sentiu ansiedade no trabalho? Celebrou algo especial? Descreva livremente..."
+                  className="w-full h-32 p-4 rounded-2xl bg-white border border-line focus:border-accent focus:outline-none text-sm resize-none font-medium"
+                />
+                <div>
+                  <label className="label-sm block text-accent mb-2">Sentimento predominante:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Calmo(a)', 'Alegre', 'Ansioso(a)', 'Estressado(a)', 'Cansado(a)', 'Grato(a)'].map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setDiaryMood(m)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${diaryMood === m ? 'bg-accent text-paper border-accent' : 'bg-white text-ink/65 border-line'}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    addDailyNote(diaryText, diaryMood);
+                    setDiaryText('');
+                    setShowDailyDiaryModal(false);
+                  }}
+                  className="w-full py-4 bg-accent text-paper rounded-full font-bold text-sm shadow-md hover:bg-accent/90"
+                >
+                  Salvar no Diário
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    );
+  };
+
+  // ---------- Modal: Módulo de Sono ----------
+
+  const renderSleepModal = () => {
+    const [hours, setHours] = useState(7.5);
+    const [quality, setQuality] = useState<'Ruim' | 'Regular' | 'Bom' | 'Excelente'>('Bom');
+    const [notes, setNotes] = useState('');
+    return (
+      <AnimatePresence>
+        {showSleepModal && (
+          <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowSleepModal(false)} />
+            <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span className="label-sm text-accent">Módulo de Sono</span>
+                  <h3 className="modal-title font-title mt-1 text-2xl font-bold">Como foi seu descanso?</h3>
+                </div>
+                <button type="button" onClick={() => setShowSleepModal(false)} className="icon-button h-10 w-10"><X size={18} /></button>
+              </div>
+              <p className="mt-2 text-xs text-ink/60">
+                Uma boa noite de sono regula a grelina e leptina, facilitando escolhas alimentares mais equilibradas.
+              </p>
+              <div className="mt-5 space-y-5">
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="label-sm text-accent">Horas dormidas:</label>
+                    <span className="text-xl font-bold text-accent">{hours}h</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="3"
+                    max="12"
+                    step="0.5"
+                    value={hours}
+                    onChange={(e) => setHours(parseFloat(e.target.value))}
+                    className="w-full accent-accent h-2 bg-line rounded-lg cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="label-sm block text-accent mb-2">Qualidade do sono:</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(['Ruim', 'Regular', 'Bom', 'Excelente'] as const).map(q => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => setQuality(q)}
+                        className={`py-2.5 rounded-2xl text-xs font-bold border text-center transition-colors ${quality === q ? 'bg-accent text-paper border-accent shadow-xs' : 'bg-white text-ink/65 border-line'}`}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="label-sm block text-accent mb-2">Observações (opcional):</label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Ex: Acordei durante a noite, bebi café tarde..."
+                    className="w-full px-4 py-3 rounded-2xl bg-white border border-line text-xs font-medium focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    addSleepLog(hours, quality, notes);
+                    setShowSleepModal(false);
+                  }}
+                  className="w-full py-4 bg-accent text-paper rounded-full font-bold text-sm shadow-md hover:bg-accent/90"
+                >
+                  Registrar Sono
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    );
+  };
 
   // ---------- Pages ----------
 
@@ -960,60 +1335,52 @@ export default function App() {
     >
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-paper via-transparent to-paper pointer-events-none z-0" />
       <div className="w-full h-full flex flex-col relative z-10 max-w-[2000px] mx-auto">
-
         <div className="flex-1 flex flex-col justify-center px-8 md:px-16 pb-20 md:pb-32 overflow-y-auto">
           <div className="max-w-4xl mx-auto w-full">
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-              <div className="mb-12 relative inline-block">
-                <div className="absolute -top-12 -left-8 text-accent/20 w-32 h-32 spin-slow pointer-events-none">
-                  <BsFlower1 size="100%" />
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-white p-2 border border-accent/20 shadow-md">
+                  <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain" />
                 </div>
-                <h1 className="font-title text-accent text-[4.5rem] sm:text-[6rem] md:text-[8rem] leading-[0.85] tracking-tight relative z-10">Mind</h1>
-                <h1 className="font-title text-accent-pink -mt-3 md:-mt-8 text-right text-[4.2rem] sm:text-[5.8rem] md:text-[8rem] leading-[0.85] text-shadow-md tracking-tight relative z-10">Nutrition</h1>
+                <span className="label-sm text-accent tracking-[0.2em]">Mind Nutrition</span>
+              </div>
+              <div className="mb-10 relative inline-block">
+                <h1 className="font-title text-accent text-[4rem] sm:text-[5.5rem] md:text-[7.5rem] leading-[0.85] tracking-tight relative z-10">Mind</h1>
+                <h1 className="font-title text-accent-pink -mt-2 md:-mt-6 text-right text-[3.8rem] sm:text-[5.2rem] md:text-[7.5rem] leading-[0.85] tracking-tight relative z-10">Nutrition</h1>
               </div>
 
-              <div className="max-w-md mb-12 bg-white/50 backdrop-blur-sm p-6 rounded-3xl border border-line shadow-sm relative z-20">
+              <div className="max-w-xl mb-10 bg-white/70 backdrop-blur-md p-6 sm:p-8 rounded-[2rem] border border-line shadow-sm relative z-20">
                 <p className="serif-body text-2xl md:text-3xl text-ink leading-tight mb-4">
-                  Um diálogo autêntico com seu próprio corpo.
+                  Vá além do ruído das dietas.
                 </p>
-                <p className="text-ink/70 font-medium text-sm md:text-base leading-relaxed">
-                  Uma abordagem gentil para a sua alimentação. Experimente refletir sobre o que você está sentindo e avalie se precisa, de fato, comer.
+                <p className="text-ink/75 font-medium text-sm md:text-base leading-relaxed">
+                  Descubra uma abordagem gentil para a sua alimentação. Experimente refletir sobre o que você está sentindo e avalie se precisa, de fato, comer.
                 </p>
               </div>
 
-              <button
-                onClick={() => {
-                  const saved = localStorage.getItem('nutriUser');
-                  if (saved) {
-                    try {
-                      setCurrentPage(getPostLoginPage(JSON.parse(saved)));
-                    } catch {
-                      setCurrentPage('diagnosis');
+              <div className="flex flex-wrap gap-4 z-20 relative">
+                <button
+                  onClick={() => {
+                    const saved = localStorage.getItem('nutriUser');
+                    if (saved) {
+                      try {
+                        setCurrentPage(getPostLoginPage(JSON.parse(saved)));
+                      } catch {
+                        setCurrentPage('diagnosis');
+                      }
+                    } else {
+                      setCurrentPage('auth');
                     }
-                  } else {
-                    setCurrentPage('auth');
-                  }
-                }}
-                className="group relative inline-flex items-center gap-4 bg-paper text-ink border-2 px-10 py-6 rounded-[2rem] overflow-hidden snappy hover:scale-105 shadow-xl animated-border z-20"
-              >
-                <span className="relative z-10 font-bold uppercase tracking-widest text-sm flex items-center gap-3">
-                  <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }} className="text-accent">
-                    <FaBrain size={24} />
-                  </motion.span>
-                  {localStorage.getItem('nutriUser') ? 'Continuar Jornada' : 'Começar Jornada'}
-                </span>
-                <ArrowRight size={20} className="relative z-10 group-hover:translate-x-1 transition-transform" />
-              </button>
+                  }}
+                  className="group relative inline-flex items-center gap-4 bg-accent text-paper px-8 sm:px-10 py-5 rounded-[2rem] font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 active:scale-95 transition-all"
+                >
+                  <FaBrain size={22} />
+                  <span>{localStorage.getItem('nutriUser') ? 'Continuar Jornada' : 'Começar Jornada'}</span>
+                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
             </motion.div>
           </div>
-        </div>
-        
-        {/* Wavy Shape Divider */}
-        <div className="absolute bottom-0 left-0 w-full overflow-hidden leading-[0] pointer-events-none z-0">
-          <svg className="relative block w-full h-[100px] md:h-[150px]" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120">
-            <path d="M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5C438.64,32.43,512.34,53.67,583,72.05c69.27,18,138.3,24.88,209.4,13.08,36.15-6,69.85-17.84,104.45-29.34C989.49,25,1113-14.29,1200,52.47V120H0Z" fill="var(--accent-pink)" opacity="0.3"></path>
-            <path d="M0,0V15.81C13,36.92,27.64,56.86,47.69,72.05,99.41,111.27,165,111,224.58,91.58c31.15-10.15,60.09-26.07,89.67-39.8,40.92-19,84.73-46,130.83-49.67,36.26-2.85,70.9,9.42,98.6,31.56,31.77,25.39,62.32,62,103.63,73,40.44,10.79,81.35-6.69,119.13-24.28s75.16-39,116.92-43.05c59.73-5.85,113.28,22.88,168.9,38.84,30.2,8.66,59,6.17,87.09-7.5,22.43-10.89,48-26.93,60.65-23.82V120H0Z" fill="var(--accent)" opacity="0.5"></path>
-          </svg>
         </div>
       </div>
     </motion.div>
@@ -1044,8 +1411,7 @@ export default function App() {
       setLoggedMeals(remoteMeals);
       localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
     }
-    setSavedLoginNotice(true);
-    toast(isLogin ? 'Login salvo com segurança.' : 'Conta criada. Complete seu perfil.', 'success');
+    toast(isLogin ? 'Login realizado com segurança.' : 'Conta criada! Complete seus dados iniciais.', 'success');
     setCurrentPage(getPostLoginPage(nextProfile));
   };
 
@@ -1054,34 +1420,34 @@ export default function App() {
     const [errorMsg, setErrorMsg] = useState('');
 
     const steps = [
-      { id: 'name', title: "Como prefere ser chamado?", subtitle: "Sua identidade é essencial.", type: 'input', field: 'name', placeholder: 'Seu nome ou apelido' },
-      { id: 'gender', title: "Como você se identifica?", subtitle: "Escolha a opção que melhor representa você.", type: 'options', field: 'gender', options: ["Homem", "Mulher", "Não Binário(a)", "Outro", "Prefiro não informar"] },
-      { id: 'basics', title: "Sobre sua rotina", subtitle: "Esses dados ajudam a personalizar o cuidado, sem metas rígidas.", type: 'basic', options: [
-        { label: "Sedentário (pouco ou nenhum)", value: 1.2 },
-        { label: "Levemente ativo (1-3 dias/sem)", value: 1.375 },
-        { label: "Moderadamente ativo (3-5 dias/sem)", value: 1.55 },
-        { label: "Muito ativo (6-7 dias/sem)", value: 1.725 }
+      { id: 'name', title: "Como prefere ser chamado?", subtitle: "Sua identidade é essencial para nós.", type: 'input', field: 'name', placeholder: 'Seu nome ou apelido' },
+      { id: 'gender', title: "Como você se identifica?", subtitle: "Escolha a opção que melhor representa você.", type: 'options', field: 'gender', options: ["Mulher", "Homem", "Não Binário(a)", "Outro", "Prefiro não informar"] },
+      { id: 'basics', title: "Sobre sua rotina", subtitle: "Esses dados ajudam a personalizar seu cuidado com gentileza.", type: 'basic', options: [
+        { label: "Sedentário (pouco ou nenhum exercício)", value: 1.2 },
+        { label: "Levemente ativo (exercício leve 1-3 dias/sem)", value: 1.375 },
+        { label: "Moderadamente ativo (exercício 3-5 dias/sem)", value: 1.55 },
+        { label: "Muito ativo (exercício pesado 6-7 dias/sem)", value: 1.725 }
       ]},
       { id: 'emotions', title: "Como você se sente ultimamente?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'initialEmotions', options: ["Estressado(a)", "Frustrado(a)", "Deprimido(a)", "Solitário(a)", "Ansioso(a)", "Raivoso(a)", "Alegre", "Animado(a)", "Calmo(a)", "Outro"] },
-      { id: 'comorbidities', title: "Você possui alguma condição de saúde?", subtitle: "Marque uma ou mais opções para personalizarmos seu cuidado.", type: 'multiselect', field: 'comorbidities', options: ["Não possuo nenhuma condição", "Sou diabético(a)", "Sou hipertenso(a)", "Tenho alterações da tireoide", "Tenho transtornos emocionais", "Outro"] },
-      { id: 'triggers', title: "Quais emoções você costuma sentir antes de comer sem fome física?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'triggers', options: ["Tédio", "Cansaço", "Raiva", "Tristeza", "Ansiedade", "Alegria", "Outro"] },
-      { id: 'foods', title: "Quando sente vontade de comer por causa das suas emoções, quais alimentos você procura?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'foods', options: ["Doces", "Salgados", "Massas", "Salgadinhos", "Fast food", "Outro"] },
+      { id: 'comorbidities', title: "Você possui alguma condição de saúde?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'comorbidities', options: ["Não possuo nenhuma condição", "Sou diabético(a)", "Sou hipertenso(a)", "Tenho alterações da tireoide", "Tenho transtornos emocionais", "Outro"] },
+      { id: 'triggers', title: "Quais emoções você costuma sentir antes de comer sem fome física?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'triggers', options: ["Tédio", "Cansaço", "Raiva", "Tristeza", "Ansiedade", "Alegria", "Outro"], hasHelpGuide: true },
+      { id: 'foods', title: "Quando sente vontade de comer por causa das suas emoções, quais alimentos procura?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'foods', options: ["Doces", "Salgados", "Massas", "Salgadinhos", "Fast food", "Outro"] },
       { id: 'objectives', title: "Qual é o seu principal objetivo com este aplicativo?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'objectives', options: ["Emagrecimento consciente", "Melhorar a relação com a comida", "Ganho de peso", "Hipertrofia", "Cuidar da minha saúde", "Outro"] },
-      { id: 'measurements', title: "Suas medidas iniciais", subtitle: "Para acompanhar sua evolução com gentileza.", type: 'measurements' }
+      { id: 'measurements', title: "Suas medidas iniciais", subtitle: "Para personalizar suas necessidades com acolhimento.", type: 'measurements' }
     ];
 
     const current = steps[diagnosisStep];
 
     const handleNext = async () => {
       setErrorMsg('');
-      if (current.type === 'input' && !tempProfile.name) {
+      if (current.type === 'input' && !tempProfile.name?.trim()) {
         setErrorMsg('Por favor, informe seu nome.');
         return;
       }
-      if ((current.type === 'input_number' && current.field === 'age') || current.type === 'basic') {
+      if (current.type === 'basic') {
         if (!tempProfile.age || tempProfile.age < 10) {
-        setErrorMsg('Informe uma idade válida para continuar.');
-        return;
+          setErrorMsg('Informe uma idade válida para continuar.');
+          return;
         }
       }
       if (current.type === 'measurements') {
@@ -1091,18 +1457,18 @@ export default function App() {
           return;
         }
         
-        // Calculate Nutritional Needs
         const result = calculateNutritionalNeeds(
           initialWeight,
           tempProfile.height,
           tempProfile.age || 25,
-          tempProfile.gender,
+          tempProfile.gender || 'Feminino',
           tempProfile.activityLevel || 1.2,
           tempProfile.objectives
         );
         
-        const finalProfile = { ...tempProfile, ...result };
+        const finalProfile = withProfileCompletionState({ ...tempProfile, ...result });
         await persistUserProfile(finalProfile);
+        toast('Perfil inicial configurado com sucesso!', 'success');
         setCurrentPage('dashboard');
         return;
       }
@@ -1114,32 +1480,45 @@ export default function App() {
 
     return (
       <PageWrapper>
-        <div className="space-y-10">
+        <div className="space-y-8 max-w-xl mx-auto">
           <div className="flex items-center gap-4">
             <button onClick={() => diagnosisStep > 0 ? setDiagnosisStep(s => s - 1) : setCurrentPage('auth')} className="p-2 -ml-2 rounded-full hover:bg-line transition-colors">
               <ArrowLeft size={20} className="text-ink" />
             </button>
-            <div className="flex-1 h-2 bg-line rounded-full overflow-hidden">
+            <div className="flex-1 h-2.5 bg-line rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-gradient-to-r from-accent to-accent-pink"
                 initial={{ width: 0 }}
                 animate={{ width: `${((diagnosisStep + 1) / steps.length) * 100}%` }}
               />
             </div>
+            <span className="text-xs font-bold text-ink/40">{diagnosisStep + 1}/{steps.length}</span>
           </div>
 
-          <div className="space-y-3">
-            <h2 className="display-title text-4xl">{current.title}</h2>
-            <p className="serif-body text-xl text-ink/60">{current.subtitle}</p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="display-title text-3xl sm:text-4xl">{current.title}</h2>
+              {current.hasHelpGuide && (
+                <button
+                  type="button"
+                  onClick={() => setShowHungerModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold hover:bg-accent/20"
+                >
+                  <HelpCircle size={14} /> Diferenciar Fomes
+                </button>
+              )}
+            </div>
+            <p className="serif-body text-lg text-ink/65">{current.subtitle}</p>
           </div>
 
-          <div className="pt-4 max-w-md">
-            {errorMsg && <p className="text-red-500 font-bold mb-4">{errorMsg}</p>}
+          <div className="pt-2">
+            {errorMsg && <p className="text-red-500 font-bold mb-4 text-sm bg-red-50 p-3 rounded-xl border border-red-200">{errorMsg}</p>}
 
             {current.type === 'input' && (
               <div className="space-y-6">
                 <input
-                  type="text" placeholder={current.placeholder}
+                  type="text"
+                  placeholder={current.placeholder}
                   className="w-full py-4 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-medium"
                   value={tempProfile.name}
                   onChange={(e) => { setTempProfile({ ...tempProfile, name: e.target.value }); setErrorMsg(''); }}
@@ -1148,26 +1527,7 @@ export default function App() {
                 />
                 <button
                   onClick={handleNext}
-                  className={`w-full py-5 text-paper rounded-full font-bold uppercase tracking-widest text-sm transition-colors ${tempProfile.name ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}
-                >
-                  Continuar
-                </button>
-              </div>
-            )}
-            
-            {current.type === 'input_number' && (
-              <div className="space-y-6">
-                <input
-                  type="number" placeholder={current.placeholder}
-                  className="w-full py-4 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-medium"
-                  value={tempProfile[current.field as keyof UserProfile] as any || ''}
-                  onChange={(e) => { setTempProfile({ ...tempProfile, [current.field!]: parseFloat(e.target.value) }); setErrorMsg(''); }}
-                  onKeyDown={(e) => e.key === 'Enter' && handleNext()}
-                  autoFocus
-                />
-                <button
-                  onClick={handleNext}
-                  className={`w-full py-5 text-paper rounded-full font-bold uppercase tracking-widest text-sm transition-colors ${tempProfile[current.field as keyof UserProfile] ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}
+                  className={`w-full py-5 text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-md transition-all ${tempProfile.name ? 'bg-accent hover:bg-accent/90 active:scale-95' : 'bg-ink/30 cursor-not-allowed'}`}
                 >
                   Continuar
                 </button>
@@ -1176,50 +1536,73 @@ export default function App() {
 
             {current.type === 'options' && (
               <div className="space-y-3">
-                {current.options?.map((opt: any) => (
-                  <button key={opt} onClick={() => { setTempProfile({ ...tempProfile, [current.field!]: opt }); handleNext(); }}
-                    className="w-full p-6 text-left border-2 border-line rounded-2xl hover:border-accent hover:bg-accent/5 font-medium text-lg transition-colors">
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {current.type === 'options_activity' && (
-              <div className="space-y-3">
-                {current.options?.map((opt: any) => (
-                  <button key={opt.label} onClick={() => { setTempProfile({ ...tempProfile, [current.field!]: opt.value }); handleNext(); }}
-                    className="w-full p-6 text-left border-2 border-line rounded-2xl hover:border-accent hover:bg-accent/5 font-medium text-lg transition-colors">
-                    {opt.label}
-                  </button>
-                ))}
+                {(current.options as string[] | undefined)?.map((opt: string) => {
+                  const isOther = opt === 'Outro';
+                  const isSelected = tempProfile[current.field as keyof UserProfile] === opt || (isOther && String(tempProfile[current.field as keyof UserProfile]).startsWith('Outro:'));
+                  return (
+                    <div key={opt} className="space-y-2">
+                      <button
+                        onClick={() => {
+                          if (isOther) {
+                            setTempProfile({ ...tempProfile, [current.field!]: 'Outro: ' });
+                          } else {
+                            setTempProfile({ ...tempProfile, [current.field!]: opt });
+                            setTimeout(handleNext, 120);
+                          }
+                        }}
+                        className={`w-full p-5 text-left border-2 rounded-2xl font-bold text-base sm:text-lg transition-all ${isSelected ? 'border-accent bg-accent/10 text-accent shadow-xs' : 'border-line hover:border-accent hover:bg-accent/5'}`}
+                      >
+                        {opt}
+                      </button>
+                      {isOther && isSelected && (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Especifique seu gênero..."
+                            className="flex-1 p-3 rounded-xl border-2 border-line bg-white focus:border-accent focus:outline-none text-sm font-medium"
+                            value={String(tempProfile[current.field as keyof UserProfile]).replace(/^Outro:\s*/, '')}
+                            onChange={(e) => setTempProfile({ ...tempProfile, [current.field!]: `Outro: ${e.target.value}` })}
+                            autoFocus
+                          />
+                          <button onClick={handleNext} className="px-5 py-3 bg-accent text-paper rounded-xl font-bold text-xs uppercase shadow-sm">
+                            Ok
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             {current.type === 'basic' && (
               <div className="space-y-6">
                 <div>
-                  <label className="label-sm">Qual é a sua idade?</label>
+                  <label className="label-sm text-accent mb-2 block">Qual é a sua idade?</label>
                   <input
                     type="number"
-                    placeholder="Ex: 25"
-                    className="mt-2 w-full py-4 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-medium"
+                    placeholder="Ex: 28"
+                    className="w-full py-3 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-bold"
                     value={tempProfile.age || ''}
-                    onChange={(e) => { setTempProfile({ ...tempProfile, age: parseFloat(e.target.value) }); setErrorMsg(''); }}
+                    onChange={(e) => { setTempProfile({ ...tempProfile, age: parseFloat(e.target.value) || 0 }); setErrorMsg(''); }}
                   />
                 </div>
                 <div>
-                  <label className="label-sm mb-3 block">Como é sua rotina de atividade física?</label>
+                  <label className="label-sm text-accent mb-3 block">Como é sua rotina de atividade física?</label>
                   <div className="grid gap-2">
-                    {current.options?.map((opt: any) => (
-                      <button key={opt.label} type="button" onClick={() => setTempProfile({ ...tempProfile, activityLevel: opt.value })}
-                        className={`w-full rounded-2xl border-2 p-4 text-left text-sm font-medium transition-colors ${tempProfile.activityLevel === opt.value ? 'border-accent bg-accent/10 text-accent' : 'border-line hover:border-accent'}`}>
+                    {(current.options as Array<{ label: string; value: number }> | undefined)?.map((opt: any) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => setTempProfile({ ...tempProfile, activityLevel: opt.value })}
+                        className={`w-full rounded-2xl border-2 p-4 text-left text-sm font-medium transition-colors ${tempProfile.activityLevel === opt.value ? 'border-accent bg-accent/10 text-accent shadow-xs' : 'border-line hover:border-accent'}`}
+                      >
                         {opt.label}
                       </button>
                     ))}
                   </div>
                 </div>
-                <button onClick={handleNext} className={`w-full py-5 text-paper rounded-full font-bold uppercase tracking-widest text-sm transition-colors ${tempProfile.age ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}>
+                <button onClick={handleNext} className={`w-full py-5 text-paper rounded-full font-bold uppercase tracking-widest text-sm transition-all ${tempProfile.age ? 'bg-accent hover:bg-accent/90 active:scale-95 shadow-md' : 'bg-ink/30 cursor-not-allowed'}`}>
                   Continuar
                 </button>
               </div>
@@ -1228,14 +1611,15 @@ export default function App() {
             {current.type === 'multiselect' && (
               <div className="space-y-6">
                 <div className="grid gap-3">
-                  {current.options?.map((opt: any) => {
-                    const isOther = String(opt).startsWith('Outro');
+                  {(current.options as string[] | undefined)?.map((opt: string) => {
+                    const isOther = opt.startsWith('Outro');
                     const arr = (tempProfile[current.field as keyof UserProfile] as string[]) || [];
                     const selected = arr.includes(opt) || (isOther && arr.some(i => i.startsWith('Outro')));
-                    
+
                     return (
-                      <div key={String(opt)}>
+                      <div key={opt}>
                         <button
+                          type="button"
                           onClick={() => {
                             if (isOther) {
                               if (selected) {
@@ -1248,64 +1632,79 @@ export default function App() {
                               setTempProfile({ ...tempProfile, [current.field!]: nextArr });
                             }
                           }}
-                          className={`w-full p-5 text-left border-2 rounded-2xl font-medium text-lg transition-colors ${selected ? 'border-accent bg-accent text-paper' : 'border-line hover:border-accent'}`}
+                          className={`w-full p-4 sm:p-5 text-left border-2 rounded-2xl font-bold text-base transition-all ${selected ? 'border-accent bg-accent text-paper shadow-sm' : 'border-line hover:border-accent bg-white/70'}`}
                         >
-                          {String(opt)}
+                          {opt}
                         </button>
                         {isOther && selected && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                          <div className="mt-2 flex gap-2">
                             <input
                               type="text"
                               autoFocus
-                              placeholder="Descreva..."
-                              className="w-full mt-3 p-4 border-2 border-line rounded-xl bg-transparent focus:border-accent outline-none font-medium"
-                              value={arr.find(i => i.startsWith('Outro'))?.replace(/^Outro[s]?: /, '') || ''}
+                              placeholder="Descreva aqui..."
+                              className="w-full p-3 border-2 border-line rounded-xl bg-white focus:border-accent outline-none font-medium text-sm"
+                              value={arr.find(i => i.startsWith('Outro'))?.replace(/^Outro[s]?:\s*/, '') || ''}
                               onChange={(e) => {
                                 const newArr = arr.filter(i => !i.startsWith('Outro'));
                                 newArr.push('Outro: ' + e.target.value);
                                 setTempProfile({ ...tempProfile, [current.field!]: newArr });
                               }}
                             />
-                          </motion.div>
+                          </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
-                <button onClick={handleNext} className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-md">
+                <button onClick={handleNext} className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-md hover:bg-accent/90 active:scale-95 transition-all">
                   Confirmar Escolhas
                 </button>
               </div>
             )}
 
-            {current.type === 'measurements' && (() => {
-              return (
-                <div className="space-y-8">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
-                    <div>
-                      <label className="label-sm">Altura (cm)</label>
-                      <input type="number" placeholder="Ex: 170" className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-medium outline-none"
-                        onChange={(e) => { setTempProfile({ ...tempProfile, height: parseFloat(e.target.value) }); setErrorMsg(''); }} />
-                    </div>
-                    <div>
-                      <label className="label-sm">Peso (kg)</label>
-                      <input type="number" placeholder="Ex: 70.5" className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-medium outline-none"
-                        onChange={(e) => { setTempProfile({ ...tempProfile, weightEvolution: [{ date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value: parseFloat(e.target.value) }] }); setErrorMsg(''); }} />
-                    </div>
+            {current.type === 'measurements' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-white p-5 rounded-2xl border border-line">
+                    <label className="label-sm text-accent mb-1 block">Altura (cm)</label>
+                    <input
+                      type="number"
+                      placeholder="Ex: 170"
+                      className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-bold outline-none"
+                      onChange={(e) => { setTempProfile({ ...tempProfile, height: parseFloat(e.target.value) || 0 }); setErrorMsg(''); }}
+                    />
                   </div>
-                  
-                  <div className="p-5 bg-accent-pink/10 border border-accent-pink/30 rounded-2xl flex gap-4">
-                    <BookOpen className="text-accent-pink shrink-0" />
-                    <p className="text-sm font-medium text-ink/80 leading-relaxed">
-                      Sua altura e peso nos ajudam a personalizar as recomendações. Essas medidas ficam privadas no seu perfil e não definem seu valor ou sua jornada.
-                    </p>
+                  <div className="bg-white p-5 rounded-2xl border border-line">
+                    <label className="label-sm text-accent mb-1 block">Peso Atual (kg)</label>
+                    <input
+                      type="number"
+                      placeholder="Ex: 70.5"
+                      className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-bold outline-none"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                        setTempProfile({
+                          ...tempProfile,
+                          weightEvolution: [{ date, value: val }]
+                        });
+                        setErrorMsg('');
+                      }}
+                    />
                   </div>
-                  <button onClick={handleNext} className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg hover:bg-accent/90">
-                    Finalizar Configuração
-                  </button>
                 </div>
-              );
-            })()}
+
+                <div className="p-4 bg-accent/10 border border-accent/20 rounded-2xl flex gap-3 items-center">
+                  <Sparkles className="text-accent shrink-0" size={22} />
+                  <p className="text-xs font-medium text-ink/75 leading-relaxed">
+                    Sua altura e peso nos ajudam a calibrar estimativas de energia de forma acolhedora e privativa.
+                  </p>
+                </div>
+
+                <button onClick={handleNext} className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg hover:bg-accent/90 active:scale-95 transition-all">
+                  Finalizar e Acessar Meu Espaço
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </PageWrapper>
@@ -1318,183 +1717,251 @@ export default function App() {
       const savedRating = localStorage.getItem('nutriAppFeedback');
       return savedRating ? Number(savedRating) : null;
     });
+
     const quotes = [
       'Hoje você não precisa resolver toda a sua vida. Precisa apenas cuidar do próximo passo.',
       'Compaixão por si mesmo é simplesmente dar a si a mesma bondade que daríamos aos outros. - Kristin Neff',
+      'Entre o estímulo e a resposta existe um espaço. Nesse espaço está nosso poder de escolher. - Viktor Frankl',
       'Você não pode parar as ondas, mas pode aprender a surfar. - Jon Kabat-Zinn',
       'A esperança pode tornar o momento presente menos difícil de suportar. - Thich Nhat Hanh'
     ];
+
     const awarenessScore = calculateAwarenessScore(userProfile, loggedMeals);
-    const profileProgress = calculateProfileInsightScore(userProfile);
-    const latestMood = userProfile.checkIns?.[userProfile.checkIns.length - 1]?.mood;
     const firstName = userProfile.name?.trim().split(/\s+/)[0] || 'você';
+    const latestMood = userProfile.checkIns?.[userProfile.checkIns.length - 1]?.mood;
+    const latestSleep = userProfile.sleepLogs?.[0];
 
     useEffect(() => {
       const interval = setInterval(() => {
         setQuoteIndex((prev) => (prev + 1) % quotes.length);
-      }, 5000);
+      }, 7000);
       return () => clearInterval(interval);
-    }, []);
+    }, [quotes.length]);
 
     return (
-    <PageWrapper>
-      <div className="space-y-12">
-        <header>
-          <p className="label-sm text-accent">Início</p>
-          <h2 className="serif-body text-2xl md:text-3xl text-ink/70 mt-2">
-            {userProfile.name ? `Espaço de ${userProfile.name}` : 'Espaço de Consciência'}
-          </h2>
-        </header>
-
-        <section className="mobile-card-padding animated-gradient p-8 md:p-12 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
-          <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
-          <div className="relative z-10 grid gap-8 lg:grid-cols-[1.35fr_0.85fr] lg:items-end">
+      <PageWrapper>
+        <div className="space-y-10">
+          <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h3 className="label-sm mb-4 glass-badge font-bold">Reflexão do dia</h3>
-              <div className="min-h-[7rem] flex items-center">
-                <AnimatePresence mode="wait">
-                  <motion.p key={quoteIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="serif-body text-2xl md:text-3xl leading-relaxed drop-shadow-sm">
-                    “{quotes[quoteIndex]}”
-                  </motion.p>
-                </AnimatePresence>
-              </div>
-              <button onClick={() => setCurrentPage('meal-log')} className="mt-7 inline-flex items-center gap-2 rounded-full bg-paper px-5 py-3 text-sm font-bold text-ink transition-transform hover:scale-[1.02]">
-                <PlusCircle size={17} /> Fazer uma pausa antes de comer
-              </button>
+              <p className="label-sm text-accent">Mind Nutrition</p>
+              <h2 className="serif-body text-2xl md:text-3xl text-ink/80 mt-1">
+                {userProfile.name ? `Espaço de ${firstName}` : 'Seu Espaço de Cuidado'}
+              </h2>
             </div>
-            <div className="rounded-[1.75rem] border border-white/20 bg-white/12 p-5 backdrop-blur-sm">
-              <p className="text-sm font-bold text-paper/80">Hoje, {firstName}</p>
-              <p className="mt-2 text-xl font-bold">{latestMood ? `Você registrou: ${latestMood}` : 'Seu espaço está pronto para começar.'}</p>
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-black/10 p-3"><span className="block text-2xl font-bold">{loggedMeals.length}</span><span className="text-[10px] font-bold uppercase tracking-wide text-paper/70">registros</span></div>
-                <div className="rounded-2xl bg-black/10 p-3"><span className="block text-2xl font-bold">{awarenessScore}%</span><span className="text-[10px] font-bold uppercase tracking-wide text-paper/70">consciência</span></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          <button onClick={() => setCurrentPage('meal-log')} className="group rounded-[1.75rem] border border-line bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent"><Coffee size={20} /></span>
-            <h3 className="mt-5 font-bold">Registrar uma refeição</h3>
-            <p className="mt-2 text-sm leading-relaxed text-ink/55">Observe fome, humor e saciedade no seu ritmo.</p>
-          </button>
-          <button onClick={() => setCurrentPage('progress')} className="group rounded-[1.75rem] border border-line bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-pink/15 text-accent-pink"><TrendingUp size={20} /></span>
-            <h3 className="mt-5 font-bold">Ver sinais da jornada</h3>
-            <p className="mt-2 text-sm leading-relaxed text-ink/55">{profileProgress ? 'Acompanhe sua leitura atual com contexto.' : 'Complete o perfil para liberar uma leitura inicial.'}</p>
-          </button>
-          <button onClick={() => setCurrentPage('content')} className="group rounded-[1.75rem] border border-line bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent"><BookOpen size={20} /></span>
-            <h3 className="mt-5 font-bold">Cuidar do sono</h3>
-            <p className="mt-2 text-sm leading-relaxed text-ink/55">Leituras breves sobre sono, apetite e alimentação.</p>
-          </button>
-        </section>
-
-        <section>
-          <div className="responsive-page-header mb-6">
-            <div className="flex items-center gap-3">
-              <BookOpen size={18} className="text-accent" />
-              <h3 className="label-sm">Biblioteca</h3>
-            </div>
-            <button onClick={() => setCurrentPage('content')} className="text-xs font-bold text-accent hover:underline">Ver tudo</button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {DEFAULT_LIBRARY_ARTICLES.slice(0, 3).map((post) => (
+            <div className="flex gap-2">
               <button
-                key={post.id}
-                onClick={() => { setSelectedArticle(post); setCurrentPage('content'); }}
-                className="group text-left bg-paper border border-line rounded-[1.5rem] overflow-hidden hover:shadow-md transition-all flex flex-row md:flex-col items-stretch md:items-start"
+                type="button"
+                onClick={() => setShowTutorialModal(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white border border-line text-xs font-bold text-ink/70 hover:border-accent hover:text-accent shadow-2xs"
               >
-                <div className="w-24 min-h-full md:w-full md:h-36 shrink-0 overflow-hidden bg-line">
-                  <img src={post.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <Compass size={15} /> Guia Rápido
+              </button>
+            </div>
+          </header>
+
+          {/* Mascote Interactive Bubble */}
+          <MascotBubble
+            userProfile={userProfile}
+            onShowToast={toast}
+            onMoodShared={(mood) => {
+              const checkIns = [...(userProfile.checkIns || []), { date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), mood }];
+              persistUserProfile({ ...userProfile, checkIns });
+            }}
+          />
+
+          {/* Quick Action: Pause & Log above cards */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setCurrentPage('meal-log')}
+              className="group flex items-center justify-between p-5 rounded-[2rem] bg-accent text-paper shadow-lg hover:bg-accent/95 active:scale-98 transition-all"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <PlusCircle size={26} />
                 </div>
-                <div className="p-4 flex-1">
-                  <span className="text-[8px] font-bold text-accent uppercase">{post.type}</span>
-                  <h4 className="font-bold text-sm md:text-base leading-tight mt-1 line-clamp-1">{post.title}</h4>
-                  <p className="text-[9px] md:text-xs text-ink/50 mt-1 line-clamp-2 md:line-clamp-1">{post.summary}</p>
+                <div className="text-left">
+                  <h3 className="font-bold text-lg">Fazer Pausa & Registrar Refeição</h3>
+                  <p className="text-xs text-paper/80 font-medium">Observe fome, saciedade e humor agora</p>
+                </div>
+              </div>
+              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+
+            <button
+              onClick={() => setShowDailyDiaryModal(true)}
+              className="group flex items-center justify-between p-5 rounded-[2rem] bg-white border border-line shadow-sm hover:border-accent active:scale-98 transition-all"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-accent-pink/15 text-accent-pink flex items-center justify-center">
+                  <PenTool size={24} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-lg text-ink">Diário do Dia</h3>
+                  <p className="text-xs text-ink/50 font-medium">Anote sentimentos e acontecimentos livres</p>
+                </div>
+              </div>
+              <ArrowRight size={20} className="text-ink/40 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+
+          {/* Card Reflexão do Dia & Status */}
+          <section className="mobile-card-padding animated-gradient p-6 md:p-10 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
+            <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" />
+            <div className="relative z-10 grid gap-6 lg:grid-cols-[1.4fr_0.8fr] lg:items-center">
+              <div>
+                <h3 className="label-sm mb-3 glass-badge font-bold inline-block">Reflexão do dia</h3>
+                <div className="min-h-[5.5rem] flex items-center">
+                  <AnimatePresence mode="wait">
+                    <motion.p key={quoteIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="serif-body text-xl md:text-2xl leading-relaxed drop-shadow-sm">
+                      “{quotes[quoteIndex]}”
+                    </motion.p>
+                  </AnimatePresence>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentPage('progress')}
+                className="rounded-[1.75rem] border border-white/30 bg-white/15 p-5 backdrop-blur-md text-left transition-transform hover:scale-[1.02] active:scale-98"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-paper/80 uppercase">Hoje, {firstName}</p>
+                  <ChevronRight size={16} className="text-paper/70" />
+                </div>
+                <p className="mt-1.5 text-lg font-bold truncate">{latestMood ? `Humor registrado: ${latestMood}` : 'Toque para ver seus sinais da jornada'}</p>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-black/10 p-2.5"><span className="block text-xl font-bold">{loggedMeals.length}</span><span className="text-[9px] font-bold uppercase tracking-wide text-paper/70">refeições</span></div>
+                  <div className="rounded-xl bg-black/10 p-2.5"><span className="block text-xl font-bold">{awarenessScore}%</span><span className="text-[9px] font-bold uppercase tracking-wide text-paper/70">consciência</span></div>
                 </div>
               </button>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <div className="responsive-page-header mb-6">
-            <div className="flex items-center gap-3">
-              <Coffee size={18} className="text-accent" />
-              <h3 className="label-sm">Entradas de Hoje</h3>
             </div>
-            {loggedMeals.length > 0 && (
-              <span className="text-xs font-bold text-accent bg-accent/10 px-3 py-1 rounded-full">{loggedMeals.length} registros</span>
-            )}
-          </div>
-          <div className="bg-paper border border-line rounded-[2rem] overflow-hidden">
-            {loggedMeals.length === 0 ? (
-              <div className="p-12 text-center">
-                <Coffee size={48} className="text-ink/20 mx-auto mb-4" />
-                <p className="serif-body text-xl text-ink/50 mb-2">Nenhuma refeição registrada ainda</p>
-                <p className="text-sm text-ink/40 mb-6">Comece a registrar suas refeições para acompanhar sua jornada alimentar</p>
-                <button onClick={() => setCurrentPage('meal-log')} className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors">
-                  Registrar Primeira Refeição
-                </button>
+          </section>
+
+          {/* Quick Hub Grid */}
+          <section className="grid gap-4 sm:grid-cols-3">
+            <button onClick={() => setCurrentPage('progress')} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent"><TrendingUp size={20} /></span>
+              <h3 className="mt-4 font-bold text-base">Sinais da Jornada</h3>
+              <p className="mt-1 text-xs leading-relaxed text-ink/55">Gráficos de evolução, fontes de fome e radar de consciência.</p>
+            </button>
+            <button onClick={() => setShowSleepModal(true)} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600"><Moon size={20} /></span>
+              <h3 className="mt-4 font-bold text-base">Cuidar do Sono</h3>
+              <p className="mt-1 text-xs leading-relaxed text-ink/55">
+                {latestSleep ? `${latestSleep.hours}h de sono (${latestSleep.quality}) registrado.` : 'Registre seu descanso e veja o impacto no apetite.'}
+              </p>
+            </button>
+            <button onClick={() => setCurrentPage('content')} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-pink/15 text-accent-pink"><BookOpen size={20} /></span>
+              <h3 className="mt-4 font-bold text-base">Biblioteca Científica</h3>
+              <p className="mt-1 text-xs leading-relaxed text-ink/55">Artigos acolhedores sobre nutrição gentil e autocompaixão.</p>
+            </button>
+          </section>
+
+          {/* Entradas de Hoje */}
+          <section>
+            <div className="responsive-page-header mb-4">
+              <div className="flex items-center gap-2.5">
+                <Coffee size={20} className="text-accent" />
+                <h3 className="label-sm text-accent">Entradas de Hoje</h3>
               </div>
-            ) : (
-              loggedMeals.slice(0, 8).map((meal: any, i: number) => {
-                const mealType = inferMealType(meal);
-                const MealIcon = meal.icon || (mealType === 'Física' ? TbHealthRecognition : mealType === 'Emocional' ? PiHeartbeat : Coffee);
-                return (
-                  <div key={i} onClick={() => { setSelectedMeal(meal); setCurrentPage('meal-details'); }}
-                    className="p-4 sm:px-6 border-b border-line last:border-0 flex items-center justify-between gap-3 hover:bg-accent/5 transition-colors cursor-pointer">
-                    <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${mealType === 'Emocional' ? 'bg-accent-pink/20 text-accent-pink' : mealType === 'Física' ? 'bg-accent/10 text-accent' : 'bg-ink/5 text-ink/50'}`}>
-                        <MealIcon size={20} />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="truncate font-bold text-base sm:text-lg">{meal.title || 'Refeição'}</h4>
-                        <p className="text-xs text-ink/50 font-medium">
-                          {meal.time || new Date(meal.date).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})} • {meal.postMood || meal.preMood || meal.mood || mealType}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight size={18} className="text-ink/30" />
-                  </div>
-                );
-              })
-            )}
-
-          </div>
-        </section>
-
-        <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
-          <p className="label-sm text-accent">Sua experiência</p>
-          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-ink/65">Como está sendo usar o aplicativo?</p>
-            <div className="flex gap-2" aria-label="Avalie o aplicativo de 1 a 5">
-              {[1, 2, 3, 4, 5].map((rating) => (
-                <button
-                  key={rating}
-                  type="button"
-                  onClick={() => { setAppRating(rating); localStorage.setItem('nutriAppFeedback', String(rating)); toast('Obrigada pela avaliação!', 'success'); }}
-                  className={`h-10 w-10 rounded-full border text-sm font-bold transition-colors ${appRating === rating ? 'border-accent bg-accent text-paper' : 'border-line bg-paper text-ink/55 hover:border-accent'}`}
-                  aria-label={`${rating} de 5`}
-                >
-                  {rating}
-                </button>
-              ))}
+              {loggedMeals.length > 0 && (
+                <span className="text-xs font-bold text-accent bg-accent/10 px-3 py-1 rounded-full">{loggedMeals.length} registros</span>
+              )}
             </div>
-          </div>
-        </section>
-      </div>
-    </PageWrapper>
+            <div className="bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm">
+              {loggedMeals.length === 0 ? (
+                <div className="p-10 text-center">
+                  <Coffee size={44} className="text-ink/20 mx-auto mb-3" />
+                  <p className="serif-body text-xl text-ink/60 mb-2">Nenhuma refeição registrada ainda</p>
+                  <p className="text-xs text-ink/45 mb-6 max-w-sm mx-auto">Comece a registrar suas refeições para acompanhar sua fome, saciedade e sentimentos.</p>
+                  <button onClick={() => setCurrentPage('meal-log')} className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 active:scale-95 transition-all">
+                    Registrar Primeira Refeição
+                  </button>
+                </div>
+              ) : (
+                loggedMeals.slice(0, 8).map((meal: any, i: number) => {
+                  const mealType = inferMealType(meal);
+                  const MealIcon = mealType === 'Física' ? TbHealthRecognition : mealType === 'Emocional' ? PiHeartbeat : Coffee;
+                  return (
+                    <div
+                      key={meal.id || i}
+                      onClick={() => { setSelectedMeal(meal); setCurrentPage('meal-details'); }}
+                      className="p-4 sm:px-6 border-b border-line last:border-0 flex items-center justify-between gap-3 hover:bg-accent/5 transition-colors cursor-pointer"
+                    >
+                      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                        {meal.photos?.[0] || meal.image ? (
+                          <img src={meal.photos?.[0] || meal.image} alt="" className="w-12 h-12 rounded-2xl object-cover border border-line shrink-0" />
+                        ) : (
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${mealType === 'Emocional' ? 'bg-accent-pink/20 text-accent-pink' : 'bg-accent/10 text-accent'}`}>
+                            <MealIcon size={22} />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="truncate font-bold text-base">{meal.title || 'Refeição'}</h4>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${mealType === 'Emocional' ? 'bg-accent-pink/15 text-accent-pink' : 'bg-accent/15 text-accent'}`}>
+                              {mealType}
+                            </span>
+                          </div>
+                          <p className="text-xs text-ink/50 font-medium mt-0.5">
+                            {meal.time || new Date(meal.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • Satisfação: {meal.satisfaction ?? 4}/5 • {meal.postMood || meal.preMood || 'Neutro'}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} className="text-ink/30 shrink-0" />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* Avaliação do App */}
+          <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+            <p className="label-sm text-accent">Sua experiência</p>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-medium text-ink/70">Como está sendo sua experiência com o Mind Nutrition?</p>
+              <div className="flex gap-2" aria-label="Avalie o aplicativo de 1 a 5">
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <button
+                    key={rating}
+                    type="button"
+                    onClick={() => { setAppRating(rating); localStorage.setItem('nutriAppFeedback', String(rating)); toast('Obrigada pelo seu feedback!', 'success'); }}
+                    className={`h-10 w-10 rounded-full border text-sm font-bold transition-all active:scale-95 ${appRating === rating ? 'border-accent bg-accent text-paper shadow-xs' : 'border-line bg-paper text-ink/60 hover:border-accent'}`}
+                    aria-label={`${rating} estrelas`}
+                  >
+                    {rating}★
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      </PageWrapper>
     );
   };
 
   const MealLog = () => {
-    const { toast } = useToast();
     const [step, setStep] = useState<'pre' | 'meal' | 'post'>('pre');
-    const [showHungerGuide, setShowHungerGuide] = useState(false);
-    const [log, setLog] = useState<{ preHunger: number; preMood: string; postHunger: number; postMood: string; satisfaction: number; notes: string; photos: string[] }>({ preHunger: 5, preMood: 'Neutro', postHunger: 5, postMood: 'Neutro', satisfaction: 3, notes: '', photos: [] });
+    const [log, setLog] = useState<{
+      title: string;
+      preHunger: number;
+      preMood: string;
+      postHunger: number;
+      postMood: string;
+      satisfaction: number;
+      notes: string;
+      photos: string[];
+    }>({
+      title: 'Refeição',
+      preHunger: 5,
+      preMood: 'Neutro',
+      postHunger: 5,
+      postMood: 'Neutro',
+      satisfaction: 4,
+      notes: '',
+      photos: []
+    });
 
     const handleMealPhotos = async (files: FileList | null) => {
       const result = await readValidatedImages(files, log.photos.length);
@@ -1504,6 +1971,7 @@ export default function App() {
       }
       if (result.images.length) {
         setLog(prev => ({ ...prev, photos: [...prev.photos, ...result.images] }));
+        toast('Foto adicionada!', 'success');
       }
     };
 
@@ -1518,197 +1986,253 @@ export default function App() {
       { label: 'Cansado(a)', icon: Coffee }
     ];
 
+    const satisfactionDescriptions: Record<number, string> = {
+      0: 'Nada satisfeito',
+      1: 'Muito pouco',
+      2: 'Pouco',
+      3: 'Moderadamente',
+      4: 'Satisfeito',
+      5: 'Muito'
+    };
+
     return (
       <PageWrapper>
-        <div className="space-y-8">
+        <div className="space-y-8 max-w-2xl mx-auto">
           <header className="flex items-center gap-4 border-b border-line pb-6">
-            <button onClick={() => step === 'pre' ? setCurrentPage('dashboard') : setStep(step === 'meal' ? 'pre' : 'meal')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                if (step === 'pre') setCurrentPage('dashboard');
+                else if (step === 'meal') setStep('pre');
+                else if (step === 'post') setStep('meal');
+              }}
+              className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors"
+              aria-label="Voltar etapa"
+            >
               <ArrowLeft size={20} />
             </button>
             <div>
-              <span className="label-sm text-accent">Passo {step === 'pre' ? '1' : step === 'meal' ? '2' : '3'}</span>
-              <h2 className="display-title text-3xl">{step === 'pre' ? 'Pré-refeição' : step === 'meal' ? 'A Refeição' : 'Pós-refeição'}</h2>
+              <span className="label-sm text-accent">Passo {step === 'pre' ? '1 de 3' : step === 'meal' ? '2 de 3' : '3 de 3'}</span>
+              <h2 className="display-title text-3xl sm:text-4xl">
+                {step === 'pre' ? 'Pré-refeição' : step === 'meal' ? 'A Refeição' : 'Pós-refeição'}
+              </h2>
             </div>
           </header>
 
           <AnimatePresence mode="wait">
-            <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
+            <motion.div key={step} initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -15 }} transition={{ duration: 0.2 }} className="space-y-8">
+              
+              {/* STEP 1: PRÉ-REFEIÇÃO */}
               {step === 'pre' && (
                 <>
-                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <div className="mb-6 flex items-center justify-between gap-3">
-                      <h3 className="font-bold">De onde vem sua vontade de comer?</h3>
-                      <button type="button" onClick={() => setShowHungerGuide(true)} className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-2 text-xs font-bold text-accent hover:bg-accent/15">
-                        <HelpCircle size={15} /> Diferenciar fomes
+                  <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-lg">De onde vem sua fome?</h3>
+                        <p className="text-xs text-ink/55 mt-0.5">Avalie seu nível corporal de 0 (sem fome física) a 10 (fome intensa).</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowHungerModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent hover:bg-accent/20 transition-colors shrink-0"
+                      >
+                        <HelpCircle size={15} /> Diferenciar Fomes
                       </button>
                     </div>
-                    <HungerOdometer value={log.preHunger} onChange={v => setLog({ ...log, preHunger: v })} />
+                    <div className="pt-4">
+                      <HungerOdometer value={log.preHunger} onChange={v => setLog({ ...log, preHunger: v })} />
+                    </div>
                   </div>
-                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-bold mb-4">Como você está se sentindo agora?</h3>
+
+                  <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
+                    <h3 className="font-bold text-lg mb-1">Como você está se sentindo agora?</h3>
+                    <p className="text-xs text-ink/55 mb-4">Reconhecer suas emoções antes da refeição acalma a mente.</p>
                     <div className="mood-grid">
                       {moods.map(m => (
-                        <button key={m.label} onClick={() => setLog({ ...log, preMood: m.label })}
-                          className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border-2 px-2 py-4 text-center transition-all ${log.preMood === m.label ? 'border-accent bg-accent/10 text-accent' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}>
-                          <m.icon size={24} />
+                        <button
+                          key={m.label}
+                          type="button"
+                          onClick={() => setLog({ ...log, preMood: m.label })}
+                          className={`flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-2 py-3 text-center transition-all ${log.preMood === m.label ? 'border-accent bg-accent/10 text-accent font-bold shadow-2xs' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}
+                        >
+                          <m.icon size={22} />
                           <span className="text-[10px] font-bold leading-tight">{m.label}</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                  <button onClick={() => setStep('meal')} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg">
-                    Iniciar Refeição
+
+                  <button
+                    type="button"
+                    onClick={() => setStep('meal')}
+                    className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg hover:bg-accent/90 active:scale-98 transition-all"
+                  >
+                    Iniciar Refeição (Passo 2)
                   </button>
                 </>
               )}
+
+              {/* STEP 2: A REFEIÇÃO */}
               {step === 'meal' && (
                 <>
-                  <div className="meal-photo-actions w-full">
-                    <button className="flex-1 aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-3 text-accent hover:bg-accent/10 transition-colors relative overflow-hidden">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" onChange={(e) => handleMealPhotos(e.target.files)} />
-                      <Camera size={32} />
-                      <span className="font-bold text-sm">Câmera</span>
-                    </button>
-                    <button className="flex-1 aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-3 text-accent hover:bg-accent/10 transition-colors relative overflow-hidden">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" onChange={(e) => handleMealPhotos(e.target.files)} />
-                      <Library size={32} />
-                      <span className="font-bold text-sm">Galeria</span>
-                    </button>
+                  <div className="bg-white border border-line p-6 rounded-[2rem] shadow-sm">
+                    <label className="label-sm text-accent mb-2 block">Nome da Refeição:</label>
+                    <input
+                      type="text"
+                      value={log.title}
+                      onChange={(e) => setLog({ ...log, title: e.target.value })}
+                      placeholder="Ex: Almoço com a família, Lanche da tarde..."
+                      className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent text-lg font-bold outline-none"
+                    />
                   </div>
-                  <div className="rounded-[2rem] border border-line bg-white p-4">
-                    <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
+
+                  <div className="meal-photo-actions w-full grid grid-cols-2 gap-4">
+                    <label className="aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-2 text-accent hover:bg-accent/10 active:scale-95 transition-all cursor-pointer relative overflow-hidden">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        onChange={(e) => { handleMealPhotos(e.target.files); e.target.value = ''; }}
+                      />
+                      <Camera size={28} />
+                      <span className="font-bold text-xs sm:text-sm">Tirar Foto</span>
+                    </label>
+
+                    <label className="aspect-video rounded-[2rem] border-2 border-dashed border-accent bg-accent/5 flex flex-col items-center justify-center gap-2 text-accent hover:bg-accent/10 active:scale-95 transition-all cursor-pointer relative overflow-hidden">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        onChange={(e) => { handleMealPhotos(e.target.files); e.target.value = ''; }}
+                      />
+                      <Library size={28} />
+                      <span className="font-bold text-xs sm:text-sm">Abrir Galeria</span>
+                    </label>
+                  </div>
+
+                  <div className="rounded-[2rem] border border-line bg-white p-5">
+                    <div className="flex items-center justify-between mb-3">
                       <div>
-                        <h3 className="font-bold text-sm">Fotos adicionadas</h3>
-                        <p className="text-xs text-ink/45">JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB cada.</p>
+                        <h3 className="font-bold text-sm">Fotos da Refeição (Opcional)</h3>
+                        <p className="text-xs text-ink/45">Até {MAX_MEAL_PHOTOS} fotos por refeição.</p>
                       </div>
                       <span className="text-xs font-bold text-accent bg-accent/10 px-3 py-1 rounded-full">{log.photos.length}/{MAX_MEAL_PHOTOS}</span>
                     </div>
                     {log.photos.length === 0 ? (
-                      <div className="h-24 rounded-2xl bg-ink/5 border border-dashed border-line flex items-center justify-center text-xs font-bold text-ink/35">
-                        Nenhuma foto adicionada
+                      <div className="h-20 rounded-2xl bg-ink/5 border border-dashed border-line flex items-center justify-center text-xs font-bold text-ink/35">
+                        Nenhuma foto anexada
                       </div>
                     ) : (
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                         {log.photos.map((photo, index) => (
-                          <div key={photo.slice(0, 48) + index} className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-line">
-                            <img src={photo} alt={`Foto da refeição ${index + 1}`} className="w-full h-full object-cover" />
+                          <div key={index} className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-line">
+                            <img src={photo} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
                             <button
-                              onClick={() => setLog(prev => ({ ...prev, photos: prev.photos.filter((_, photoIndex) => photoIndex !== index) }))}
-                              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-ink/75 text-paper flex items-center justify-center"
+                              type="button"
+                              onClick={() => setLog(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))}
+                              className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-ink/80 text-paper flex items-center justify-center"
                             >
-                              <X size={14} />
+                              <X size={12} />
                             </button>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-                  <textarea placeholder="O que você está comendo? Quais as texturas e sabores?"
-                    className="w-full h-40 bg-paper border border-line rounded-[2rem] p-5 text-base font-medium resize-none focus:outline-none focus:border-accent shadow-sm sm:p-8 sm:text-lg"
-                    value={log.notes} onChange={e => setLog({ ...log, notes: e.target.value })} />
-                  <button onClick={() => setStep('post')} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg">
-                    Finalizar Refeição
+
+                  <div className="bg-white border border-line p-5 rounded-[2rem]">
+                    <label className="label-sm text-accent mb-2 block">O que você está comendo?</label>
+                    <textarea
+                      placeholder="Descreva o prato, os sabores, texturas ou como está seu ritmo ao comer..."
+                      className="w-full h-28 bg-transparent text-sm font-medium resize-none focus:outline-none"
+                      value={log.notes}
+                      onChange={e => setLog({ ...log, notes: e.target.value })}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setStep('post')}
+                    className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg hover:bg-accent/90 active:scale-98 transition-all"
+                  >
+                    Próximo: Pós-refeição (Passo 3)
                   </button>
                 </>
               )}
+
+              {/* STEP 3: PÓS-REFEIÇÃO */}
               {step === 'post' && (
                 <>
-                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-bold mb-6">Reavalie sua fome (Saciedade)</h3>
+                  <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
+                    <h3 className="font-bold text-lg mb-1">Reavalie sua fome (Saciedade)</h3>
+                    <p className="text-xs text-ink/55 mb-4">Como seu estômago está se sentindo agora?</p>
                     <HungerOdometer value={log.postHunger} onChange={v => setLog({ ...log, postHunger: v })} />
                   </div>
-                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-bold mb-4">Como se sente após comer?</h3>
-                    <div className="mood-grid">
+
+                  <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
+                    <h3 className="font-bold text-lg mb-1">Como você se sente após comer?</h3>
+                    <p className="text-xs text-ink/55 mb-4">Avalie o quanto esta refeição atendeu às suas necessidades físicas.</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {[0, 1, 2, 3, 4, 5].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setLog({ ...log, satisfaction: val })}
+                          className={`min-h-18 rounded-2xl border-2 p-3 text-left transition-all ${log.satisfaction === val ? 'bg-accent border-accent text-paper shadow-sm' : 'border-line bg-white hover:border-accent'}`}
+                        >
+                          <span className="block text-xl font-bold">{val}</span>
+                          <span className="mt-0.5 block text-xs font-bold leading-tight">{satisfactionDescriptions[val]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
+                    <h3 className="font-bold text-lg mb-1">Seu humor após a refeição:</h3>
+                    <div className="mood-grid mt-3">
                       {moods.map(m => (
-                        <button key={m.label} onClick={() => setLog({ ...log, postMood: m.label })}
-                          className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border-2 px-2 py-4 text-center transition-all ${log.postMood === m.label ? 'border-accent bg-accent/10 text-accent' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}>
-                          <m.icon size={24} />
+                        <button
+                          key={m.label}
+                          type="button"
+                          onClick={() => setLog({ ...log, postMood: m.label })}
+                          className={`flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-2 py-3 text-center transition-all ${log.postMood === m.label ? 'border-accent bg-accent/10 text-accent font-bold shadow-2xs' : 'border-transparent bg-ink/5 hover:bg-ink/10 text-ink/60'}`}
+                        >
+                          <m.icon size={22} />
                           <span className="text-[10px] font-bold leading-tight">{m.label}</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="mobile-card-padding bg-paper border border-line p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-bold mb-1">Como você se sente após comer?</h3>
-                    <p className="mb-4 text-sm leading-relaxed text-ink/55">Avalie o quanto esta refeição atendeu às suas necessidades físicas.</p>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {[
-                        { value: 0, label: 'Nada satisfeito(a)' },
-                        { value: 1, label: 'Muito pouco satisfeito(a)' },
-                        { value: 2, label: 'Pouco satisfeito(a)' },
-                        { value: 3, label: 'Moderadamente satisfeito(a)' },
-                        { value: 4, label: 'Satisfeito(a)' },
-                        { value: 5, label: 'Muito satisfeito(a)' },
-                      ].map(({ value, label }) => (
-                        <button key={value} onClick={() => setLog({ ...log, satisfaction: value })}
-                          className={`min-h-20 rounded-2xl border-2 px-3 py-3 text-left transition-all ${log.satisfaction === value ? 'bg-accent border-accent text-paper' : 'border-line bg-transparent hover:bg-line text-ink'}`}>
-                          <span className="block text-lg font-bold">{value}</span>
-                          <span className="mt-1 block text-[10px] font-bold leading-tight">{label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <button onClick={() => {
-                    const inferredType = inferMealType(log);
-                    const newMeal = {
-                      ...log,
-                      title: 'Refeição',
-                      date: new Date().toISOString(),
-                      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                      type: inferredType,
-                      inferredType,
-                      mood: log.postMood || log.preMood,
-                      hungerDelta: log.postHunger - log.preHunger,
-                      image: log.photos[0] || ''
-                    };
-                    saveMeal(newMeal);
-                    toast('Registro salvo. Seus insights foram atualizados.', 'success');
-                    setCurrentPage('dashboard');
-                  }} className="w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-lg animated-gradient">
-                    Salvar Registro Diário
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const inferredType = inferMealType(log);
+                      const newMeal = {
+                        ...log,
+                        id: Date.now().toString(),
+                        title: log.title?.trim() || 'Refeição',
+                        date: new Date().toISOString(),
+                        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                        type: inferredType,
+                        inferredType,
+                        mood: log.postMood || log.preMood,
+                        hungerDelta: log.postHunger - log.preHunger,
+                        image: log.photos[0] || ''
+                      };
+                      saveMeal(newMeal);
+                      toast('Refeição registrada com sucesso!', 'success');
+                      setCurrentPage('dashboard');
+                    }}
+                    className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-xl hover:bg-accent/90 active:scale-98 transition-all"
+                  >
+                    Salvar Registro da Refeição
                   </button>
                 </>
               )}
             </motion.div>
-          </AnimatePresence>
-          <AnimatePresence>
-            {showHungerGuide && (
-              <div className="modal-shell fixed inset-0 z-50 flex">
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowHungerGuide(false)} />
-                <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <span className="label-sm text-accent">Pausa de observação</span>
-                      <h3 className="modal-title mt-2 font-bold">Fome física ou emocional?</h3>
-                    </div>
-                    <button type="button" onClick={() => setShowHungerGuide(false)} className="icon-button h-10 w-10"><X size={18} /></button>
-                  </div>
-                  <p className="mt-4 text-sm leading-relaxed text-ink/60">Não há resposta certa. Use estes sinais apenas como apoio para se escutar com mais gentileza.</p>
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                    <section className="rounded-3xl border border-accent/20 bg-accent/5 p-5">
-                      <h4 className="font-bold text-accent">🍽 Fome física</h4>
-                      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink/70">
-                        <li>• Estômago vazio ou roncando.</li>
-                        <li>• Faz algumas horas desde a última refeição.</li>
-                        <li>• Falta de energia.</li>
-                        <li>• Aceitaria diferentes tipos de alimento.</li>
-                      </ul>
-                    </section>
-                    <section className="rounded-3xl border border-accent-pink/25 bg-accent-pink/10 p-5">
-                      <h4 className="font-bold text-accent-pink">💭 Fome emocional</h4>
-                      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink/70">
-                        <li>• Vontade ligada a ansiedade, estresse, tristeza, tédio ou preocupação.</li>
-                        <li>• Desejo por um alimento específico.</li>
-                        <li>• Vontade que surgiu de repente.</li>
-                        <li>• Sem sinais físicos claros de fome.</li>
-                      </ul>
-                    </section>
-                  </div>
-                  <button type="button" onClick={() => setShowHungerGuide(false)} className="mt-6 w-full rounded-full bg-accent py-4 text-sm font-bold text-paper">Voltar ao registro</button>
-                </motion.div>
-              </div>
-            )}
           </AnimatePresence>
         </div>
       </PageWrapper>
@@ -1724,21 +2248,13 @@ export default function App() {
       abdomen: userProfile.abdomenEvolution?.[userProfile.abdomenEvolution.length - 1]?.value || 0,
       hip: userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value || 0,
     });
+
     const metricFields = [
       { key: 'weight', label: 'Peso', unit: 'kg', icon: TbHealthRecognition, hint: 'Registre em condições parecidas para comparar a evolução.' },
       { key: 'waist', label: 'Cintura', unit: 'cm', icon: Activity, hint: 'Use uma fita flexível, sem apertar a pele.' },
       { key: 'abdomen', label: 'Abdômen', unit: 'cm', icon: PiHeartbeat, hint: 'Meça de pé, ao final de uma expiração confortável.' },
       { key: 'hip', label: 'Quadril', unit: 'cm', icon: TrendingUp, hint: 'Passe a fita pela região mais larga do quadril.' },
     ] as const;
-
-    useEffect(() => {
-      if (showMetricsModal) {
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = '';
-      }
-      return () => { document.body.style.overflow = ''; };
-    }, [showMetricsModal]);
 
     const handleSaveMetrics = () => {
       const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -1747,7 +2263,7 @@ export default function App() {
       const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', val: number) => {
         if (val <= 0) return;
         const arr = (updatedProfile[key] as any[]) || [];
-        (updatedProfile[key] as any) = [...arr, { date, value: val }];
+        (updatedProfile[key] as any) = sortMetricsChronologically([...arr, { date, value: val }]);
       };
 
       updateEvolution('weightEvolution', newMetrics.weight);
@@ -1757,21 +2273,22 @@ export default function App() {
       updateEvolution('hipEvolution', newMetrics.hip);
 
       if (updatedProfile.height && newMetrics.weight) {
-        const recalculatedNeeds = calculateNutritionalNeeds(
+        const recalculated = calculateNutritionalNeeds(
           newMetrics.weight,
           updatedProfile.height,
           updatedProfile.age || 25,
-          updatedProfile.gender,
+          updatedProfile.gender || 'Feminino',
           updatedProfile.activityLevel || 1.2,
           updatedProfile.objectives || []
         );
-        updatedProfile.imc = recalculatedNeeds.imc;
-        updatedProfile.tmb = recalculatedNeeds.tmb;
-        updatedProfile.net = recalculatedNeeds.net;
+        updatedProfile.imc = recalculated.imc;
+        updatedProfile.tmb = recalculated.tmb;
+        updatedProfile.net = recalculated.net;
       }
 
       persistUserProfile(updatedProfile);
       setShowMetricsModal(false);
+      toast('Métricas corporais atualizadas!', 'success');
     };
 
     const latestWeight = getLatestMetricValue(userProfile.weightEvolution);
@@ -1787,548 +2304,549 @@ export default function App() {
     const weightGoal = getWeightGoal(userProfile);
     const rcqLimit = userProfile.gender === 'Feminino' || userProfile.gender === 'Mulher' ? 0.85 : 0.9;
 
-    const imcData = (userProfile.weightEvolution || []).map(w => ({
+    const sortedWeightEvolution = sortMetricsChronologically(userProfile.weightEvolution);
+    const imcData = sortedWeightEvolution.map(w => ({
       date: w.date,
       value: userProfile.height ? parseFloat((w.value / Math.pow(userProfile.height / 100, 2)).toFixed(1)) : 0
     })).filter(item => item.value > 0);
-    const hasWeightData = Boolean(userProfile.weightEvolution?.some(item => item.value > 0));
-    const hasImcData = imcData.length > 0;
 
+    const hasWeightData = sortedWeightEvolution.length > 0;
+    const hasImcData = imcData.length > 0;
     const rcqData = buildRcqData(userProfile);
+
+    // Filter only categories with counts > 0 for clean Pie chart
     const hungerPieData = [
-      { name: 'Fome Física', value: physicalMeals },
-      { name: 'Fome Emocional', value: emotionalMeals },
-      { name: 'Não classificada', value: unclassifiedMeals },
+      { name: 'Fome Física', value: physicalMeals, color: '#6BAF9E' },
+      { name: 'Fome Emocional', value: emotionalMeals, color: '#C9A3B5' },
+      { name: 'Não classificada', value: unclassifiedMeals, color: '#5A9485' },
     ].filter(item => item.value > 0);
-    const chartPieData = hungerPieData.length ? hungerPieData : [{ name: 'Nenhuma refeição registrada', value: 1 }];
+
+    const hasMealData = loggedMeals.length > 0;
+
     const dayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const emotionalData = dayLabels.map((day, index) => {
       const meals = loggedMeals.filter((meal: any) => new Date(meal.date || Date.now()).getDay() === index);
       const types = meals.map((meal: any) => inferMealType(meal));
-      const moodAverage = averageNumbers(meals.flatMap((meal: any) => [
-        getMoodScore(meal.postMood),
-        getMoodScore(meal.preMood),
-        getMoodScore(meal.mood),
-      ]));
       return {
         day,
         fisico: types.filter(type => type === 'Física').length,
         emocional: types.filter(type => type === 'Emocional').length,
-        humor: moodAverage ? Math.round(moodAverage) : 0,
       };
     });
-    const hasMealData = loggedMeals.length > 0;
-    const hasEnoughMealData = loggedMeals.length >= 3;
-    const missingMealLogs = Math.max(3 - loggedMeals.length, 0);
-    const insightNotice = hasMealData
-      ? {
-        label: 'Amostra em construção',
-        title: 'Já existe leitura inicial, mas os padrões ainda precisam de mais contexto.',
-        description: `Ainda faltam ${missingMealLogs} registro${missingMealLogs === 1 ? '' : 's'} para comparar tendências com mais segurança. Os gráficos abaixo usam os sinais já preenchidos sem tratar isso como diagnóstico.`,
-        action: 'Registrar refeição',
-      }
-      : hasInitialInsightData
-        ? {
-          label: 'Dados iniciais disponíveis',
-          title: 'Já dá para gerar uma leitura inicial do perfil.',
-          description: 'Use essa leitura como ponto de partida. Registre refeições para revelar padrões de fome, humor, saciedade e constância ao longo dos dias.',
-          action: 'Registrar primeira refeição',
-        }
-        : {
-          label: 'Perfil incompleto',
-          title: 'Complete os dados iniciais para liberar os primeiros insights.',
-          description: 'Altura, peso, objetivo, emoções e gatilhos ajudam o app a calcular métricas corporais e personalizar a análise sem usar dados genéricos.',
-          action: 'Completar perfil',
-        };
 
-    return (
-    <PageWrapper>
-      <div className="space-y-10">
-        <div className="responsive-page-header">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h2 className="display-title text-5xl">Insights.</h2>
-              <p className="serif-body text-xl text-ink/60 mt-1 italic">Análise do seu comportamento.</p>
-            </div>
-          </div>
-          <button onClick={() => setShowMetricsModal(true)} className="hidden md:flex bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors items-center gap-2">
-            <PlusCircle size={18} /> Adicionar Métricas Corporais
-          </button>
-        </div>
-        
-        <div className="md:hidden">
-          <button onClick={() => setShowMetricsModal(true)} className="w-full bg-accent text-paper px-6 py-4 rounded-2xl font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors flex justify-center items-center gap-2">
-            <PlusCircle size={18} /> Adicionar Métricas Corporais
-          </button>
-        </div>
-
-        {!hasEnoughMealData && (
-          <section className="bg-white border border-line rounded-[2rem] p-6 md:p-8 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center gap-5">
-              <div className="w-14 h-14 rounded-2xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
-                <Activity size={26} />
-              </div>
-              <div className="flex-1">
-                <span className="label-sm text-accent">{insightNotice.label}</span>
-                <h3 className="font-bold text-xl mt-2">{insightNotice.title}</h3>
-                <p className="text-sm text-ink/60 mt-2 leading-relaxed">
-                  {insightNotice.description}
-                </p>
-              </div>
-              <button onClick={() => setCurrentPage(hasInitialInsightData ? 'meal-log' : 'diagnosis')} className="bg-accent text-paper px-5 py-3 rounded-2xl font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors">
-                {insightNotice.action}
-              </button>
-            </div>
-          </section>
-        )}
-
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 min-w-0">
-          <div className="mobile-card-padding animated-gradient text-paper p-10 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
-            <h3 className="label-sm text-paper mb-4 glass-badge inline-block self-start font-bold">Consciência Plena</h3>
-            <div className="text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</div>
-            <p className="text-sm font-medium text-paper/90 leading-relaxed">
-              {loggedMeals.length
-                ? 'Baseado na completude dos registros, fome, humor, saciedade e notas.'
-                : hasInitialInsightData
-                  ? 'Leitura inicial baseada no perfil preenchido. Refeições registradas deixam o score mais preciso.'
-                  : 'Complete o perfil para iniciar uma leitura personalizada, sem dados demonstrativos.'}
-            </p>
-          </div>
-
-          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
-            <h3 className="font-bold mb-2 flex items-center gap-2"><span className="text-accent"><Brain size={18} /></span> Sinais da sua jornada</h3>
-            <p className="mb-5 text-sm leading-relaxed text-ink/55">Leitura indicativa de saciedade, consciência, energia, humor, constância e contexto. O polígono mostra somente os sinais preenchidos por você.</p>
-            {hasInitialInsightData ? (
-            <ChartFrame className="h-64" minHeight={180}>
-              {({ width, height }) => (
-                <RadarChart width={width} height={height} cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                  <PolarGrid stroke="var(--line)" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--ink)' }} />
-                  <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} isAnimationActive animationDuration={900} animationEasing="ease-out" />
-                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }} formatter={(value: number) => [`${value}%`, 'Seu registro']} />
-                </RadarChart>
-              )}
-            </ChartFrame>
-            ) : (
-              <div className="min-h-64 rounded-3xl border border-dashed border-line bg-paper/70 p-5 sm:p-8 flex flex-col justify-center">
-                <span className="label-sm text-accent">Sem base inicial</span>
-                <p className="font-bold text-xl mt-3">Complete perfil ou registre uma refeição para iniciar o radar.</p>
-                <p className="text-sm text-ink/55 mt-2 leading-relaxed">O app não usa amostra falsa para preencher este gráfico. Altura, peso, objetivos, emoções ou registros reais já liberam uma primeira leitura.</p>
-              </div>
-            )}
-            <div className="mt-5 flex items-start gap-3 rounded-2xl bg-accent/5 p-4 text-xs leading-relaxed text-ink/65">
-              <Info size={16} className="mt-0.5 shrink-0 text-accent" />
-              <span>No celular, toque nos pontos do gráfico para ver o valor de cada sinal. Quanto mais registros reais, mais útil fica esta leitura.</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6 min-w-0">
-          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
-            <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="font-bold flex items-center gap-2"><span className="text-accent"><TbHealthRecognition size={20} /></span> Evolução do Peso Corporal</h3>
-              <div className="flex flex-wrap gap-4">
-                <span className="flex items-center gap-2 text-[10px] font-bold uppercase text-ink/40"><div className="w-2 h-2 rounded-full bg-accent"></div> Atual</span>
-                {weightGoal && (
-                  <span className="flex items-center gap-2 text-[10px] font-bold uppercase text-ink/40"><div className="w-2 h-2 rounded-full bg-accent-pink"></div> Meta</span>
-                )}
-              </div>
-            </div>
-            {weightGoal && <p className="-mt-4 mb-5 text-xs leading-relaxed text-ink/50">A linha rosa é uma estimativa ligada ao objetivo escolhido e serve apenas como referência de acompanhamento.</p>}
-            <p className="mb-5 text-sm leading-relaxed text-ink/55">Cada ponto representa uma medida registrada. Toque ou passe o cursor pelos pontos para comparar data e valor.</p>
-            {hasWeightData ? (
-              <ChartFrame className="h-64" minHeight={180}>
-                {({ width, height }) => (
-                  <AreaChart width={width} height={height} data={userProfile.weightEvolution}>
-                    <defs>
-                      <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                      </linearGradient>
-                      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                        <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="var(--accent)" floodOpacity="0.4" />
-                      </filter>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
-                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
-                      itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--accent)' }}
-                    />
-                    {weightGoal && (
-                      <ReferenceLine y={weightGoal} stroke="var(--accent-pink)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: `Meta (${weightGoal}kg)`, fill: 'var(--accent-pink)', fontSize: 10, fontWeight: 'bold' }} />
-                    )}
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="var(--accent)"
-                      strokeWidth={5}
-                      fillOpacity={1}
-                      fill="url(#colorWeight)"
-                      style={{ filter: 'url(#shadow)' }}
-                      dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 3 }}
-                      activeDot={{ r: 8, fill: 'var(--accent)', stroke: 'var(--paper)', strokeWidth: 4 }}
-                      isAnimationActive
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                    />
-                  </AreaChart>
-                )}
-              </ChartFrame>
-            ) : (
-              <div className="min-h-64 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
-                <span className="label-sm text-accent">Sem peso registrado</span>
-                <p className="font-bold text-lg mt-2">Adicione seu peso para acompanhar tendência corporal.</p>
-                <p className="text-sm text-ink/55 mt-2">O gráfico não usa dados demonstrativos. A primeira medida já cria o ponto inicial da evolução.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
-            <h3 className="font-bold flex items-center gap-2 mb-2"><span className="text-accent-pink"><Activity size={20} /></span> Evolução do IMC</h3>
-            <p className="mb-6 text-sm leading-relaxed text-ink/55">Uma triagem geral calculada a partir de altura e peso. Acompanhe a tendência, sem transformar um número em julgamento.</p>
-            {hasImcData ? (
-              <ChartFrame className="h-64" minHeight={180}>
-                {({ width, height }) => (
-                  <AreaChart width={width} height={height} data={imcData}>
-                    <defs>
-                      <linearGradient id="colorIMC" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent-pink)" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="var(--accent-pink)" stopOpacity={0} />
-                      </linearGradient>
-                      <filter id="shadowIMC" x="-20%" y="-20%" width="140%" height="140%">
-                        <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="var(--accent-pink)" floodOpacity="0.4" />
-                      </filter>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
-                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
-                      itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--accent-pink)' }}
-                    />
-                    <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Ideal Max (24.9)', fill: 'var(--accent)', fontSize: 10, fontWeight: 'bold' }} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="var(--accent-pink)"
-                      strokeWidth={5}
-                      fillOpacity={1}
-                      fill="url(#colorIMC)"
-                      style={{ filter: 'url(#shadowIMC)' }}
-                      dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 3 }}
-                      activeDot={{ r: 8, fill: 'var(--accent-pink)', stroke: 'var(--paper)', strokeWidth: 4 }}
-                      isAnimationActive
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                    />
-                  </AreaChart>
-                )}
-              </ChartFrame>
-            ) : (
-              <div className="min-h-64 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
-                <span className="label-sm text-accent-pink">IMC indisponível</span>
-                <p className="font-bold text-lg mt-2">Informe altura e peso para calcular o IMC.</p>
-                <p className="text-sm text-ink/55 mt-2">Esse indicador é uma triagem geral e fica mais útil quando acompanhado da evolução corporal.</p>
-              </div>
-            )}
-          </div>
-
-          {rcqData.length > 0 && (
-            <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm lg:col-span-2 min-w-0">
-              <h3 className="font-bold flex items-center gap-2 mb-2"><span className="text-ink/60"><Activity size={20} /></span> Evolução RCQ (Relação Cintura-Quadril)</h3>
-              <p className="mb-6 text-sm leading-relaxed text-ink/55">Compara as medidas de cintura e quadril registradas na mesma data. A linha pontilhada é apenas uma referência de triagem.</p>
-              <ChartFrame className="h-64" minHeight={180}>
-                {({ width, height }) => (
-                  <AreaChart width={width} height={height} data={rcqData}>
-                    <defs>
-                      <linearGradient id="colorRCQ" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--ink)" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="var(--ink)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 600 }} dy={10} />
-                    <YAxis domain={[0, 'dataMax + 0.2']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--ink)' }} dx={-10} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', padding: '1.25rem', backgroundColor: 'var(--paper)' }}
-                      itemStyle={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--ink)' }}
-                    />
-                    <ReferenceLine y={rcqLimit} stroke="var(--accent-pink)" strokeDasharray="5 5" strokeWidth={2} label={{ position: 'right', value: 'Risco Elevado', fill: 'var(--accent-pink)', fontSize: 10, fontWeight: 'bold' }} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="var(--ink)"
-                      strokeWidth={5}
-                      fillOpacity={1}
-                      fill="url(#colorRCQ)"
-                      dot={{ r: 6, fill: 'var(--paper)', stroke: 'var(--ink)', strokeWidth: 3 }}
-                      activeDot={{ r: 8, fill: 'var(--ink)', stroke: 'var(--paper)', strokeWidth: 4 }}
-                      isAnimationActive
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                    />
-                  </AreaChart>
-                )}
-              </ChartFrame>
-            </div>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6 min-w-0">
-          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm flex flex-col min-w-0">
-            <h3 className="font-bold mb-2 flex items-center gap-2"><span className="text-accent-pink"><Zap size={18} /></span> Fontes de Fome</h3>
-            <p className="mb-4 text-sm leading-relaxed text-ink/55">Mostra como os registros foram classificados a partir de fome, humor e satisfação. É uma leitura de padrão, não um rótulo.</p>
-            {hasMealData ? (
-            <div className="flex-1 flex flex-col gap-5 sm:flex-row sm:items-center">
-              <ChartFrame className="h-44 w-full sm:w-1/2" minHeight={140}>
-                {({ width, height }) => (
-                  <PieChart width={width} height={height}>
-                    <Pie data={chartPieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value" isAnimationActive animationDuration={750} animationEasing="ease-out">
-                      {chartPieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                )}
-              </ChartFrame>
-              <div className="w-full space-y-3 sm:w-1/2">
-                {chartPieData.map((item, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                    <span className="text-xs font-bold">{item.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            ) : (
-              <div className="min-h-44 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
-                <span className="label-sm text-accent-pink">Sem refeições registradas</span>
-                <p className="font-bold text-lg mt-2">Registre uma refeição para comparar fontes de fome.</p>
-                <p className="text-sm text-ink/55 mt-2">A classificação considera fome antes/depois, humor e satisfação. Sem registro real, o app não cria uma proporção artificial.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="mobile-card-padding bg-white border border-line p-8 rounded-[2.5rem] shadow-sm min-w-0">
-            <h3 className="font-bold mb-2 flex items-center gap-2"><span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Emocional</h3>
-            <p className="mb-5 text-sm leading-relaxed text-ink/55">Compare, ao longo da semana, os registros associados à fome física e à fome emocional. Toque em cada coluna para detalhar o dia.</p>
-            {hasMealData ? (
-            <>
-            <ChartFrame className="h-56" minHeight={160}>
-              {({ width, height }) => (
-                <BarChart width={width} height={height} data={emotionalData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={10} />
-                  <Tooltip cursor={{ fill: 'var(--line)', opacity: 0.5 }} contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="fisico" stackId="a" fill="var(--accent)" radius={[0, 0, 6, 6]} barSize={16} isAnimationActive animationDuration={750} />
-                  <Bar dataKey="emocional" stackId="a" fill="var(--accent-pink)" radius={[6, 6, 0, 0]} barSize={16} isAnimationActive animationDuration={750} />
-                </BarChart>
-              )}
-            </ChartFrame>
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mt-6">
-              <span className="flex items-center gap-2 text-xs font-bold"><div className="w-4 h-4 rounded-full bg-accent"></div> Fome Física</span>
-              <span className="flex items-center gap-2 text-xs font-bold"><div className="w-4 h-4 rounded-full bg-accent-pink"></div> Fome Emocional</span>
-            </div>
-            </>
-            ) : (
-              <div className="min-h-56 rounded-3xl bg-paper border border-dashed border-line p-6 flex flex-col justify-center">
-                <span className="label-sm text-accent-pink">Linha do tempo em espera</span>
-                <p className="font-bold text-lg mt-2">O gráfico semanal aparece após o primeiro registro de refeição.</p>
-                <p className="text-sm text-ink/55 mt-2">Use o registro de refeição para informar humor e saciedade. Esses dados tornam os insights mais úteis e menos genéricos.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Refeições', val: String(loggedMeals.length), icon: Coffee, trend: hasEnoughMealData ? 'amostra' : hasMealData ? 'inicial' : 'zero' },
-            { label: 'Físicas', val: String(physicalMeals), icon: Activity, trend: hasMealData ? `${Math.round((physicalMeals / loggedMeals.length) * 100)}%` : 'sem dados' },
-            { label: 'Emocionais', val: String(emotionalMeals), icon: Heart, trend: hasMealData ? `${Math.round((emotionalMeals / loggedMeals.length) * 100)}%` : 'sem dados' },
-            { label: 'Foco', val: `${awarenessScore}%`, icon: TrendingUp, trend: hasMealData ? 'registros' : profileReadinessScore ? 'perfil' : 'pendente' },
-          ].map((m, i) => (
-            <div key={i} className="bg-accent/5 p-4 sm:p-6 rounded-3xl border border-accent/10">
-              <m.icon size={20} className="text-accent mb-3" />
-              <div className="text-2xl font-display text-ink">{m.val}</div>
-              <div className="flex flex-col gap-1 mt-1 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-[10px] font-bold text-ink/40 uppercase">{m.label}</span>
-                <span className="text-[10px] font-bold text-accent">{m.trend}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {showMetricsModal && (
-          <div className="modal-shell fixed inset-0 z-50 flex">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
-            <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative w-full max-w-3xl bg-paper p-5 shadow-2xl sm:p-7 md:p-10">
-              <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button absolute right-5 top-5 h-10 w-10"><X size={18} /></button>
-              <div className="pr-12">
-                <span className="label-sm text-accent">Acompanhamento corporal</span>
-                <h3 className="display-title modal-title mt-2">Atualizar métricas</h3>
-                <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink/60">Registre apenas o que fizer sentido para você. Comparar medidas em condições parecidas ajuda a perceber tendências, não a buscar perfeição.</p>
-              </div>
-              <div className="mt-7 grid gap-3 sm:grid-cols-2">
-                {metricFields.map((field) => {
-                  const MetricIcon = field.icon;
-                  return (
-                    <label key={field.key} className="group rounded-3xl border border-line bg-white p-4 transition-colors hover:border-accent/45 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10">
-                      <span className="flex items-start gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent"><MetricIcon size={20} /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-baseline justify-between gap-2"><span className="font-bold">{field.label}</span><span className="text-xs font-bold text-ink/40">{field.unit}</span></span>
-                          <span className="mt-1 block text-xs leading-relaxed text-ink/50">{field.hint}</span>
-                        </span>
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        value={newMetrics[field.key] || ''}
-                        onChange={e => setNewMetrics({ ...newMetrics, [field.key]: parseFloat(e.target.value) || 0 })}
-                        placeholder="0"
-                        className="mt-4 w-full border-b-2 border-line bg-transparent py-2 text-2xl font-bold outline-none transition-colors placeholder:text-ink/20 focus:border-accent"
-                      />
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="mt-5 flex items-start gap-3 rounded-2xl bg-accent/5 p-4 text-xs leading-relaxed text-ink/60">
-                <Info size={16} className="mt-0.5 shrink-0 text-accent" />
-                <span>As informações ficam no seu perfil para compor os gráficos de evolução. Você pode atualizar somente uma medida por vez.</span>
-              </div>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <button type="button" onClick={() => setShowMetricsModal(false)} className="rounded-full border border-line px-5 py-4 text-sm font-bold text-ink/60 hover:bg-white">Cancelar</button>
-                <button onClick={handleSaveMetrics} className="rounded-full bg-accent px-5 py-4 text-sm font-bold text-paper shadow-lg shadow-accent/20 transition-transform hover:scale-[1.01]">Salvar métricas</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-    </PageWrapper>
-  );
-};
-
-  const ContentPage = () => {
     return (
       <PageWrapper>
         <div className="space-y-10">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-              <ArrowLeft size={20} />
+          <div className="responsive-page-header">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <h2 className="display-title text-4xl sm:text-5xl">Insights.</h2>
+                <p className="serif-body text-lg text-ink/60 mt-0.5">Sinais do seu comportamento alimentar.</p>
+              </div>
+            </div>
+            <button onClick={() => setShowMetricsModal(true)} className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 active:scale-95 transition-all inline-flex items-center gap-2">
+              <PlusCircle size={18} /> Adicionar Medidas
             </button>
-            <div>
-              <h2 className="display-title text-5xl">Biblioteca.</h2>
-              <p className="serif-body text-xl text-ink/60 mt-1 italic">Conhecimento que nutre.</p>
+          </div>
+
+          {/* Sinais da sua jornada (Radar) & Consciência */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="mobile-card-padding animated-gradient text-paper p-8 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
+              <h3 className="label-sm text-paper mb-3 glass-badge font-bold inline-block self-start">Consciência Geral</h3>
+              <div className="text-6xl sm:text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</div>
+              <p className="text-xs sm:text-sm font-medium text-paper/90 leading-relaxed">
+                {loggedMeals.length
+                  ? 'Calculado a partir da atenção à saciedade, notas, fotos e consistência das refeições.'
+                  : 'Complete o perfil ou registre refeições para refinar sua pontuação.'}
+              </p>
+            </div>
+
+            <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <span className="text-accent"><Brain size={20} /></span> Sinais da sua jornada
+                </h3>
+                <button type="button" onClick={() => toast('O radar equilibra Saciedade, Consciência, Energia, Humor, Constância e Contexto.', 'info')} className="text-xs text-accent font-bold flex items-center gap-1">
+                  <Info size={14} /> Entender Eixos
+                </button>
+              </div>
+              <p className="mb-4 text-xs sm:text-sm leading-relaxed text-ink/55">
+                Representação multidimensional do seu bem-estar alimentar.
+              </p>
+              {hasInitialInsightData ? (
+                <ChartFrame className="h-64" minHeight={180}>
+                  {({ width, height }) => (
+                    <RadarChart width={width} height={height} cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                      <PolarGrid stroke="var(--line)" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--ink)', fontWeight: 600 }} />
+                      <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} isAnimationActive />
+                      <Tooltip formatter={(value: number) => [`${value}%`, 'Nível']} contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }} />
+                    </RadarChart>
+                  )}
+                </ChartFrame>
+              ) : (
+                <div className="min-h-56 rounded-3xl border border-dashed border-line bg-paper/60 p-6 flex flex-col justify-center text-center">
+                  <p className="font-bold text-base">Complete seus dados para liberar o radar de jornada.</p>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-            {DEFAULT_LIBRARY_ARTICLES.map((item) => (
-              <button key={item.id} onClick={() => setSelectedArticle(item)} className="group text-left bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm hover:shadow-lg transition-all">
-                <div className="h-44 w-full relative overflow-hidden">
-                  <div className="absolute inset-0 bg-ink/20 group-hover:bg-transparent transition-colors z-10" />
-                  <img src={item.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  <div className="absolute top-4 left-4 z-20 bg-paper/95 backdrop-blur-md px-4 py-1.5 rounded-full label-sm text-accent">
-                    {item.type}
+          {/* Gráficos de Evolução (Peso e IMC com ordenação cronológica) */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
+              <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
+                  <span className="text-accent"><TbHealthRecognition size={22} /></span> Evolução do Peso
+                </h3>
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-ink/60">
+                    <div className="w-2.5 h-2.5 rounded-full bg-accent" /> Histórico
+                  </span>
+                  {weightGoal && (
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-accent-pink">
+                      <div className="w-2.5 h-2.5 rounded-full bg-accent-pink" /> Meta ({weightGoal}kg)
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="mb-4 text-xs text-ink/50 leading-relaxed">
+                Datas em ordem cronológica (antigas à esquerda, mais recente à direita).
+              </p>
+              {hasWeightData ? (
+                <ChartFrame className="h-60" minHeight={170}>
+                  {({ width, height }) => (
+                    <AreaChart width={width} height={height} data={sortedWeightEvolution}>
+                      <defs>
+                        <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
+                      <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
+                      <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number) => [`${val} kg`, 'Peso']} />
+                      {weightGoal && (
+                        <ReferenceLine y={weightGoal} stroke="var(--accent-pink)" strokeDasharray="4 4" strokeWidth={2} />
+                      )}
+                      <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={4} fill="url(#weightGrad)" dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 2.5 }} />
+                    </AreaChart>
+                  )}
+                </ChartFrame>
+              ) : (
+                <div className="min-h-56 rounded-3xl bg-paper/60 border border-dashed border-line p-6 flex flex-col justify-center text-center">
+                  <p className="font-bold text-sm text-ink/60">Adicione seu peso para acompanhar a evolução corporal.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
+              <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
+                  <span className="text-accent-pink"><Activity size={22} /></span> Evolução do IMC
+                </h3>
+                <span className="text-[10px] font-bold uppercase text-ink/40">Triagem indicativa</span>
+              </div>
+              <p className="mb-4 text-xs text-ink/50 leading-relaxed">
+                Calculado a partir de altura e peso ao longo do tempo.
+              </p>
+              {hasImcData ? (
+                <ChartFrame className="h-60" minHeight={170}>
+                  {({ width, height }) => (
+                    <AreaChart width={width} height={height} data={imcData}>
+                      <defs>
+                        <linearGradient id="imcGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--accent-pink)" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="var(--accent-pink)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
+                      <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
+                      <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number) => [`${val}`, 'IMC']} />
+                      <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
+                      <Area type="monotone" dataKey="value" stroke="var(--accent-pink)" strokeWidth={4} fill="url(#imcGrad)" dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 2.5 }} />
+                    </AreaChart>
+                  )}
+                </ChartFrame>
+              ) : (
+                <div className="min-h-56 rounded-3xl bg-paper/60 border border-dashed border-line p-6 flex flex-col justify-center text-center">
+                  <p className="font-bold text-sm text-ink/60">Informe altura e peso para calcular a curva de IMC.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Gráficos de Fome & Oscilação Semanal */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
+              <h3 className="font-bold text-base sm:text-lg mb-1 flex items-center gap-2">
+                <span className="text-accent"><Zap size={20} /></span> Fontes de Fome
+              </h3>
+              <p className="mb-4 text-xs text-ink/50">Proporção entre refeições biológicas e emocionais.</p>
+              {hasMealData && hungerPieData.length > 0 ? (
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <ChartFrame className="h-44 w-full sm:w-1/2" minHeight={140}>
+                    {({ width, height }) => (
+                      <PieChart width={width} height={height}>
+                        <Pie data={hungerPieData} innerRadius={35} outerRadius={60} paddingAngle={4} dataKey="value" isAnimationActive>
+                          {hungerPieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(val: number, name: string) => [`${val} (${Math.round((val / loggedMeals.length) * 100)}%)`, name]} />
+                      </PieChart>
+                    )}
+                  </ChartFrame>
+                  <div className="w-full sm:w-1/2 space-y-2">
+                    {hungerPieData.map((item, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-paper border border-line/60">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color || COLORS[i % COLORS.length] }} />
+                          <span className="text-xs font-bold">{item.name}</span>
+                        </div>
+                        <span className="text-xs font-bold text-accent">{item.value} ({Math.round((item.value / loggedMeals.length) * 100)}%)</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="p-5 sm:p-6">
-                  <h3 className="font-bold text-xl mb-2 leading-tight">{item.title}</h3>
-                  <p className="text-xs text-ink/60 line-clamp-2 mb-4 leading-relaxed">{item.summary}</p>
-                  <div className="flex items-center gap-2 text-accent text-xs font-bold">
-                    <Library size={14} /> {item.duration} de leitura
-                  </div>
+              ) : (
+                <div className="min-h-44 rounded-3xl bg-paper/60 border border-dashed border-line p-6 flex flex-col justify-center text-center">
+                  <p className="font-bold text-sm text-ink/60">Registre refeições para calcular suas fontes de fome.</p>
                 </div>
-              </button>
-            ))}
+              )}
+            </div>
+
+            <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
+              <h3 className="font-bold text-base sm:text-lg mb-1 flex items-center gap-2">
+                <span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Semanal
+              </h3>
+              <p className="mb-4 text-xs text-ink/50">Distribuição de refeições nos dias da semana.</p>
+              {hasMealData ? (
+                <>
+                  <ChartFrame className="h-44" minHeight={140}>
+                    {({ width, height }) => (
+                      <BarChart width={width} height={height} data={emotionalData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
+                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
+                        <Tooltip cursor={{ fill: 'var(--line)', opacity: 0.3 }} />
+                        <Bar dataKey="fisico" stackId="a" fill="var(--accent)" radius={[0, 0, 4, 4]} barSize={16} name="Fome Física" />
+                        <Bar dataKey="emocional" stackId="a" fill="var(--accent-pink)" radius={[4, 4, 0, 0]} barSize={16} name="Fome Emocional" />
+                      </BarChart>
+                    )}
+                  </ChartFrame>
+                  <div className="flex justify-center gap-6 mt-3">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-ink/70">
+                      <div className="w-3 h-3 rounded-full bg-accent" /> Física
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-ink/70">
+                      <div className="w-3 h-3 rounded-full bg-accent-pink" /> Emocional
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="min-h-44 rounded-3xl bg-paper/60 border border-dashed border-line p-6 flex flex-col justify-center text-center">
+                  <p className="font-bold text-sm text-ink/60">Os dados semanais serão exibidos após os primeiros registros.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Modal de Métricas Corporais */}
+        <AnimatePresence>
+          {showMetricsModal && (
+            <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
+              <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative w-full max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl rounded-[2.5rem] border border-line">
+                <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button absolute right-5 top-5 h-10 w-10"><X size={18} /></button>
+                <span className="label-sm text-accent">Métricas Corporais</span>
+                <h3 className="display-title text-3xl mt-1">Atualizar Medidas</h3>
+                <p className="text-xs text-ink/60 mt-1">Insira suas medidas com tranquilidade para acompanhar tendências.</p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {metricFields.map((field) => (
+                    <label key={field.key} className="block p-4 rounded-2xl bg-white border border-line">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-sm">{field.label}</span>
+                        <span className="text-xs font-bold text-ink/40">{field.unit}</span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={newMetrics[field.key] || ''}
+                        onChange={e => setNewMetrics({ ...newMetrics, [field.key]: parseFloat(e.target.value) || 0 })}
+                        placeholder="0"
+                        className="w-full border-b-2 border-line bg-transparent py-1.5 text-xl font-bold outline-none focus:border-accent"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-6 flex gap-3">
+                  <button type="button" onClick={() => setShowMetricsModal(false)} className="flex-1 py-4 rounded-full border border-line text-sm font-bold text-ink/60 hover:bg-white">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={handleSaveMetrics} className="flex-1 py-4 rounded-full bg-accent text-paper text-sm font-bold shadow-md hover:bg-accent/90">
+                    Salvar Medidas
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </PageWrapper>
     );
   };
 
+  const ContentPage = () => (
+    <PageWrapper>
+      <div className="space-y-8">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h2 className="display-title text-4xl sm:text-5xl">Biblioteca.</h2>
+            <p className="serif-body text-lg text-ink/60 mt-0.5">Conhecimento científico e acolhedor.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {DEFAULT_LIBRARY_ARTICLES.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setSelectedArticle(item)}
+              className="group text-left bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
+            >
+              <div className="h-44 w-full relative overflow-hidden bg-line">
+                <img src={item.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <div className="absolute top-3 left-3 bg-paper/95 backdrop-blur-md px-3.5 py-1 rounded-full label-sm text-accent">
+                  {item.type}
+                </div>
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-between">
+                <div>
+                  <h3 className="font-bold text-lg mb-1 leading-tight">{item.title}</h3>
+                  <p className="text-xs text-ink/60 line-clamp-2 mb-3 leading-relaxed">{item.summary}</p>
+                </div>
+                <div className="flex items-center gap-1.5 text-accent text-xs font-bold mt-2">
+                  <Library size={14} /> {item.duration} de leitura
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </PageWrapper>
+  );
+
   const MealDetailsPage = () => {
     if (!selectedMeal) return null;
     const mealType = inferMealType(selectedMeal);
-    const mealMood = selectedMeal.postMood || selectedMeal.preMood || selectedMeal.mood || 'Não informado';
-    const MealIcon = selectedMeal.icon || (mealType === 'Física' ? TbHealthRecognition : mealType === 'Emocional' ? PiHeartbeat : Coffee);
     const mealPhotos = selectedMeal.photos?.length ? selectedMeal.photos : (selectedMeal.image ? [selectedMeal.image] : []);
+    const satisfactionLabels = ['Nada satisfeito', 'Muito pouco', 'Pouco', 'Moderadamente', 'Satisfeito', 'Muito'];
+
     return (
       <PageWrapper>
-        <div className="space-y-8">
-          <header className="flex items-center gap-4 border-b border-line pb-6">
+        <div className="space-y-6 max-w-2xl mx-auto">
+          <header className="flex items-center gap-4 border-b border-line pb-4">
             <button onClick={() => setCurrentPage('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
               <ArrowLeft size={20} />
             </button>
             <div>
               <span className="label-sm text-accent">Detalhes da Refeição</span>
-              <h2 className="display-title text-3xl">{selectedMeal.title}</h2>
+              <h2 className="display-title text-3xl">{selectedMeal.title || 'Refeição'}</h2>
             </div>
           </header>
 
-          <div className="bg-white border border-line rounded-[2rem] md:rounded-[2.5rem] overflow-hidden shadow-sm">
-            <div className="h-64 md:h-96 w-full relative bg-accent/5">
-              {mealPhotos[0] ? (
+          <div className="bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm">
+            {mealPhotos[0] ? (
+              <div className="h-64 sm:h-80 w-full relative bg-accent/5">
                 <img src={mealPhotos[0]} alt={selectedMeal.title} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-ink/35 gap-3">
-                  <Coffee size={42} />
-                  <span className="text-sm font-bold">Sem foto nesta refeição</span>
+                <div className="absolute top-4 right-4 bg-paper/90 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold shadow-md">
+                  {selectedMeal.time}
                 </div>
-              )}
-              <div className="absolute top-4 right-4 bg-paper/90 backdrop-blur-md px-4 py-2 rounded-full flex items-center gap-2 shadow-md">
-                <MealIcon size={16} className={mealType === 'Física' ? 'text-accent' : mealType === 'Emocional' ? 'text-accent-pink' : 'text-ink/50'} />
-                <span className="text-xs font-bold uppercase">{selectedMeal.time}</span>
               </div>
-            </div>
-            
-            <div className="p-5 sm:p-8 space-y-8">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex-1 bg-accent/5 rounded-3xl p-6 border border-accent/10">
-                  <span className="label-sm text-accent mb-2 block">Tipo de Fome</span>
-                  <div className="text-xl font-bold flex items-center gap-2">
-                    {mealType === 'Física' ? <TbHealthRecognition size={24} /> : mealType === 'Emocional' ? <PiHeartbeat size={24} /> : <Coffee size={24} />}
-                    {mealType}
-                  </div>
+            ) : null}
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-accent/10 border border-accent/20">
+                  <span className="text-[10px] font-bold uppercase text-accent block">Tipo de Fome</span>
+                  <span className="text-lg font-bold text-ink">{mealType}</span>
                 </div>
-                <div className="flex-1 bg-ink/5 rounded-3xl p-6 border border-line">
-                  <span className="label-sm text-ink/50 mb-2 block">Estado Emocional</span>
-                  <div className="text-xl font-bold flex items-center gap-2">
-                    <Smile size={24} className="text-ink/70" />
-                    {mealMood}
-                  </div>
+                <div className="p-4 rounded-2xl bg-paper border border-line">
+                  <span className="text-[10px] font-bold uppercase text-ink/50 block">Satisfação Física</span>
+                  <span className="text-lg font-bold text-ink">
+                    {selectedMeal.satisfaction ?? 4}/5 ({satisfactionLabels[selectedMeal.satisfaction ?? 4]})
+                  </span>
                 </div>
               </div>
 
-              {mealPhotos.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-paper border border-line">
+                  <span className="text-[10px] font-bold uppercase text-ink/50 block">Humor Antes / Depois</span>
+                  <span className="text-sm font-bold text-ink">{selectedMeal.preMood || 'Neutro'} ➔ {selectedMeal.postMood || selectedMeal.mood || 'Neutro'}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-paper border border-line">
+                  <span className="text-[10px] font-bold uppercase text-ink/50 block">Fome Antes / Depois</span>
+                  <span className="text-sm font-bold text-ink">{selectedMeal.preHunger ?? 5}/10 ➔ {selectedMeal.postHunger ?? 5}/10</span>
+                </div>
+              </div>
+
+              {mealPhotos.length > 1 && (
                 <div>
-                  <h3 className="font-bold text-xl mb-4">Fotos da Refeição</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {mealPhotos.map((photo: string, index: number) => (
-                      <div key={photo.slice(0, 48) + index} className="aspect-square overflow-hidden rounded-3xl border border-line bg-line">
-                        <img src={photo} alt={`Foto da refeição ${index + 1}`} className="w-full h-full object-cover" />
+                  <h4 className="font-bold text-sm mb-3">Outras Fotos</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {mealPhotos.slice(1).map((p: string, idx: number) => (
+                      <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-line">
+                        <img src={p} alt="" className="w-full h-full object-cover" />
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div>
-                <h3 className="font-bold text-xl mb-4">Notas da Refeição</h3>
-                <div className="p-6 bg-paper border border-line rounded-3xl text-ink/80 text-lg leading-relaxed shadow-inner">
-                  "{selectedMeal.notes}"
+              {selectedMeal.notes && (
+                <div className="p-5 bg-paper rounded-2xl border border-line">
+                  <span className="label-sm text-accent mb-1 block">Anotações</span>
+                  <p className="text-sm text-ink/80 italic font-medium">"{selectedMeal.notes}"</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </PageWrapper>
+    );
+  };
+
+  const ProfilePage = () => {
+    const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
+    const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
+    const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
+    const liveNeeds = latestWeight && userProfile.height
+      ? calculateNutritionalNeeds(
+        latestWeight,
+        userProfile.height,
+        userProfile.age || 25,
+        userProfile.gender || 'Feminino',
+        userProfile.activityLevel || 1.2,
+        userProfile.objectives || []
+      )
+      : null;
+
+    const profileActions = [
+      { label: 'Editar Dados', icon: Edit2, page: 'settings-account' },
+      { label: 'Temas do App', icon: Palette, page: 'settings-theme' },
+      { label: 'Privacidade', icon: Lock, page: 'settings-privacy' },
+      { label: 'Ajuda & Contato', icon: HelpCircle, page: 'settings-help' },
+    ];
+
+    return (
+      <PageWrapper>
+        <div className="space-y-8 max-w-4xl mx-auto">
+          <header className="relative overflow-hidden rounded-[2rem] bg-white border border-line p-6 md:p-8 shadow-sm">
+            <div className="relative flex flex-col sm:flex-row items-center sm:items-end gap-6">
+              <div className="relative shrink-0">
+                <ProfileAvatar photo={userProfile.photo} size="xl" className="border-4 border-paper shadow-xl" />
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage('settings-account')}
+                  className="absolute -bottom-1 -right-1 w-10 h-10 rounded-2xl bg-accent text-paper flex items-center justify-center shadow-lg border-2 border-white"
+                >
+                  <Camera size={16} />
+                </button>
+              </div>
+              <div className="text-center sm:text-left flex-1 min-w-0">
+                <span className="label-sm text-accent">Perfil Pessoal</span>
+                <h2 className="display-title text-3xl sm:text-4xl mt-1">{userProfile.name || 'Seu Perfil'}</h2>
+                <p className="text-xs sm:text-sm font-medium text-ink/55 mt-1">{userProfile.email || 'Dados salvos localmente e na nuvem'}</p>
+                <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-3">
+                  <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-bold">Gênero: {userProfile.gender || 'Não informado'}</span>
+                  <span className="px-3 py-1 rounded-full bg-paper border border-line text-ink/70 text-xs font-bold">Idade: {userProfile.age ? `${userProfile.age} anos` : 'Não informada'}</span>
+                  {(userProfile.objectives || []).slice(0, 2).map((item) => (
+                    <span key={item} className="px-3 py-1 rounded-full bg-accent-pink/15 text-accent-pink text-xs font-bold">{item}</span>
+                  ))}
                 </div>
               </div>
+              <button onClick={() => setCurrentPage('settings-account')} className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-ink text-paper text-xs font-bold inline-flex items-center justify-center gap-2 shadow-sm">
+                <Edit2 size={14} /> Editar
+              </button>
             </div>
+          </header>
+
+          {/* Cards de Métricas */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-line text-center">
+              <span className="text-[10px] font-bold uppercase text-accent block">IMC Atual</span>
+              <span className="text-2xl font-display">{userProfile.imc || liveNeeds?.imc || '--'}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-line text-center">
+              <span className="text-[10px] font-bold uppercase text-accent-pink block">TMB Estimada</span>
+              <span className="text-2xl font-display">{userProfile.tmb || liveNeeds?.tmb || '--'} kcal</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-line text-center">
+              <span className="text-[10px] font-bold uppercase text-ink/50 block">Peso</span>
+              <span className="text-2xl font-display">{latestWeight ? `${latestWeight} kg` : '--'}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-line text-center">
+              <span className="text-[10px] font-bold uppercase text-ink/50 block">Altura</span>
+              <span className="text-2xl font-display">{userProfile.height ? `${userProfile.height} cm` : '--'}</span>
+            </div>
+          </div>
+
+          {/* Diário do Usuário (se houver notas) */}
+          {(userProfile.dailyNotes && userProfile.dailyNotes.length > 0) && (
+            <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <PenTool size={18} className="text-accent" /> Anotações do Diário ({userProfile.dailyNotes.length})
+                </h3>
+                <button type="button" onClick={() => setShowDailyDiaryModal(true)} className="text-xs font-bold text-accent hover:underline">
+                  + Nova Anotação
+                </button>
+              </div>
+              <div className="space-y-3">
+                {userProfile.dailyNotes.slice(0, 3).map((note) => (
+                  <div key={note.id} className="p-4 rounded-2xl bg-paper border border-line/60">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold uppercase text-accent">{note.date} • Humor: {note.mood || 'Neutro'}</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-ink/80 font-medium">"{note.text}"</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Ações de Configuração */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {profileActions.map((item) => (
+              <button key={item.label} onClick={() => setCurrentPage(item.page as Page)} className="bg-white border border-line rounded-3xl p-4 text-left shadow-sm hover:border-accent hover:bg-accent/5 transition-all group">
+                <div className="w-10 h-10 rounded-2xl bg-ink/5 flex items-center justify-center text-ink/70 group-hover:bg-accent group-hover:text-paper transition-all mb-3">
+                  <item.icon size={18} />
+                </div>
+                <span className="font-bold text-xs sm:text-sm">{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="pt-4 flex flex-col items-center gap-3">
+            <button
+              onClick={() => toast('Mind Nutrition v1.2 - Desenvolvido com carinho para seu bem-estar alimentar.', 'info', 4000)}
+              className="text-xs font-medium text-ink/50 hover:text-accent transition-colors flex items-center gap-1.5"
+            >
+              <HelpCircle size={15} /> Sobre o Mind Nutrition
+            </button>
+            <button
+              onClick={() => setCurrentPage('landing')}
+              className="w-full py-4 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+            >
+              <LogOut size={16} /> Desconectar / Voltar ao Início
+            </button>
           </div>
         </div>
       </PageWrapper>
@@ -2336,206 +2854,98 @@ export default function App() {
   };
 
   const AccountSettings = () => {
-    const { toast } = useToast();
-    const [editMode, setEditMode] = useState<'none' | 'name' | 'email' | 'photo' | 'all'>('none');
     const [name, setName] = useState(userProfile.name);
     const [email, setEmail] = useState(userProfile.email);
-    const [draftProfile, setDraftProfile] = useState<UserProfile>(userProfile);
-
-    const updateDraftList = (field: keyof UserProfile, value: string) => {
-      setDraftProfile(prev => ({
-        ...prev,
-        [field]: value.split(',').map(item => item.trim()).filter(Boolean),
-      }));
-    };
-
-    const updateLatestMetric = (field: keyof UserProfile, value: number) => {
-      setDraftProfile(prev => {
-        const current = ([...(prev[field] as any[] || [])]);
-        const entry = { date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value };
-        if (current.length) current[current.length - 1] = { ...current[current.length - 1], value };
-        else current.push(entry);
-        return { ...prev, [field]: current } as UserProfile;
-      });
-    };
+    const [gender, setGender] = useState(userProfile.gender || 'Mulher');
+    const [age, setAge] = useState(userProfile.age || 25);
+    const [height, setHeight] = useState(userProfile.height || 165);
 
     const handleSave = () => {
-      let newProfile = editMode === 'all' ? { ...draftProfile } : { ...userProfile };
-      if (editMode === 'name') newProfile.name = name;
-      if (editMode === 'email') newProfile.email = email;
-      if (editMode === 'all') {
-        const latestWeight = newProfile.weightEvolution?.[newProfile.weightEvolution.length - 1]?.value || 0;
-        const result = calculateNutritionalNeeds(latestWeight, newProfile.height, newProfile.age, newProfile.gender, newProfile.activityLevel, newProfile.objectives);
-        newProfile = { ...newProfile, ...result };
-      }
-      persistUserProfile(newProfile);
-      toast('Perfil atualizado com sucesso!', 'success');
-      setEditMode('none');
+      const updated = {
+        ...userProfile,
+        name: name.trim(),
+        email: email.trim(),
+        gender,
+        age,
+        height
+      };
+      persistUserProfile(updated);
+      toast('Dados da conta atualizados com sucesso!', 'success');
       setCurrentPage('profile');
     };
 
     return (
       <PageWrapper>
-        <div className="space-y-12">
-          <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-            <ArrowLeft size={20} />
-          </button>
-          <h2 className="display-title text-5xl">Conta.</h2>
-          
-          {editMode === 'none' && (
-            <div className="space-y-4 max-w-md">
-              <p className="serif-body text-xl text-ink/60 mb-6">O que deseja atualizar?</p>
-              {[
-                { key: 'name', label: 'Nome', desc: 'Alterar seu nome de exibição', icon: User },
-                { key: 'email', label: 'E-mail', desc: 'Atualizar seu endereço de e-mail', icon: Mail },
-                { key: 'photo', label: 'Foto', desc: 'Trocar sua foto de perfil', icon: Camera },
-                { key: 'all', label: 'Todos os dados', desc: 'Editar todas as informações', icon: Edit2 },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => { setDraftProfile(userProfile); setName(userProfile.name); setEmail(userProfile.email); setEditMode(item.key as any); }}
-                  className="w-full p-5 sm:p-6 bg-white border border-line rounded-3xl shadow-sm hover:border-accent hover:bg-accent/5 transition-all flex items-center gap-4 text-left"
+        <div className="space-y-8 max-w-xl mx-auto">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+              <ArrowLeft size={20} />
+            </button>
+            <h2 className="display-title text-4xl">Editar Perfil</h2>
+          </div>
+
+          <div className="bg-white p-6 sm:p-8 rounded-[2rem] border border-line shadow-sm space-y-5">
+            <div>
+              <label className="label-sm text-accent mb-1 block">Nome de exibição</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-lg font-bold outline-none"
+              />
+            </div>
+            <div>
+              <label className="label-sm text-accent mb-1 block">E-mail</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-lg font-bold outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-sm text-accent mb-1 block">Gênero / Sexo</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-sm font-bold outline-none"
                 >
-                  <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
-                    <item.icon size={20} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-lg">{item.label}</h4>
-                    <p className="text-xs text-ink/50">{item.desc}</p>
-                  </div>
-                  <ChevronRight size={20} className="text-ink/20 ml-auto" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {editMode !== 'none' && (
-            <div className="space-y-8 max-w-md">
-              <div className="flex items-center gap-3 mb-6">
-                <button onClick={() => setEditMode('none')} className="p-2 rounded-full hover:bg-line transition-colors">
-                  <ArrowLeft size={18} />
-                </button>
-                <h3 className="font-bold text-xl">
-                  {editMode === 'name' ? 'Editar Nome' : editMode === 'email' ? 'Editar E-mail' : editMode === 'photo' ? 'Editar Foto' : 'Editar Todos os Dados'}
-                </h3>
+                  <option value="Mulher">Mulher</option>
+                  <option value="Homem">Homem</option>
+                  <option value="Não Binário(a)">Não Binário(a)</option>
+                  <option value="Outro">Outro</option>
+                  <option value="Prefiro não informar">Prefiro não informar</option>
+                </select>
               </div>
-
-              {(editMode === 'name' || editMode === 'all') && (
-                <div>
-                  <label className="label-sm text-ink/50">Nome de exibição</label>
-                  <input value={editMode === 'all' ? draftProfile.name : name} onChange={e => {
-                    if (editMode === 'all') setDraftProfile(prev => ({ ...prev, name: e.target.value }));
-                    setName(e.target.value);
-                  }} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
-                </div>
-              )}
-
-              {(editMode === 'email' || editMode === 'all') && (
-                <div>
-                  <label className="label-sm text-ink/50">E-mail</label>
-                  <input value={editMode === 'all' ? draftProfile.email : email} onChange={e => {
-                    if (editMode === 'all') setDraftProfile(prev => ({ ...prev, email: e.target.value }));
-                    setEmail(e.target.value);
-                  }} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
-                </div>
-              )}
-
-              {editMode === 'all' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="label-sm text-ink/50">Idade</label>
-                      <input type="number" value={draftProfile.age || ''} onChange={e => setDraftProfile(prev => ({ ...prev, age: parseFloat(e.target.value) || 0 }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
-                    </div>
-                    <div>
-                      <label className="label-sm text-ink/50">Altura (cm)</label>
-                      <input type="number" value={draftProfile.height || ''} onChange={e => setDraftProfile(prev => ({ ...prev, height: parseFloat(e.target.value) || 0 }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label-sm text-ink/50">Gênero</label>
-                    <select value={draftProfile.gender} onChange={e => setDraftProfile(prev => ({ ...prev, gender: e.target.value }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-lg font-bold">
-                      <option value="">Selecione</option>
-                      <option value="Masculino">Masculino</option>
-                      <option value="Feminino">Feminino</option>
-                      <option value="Não-binário">Não-binário</option>
-                      <option value="Prefiro não identificar">Prefiro não identificar</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label-sm text-ink/50">Nível de atividade</label>
-                    <select value={draftProfile.activityLevel || 1.2} onChange={e => setDraftProfile(prev => ({ ...prev, activityLevel: parseFloat(e.target.value) }))} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-lg font-bold">
-                      <option value={1.2}>Sedentário</option>
-                      <option value={1.375}>Levemente ativo</option>
-                      <option value={1.55}>Moderadamente ativo</option>
-                      <option value={1.725}>Muito ativo</option>
-                    </select>
-                  </div>
-                  {[
-                    { field: 'objectives', label: 'Objetivos' },
-                    { field: 'initialEmotions', label: 'Emoções iniciais' },
-                    { field: 'triggers', label: 'Gatilhos' },
-                    { field: 'foods', label: 'Preferências alimentares' },
-                    { field: 'comorbidities', label: 'Condições de saúde' },
-                  ].map(item => (
-                    <div key={item.field}>
-                      <label className="label-sm text-ink/50">{item.label}</label>
-                      <input value={((draftProfile[item.field as keyof UserProfile] as string[]) || []).join(', ')} onChange={e => updateDraftList(item.field as keyof UserProfile, e.target.value)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-base font-bold" />
-                    </div>
-                  ))}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                      { field: 'weightEvolution', label: 'Peso (kg)' },
-                      { field: 'waistEvolution', label: 'Cintura (cm)' },
-                      { field: 'abdomenEvolution', label: 'Abdômen (cm)' },
-                      { field: 'hipEvolution', label: 'Quadril (cm)' },
-                      { field: 'armEvolution', label: 'Braço (cm)' },
-                    ].map(item => {
-                      const values = (draftProfile[item.field as keyof UserProfile] as any[]) || [];
-                      return (
-                        <div key={item.field}>
-                          <label className="label-sm text-ink/50">{item.label}</label>
-                          <input type="number" value={values[values.length - 1]?.value || ''} onChange={e => updateLatestMetric(item.field as keyof UserProfile, parseFloat(e.target.value) || 0)} className="w-full py-4 bg-transparent border-b-2 border-line focus:border-accent outline-none text-xl font-bold" />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {editMode === 'photo' && (
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative group">
-                    <ProfileAvatar photo={userProfile.photo} size="xl" className="border-4 border-accent shadow-lg" />
-                    <label className="absolute bottom-0 right-0 w-10 h-10 bg-ink text-paper rounded-full flex items-center justify-center shadow-lg border-2 border-paper cursor-pointer">
-                      <Camera size={18} />
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={async (e) => {
-                        const result = await readValidatedImages(e.target.files, 0);
-                        if (result.error) {
-                          toast(result.error, 'error');
-                          return;
-                        }
-                        if (result.images[0]) {
-                          const newProfile = { ...userProfile, photo: result.images[0] };
-                          persistUserProfile(newProfile);
-                          toast('Foto atualizada!', 'success');
-                        }
-                      }} />
-                    </label>
-                  </div>
-                  <button onClick={handleSave} className="w-full py-5 bg-accent text-paper rounded-full font-bold shadow-lg hover:bg-accent/90 transition-colors">
-                    Salvar Foto
-                  </button>
-                </div>
-              )}
-
-              {editMode !== 'photo' && (
-                <button onClick={handleSave} className="w-full py-5 bg-accent text-paper rounded-full font-bold shadow-lg hover:bg-accent/90 transition-colors">
-                  Salvar Alterações
-                </button>
-              )}
+              <div>
+                <label className="label-sm text-accent mb-1 block">Idade</label>
+                <input
+                  type="number"
+                  value={age}
+                  onChange={(e) => setAge(parseInt(e.target.value, 10) || 0)}
+                  className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-sm font-bold outline-none"
+                />
+              </div>
             </div>
-          )}
+            <div>
+              <label className="label-sm text-accent mb-1 block">Altura (cm)</label>
+              <input
+                type="number"
+                value={height}
+                onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
+                className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-sm font-bold outline-none"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSave}
+              className="w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-md hover:bg-accent/90 active:scale-95 transition-all mt-4"
+            >
+              Salvar Alterações
+            </button>
+          </div>
         </div>
       </PageWrapper>
     );
@@ -2543,33 +2953,32 @@ export default function App() {
 
   const ThemeSettings = () => (
     <PageWrapper>
-      <div className="space-y-12">
-        <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h2 className="display-title text-5xl">Temas.</h2>
-          <p className="serif-body text-xl text-ink/60 mt-2">Escolha uma paleta para o app.</p>
+      <div className="space-y-8 max-w-2xl mx-auto">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="display-title text-4xl">Temas do App</h2>
         </div>
-        <div className="grid gap-4 max-w-2xl">
+        <div className="grid gap-3">
           {APP_THEMES.map(theme => {
             const active = theme.id === themeId;
             return (
               <button
                 key={theme.id}
                 onClick={() => setThemeId(theme.id)}
-                className={`w-full p-5 bg-white border rounded-3xl shadow-sm text-left transition-all ${active ? 'border-accent ring-4 ring-accent/10' : 'border-line hover:border-accent/50'}`}
+                className={`w-full p-5 bg-white border rounded-3xl shadow-sm text-left transition-all ${active ? 'border-accent ring-4 ring-accent/15' : 'border-line hover:border-accent/40'}`}
               >
                 <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-lg">{theme.name}</h3>
-                    <p className="text-xs text-ink/50 font-medium mt-1">{theme.description}</p>
+                  <div>
+                    <h3 className="font-bold text-base sm:text-lg">{theme.name}</h3>
+                    <p className="text-xs text-ink/50 mt-0.5">{theme.description}</p>
                   </div>
-                  {active && <CheckCircle size={20} className="text-accent shrink-0" />}
+                  {active && <CheckCircle size={22} className="text-accent shrink-0" />}
                 </div>
                 <div className="flex gap-2 mt-4">
-                  {[theme.colors.ink, theme.colors.paper, theme.colors.accent, theme.colors.accentPink, theme.colors.accentLight].map((color, index) => (
-                    <span key={index} className="w-9 h-9 rounded-full border border-line shadow-sm" style={{ backgroundColor: color }} />
+                  {[theme.colors.ink, theme.colors.paper, theme.colors.accent, theme.colors.accentPink, theme.colors.accentLight].map((c, idx) => (
+                    <span key={idx} className="w-8 h-8 rounded-full border border-line shadow-xs" style={{ backgroundColor: c }} />
                   ))}
                 </div>
               </button>
@@ -2581,24 +2990,8 @@ export default function App() {
   );
 
   const PrivacySettings = () => {
-    const { toast } = useToast();
-    const [privacyPrefs, setPrivacyPrefs] = useState<Record<string, boolean>>(() => {
-      const saved = localStorage.getItem('mindPrivacyPrefs');
-      if (saved) {
-        try { return JSON.parse(saved); } catch {}
-      }
-      return { privateProfile: true, cloudBackup: true, twoFactor: false };
-    });
-
-    const updatePrivacyPref = (key: string) => {
-      const updated = { ...privacyPrefs, [key]: !privacyPrefs[key] };
-      setPrivacyPrefs(updated);
-      localStorage.setItem('mindPrivacyPrefs', JSON.stringify(updated));
-      toast('Preferencia de privacidade atualizada.', 'success');
-    };
-
     const handleDeleteData = async () => {
-      if (!window.confirm('Apagar seus dados de perfil e refeicoes do banco? Esta acao nao pode ser desfeita.')) return;
+      if (!window.confirm('Apagar seus dados de perfil e refeições? Esta ação não pode ser desfeita.')) return;
       try {
         if (currentUserId) await deleteCurrentUserData(currentUserId);
         await supabase?.auth.signOut();
@@ -2606,305 +2999,81 @@ export default function App() {
         localStorage.removeItem('nutriMeals');
         setLoggedMeals([]);
         setCurrentUserId(null);
-        toast('Seus dados foram apagados.', 'success');
+        toast('Seus dados foram apagados com segurança.', 'success');
         setCurrentPage('landing');
-      } catch (err) {
-        toast('Nao foi possivel apagar os dados no banco agora.', 'error');
+      } catch {
+        toast('Não foi possível apagar os dados no banco agora.', 'error');
       }
     };
 
-    const privacyOptions = [
-      { key: 'privateProfile', title: 'Perfil Privado', desc: 'Seus dados visiveis apenas para voce.' },
-      { key: 'cloudBackup', title: 'Backup na Nuvem', desc: 'Sincronize seus dados em outros dispositivos quando o Supabase estiver ativo.' },
-      { key: 'twoFactor', title: 'Autenticacao em 2 Passos', desc: 'Preferencia registrada. A ativacao final depende do provedor de autenticacao.' },
-    ];
-
     return (
       <PageWrapper>
-        <div className="space-y-12">
-          <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-            <ArrowLeft size={20} />
-          </button>
-          <h2 className="display-title text-5xl">Privacidade.</h2>
-          <div className="space-y-6 max-w-md">
-            {privacyOptions.map((item) => (
-              <button key={item.key} type="button" onClick={() => updatePrivacyPref(item.key)} className="w-full flex items-center justify-between gap-4 p-5 sm:p-6 bg-white border border-line rounded-3xl shadow-sm text-left hover:border-accent/50 transition-colors">
-                <div className="min-w-0">
-                  <h4 className="font-bold text-lg">{item.title}</h4>
-                  <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
-                </div>
-                <div className={`w-12 h-6 rounded-full p-1 relative shrink-0 transition-colors ${privacyPrefs[item.key] ? 'bg-accent' : 'bg-line'}`}>
-                  <div className={`w-4 h-4 bg-paper rounded-full shadow-md transition-transform ${privacyPrefs[item.key] ? 'translate-x-6' : ''}`} />
-                </div>
-              </button>
-            ))}
-            <button onClick={handleDeleteData} className="w-full py-5 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors mt-8 flex items-center justify-center gap-2">
-              <Trash2 size={18} /> Apagar meus dados do banco
+        <div className="space-y-8 max-w-xl mx-auto">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+              <ArrowLeft size={20} />
+            </button>
+            <h2 className="display-title text-4xl">Privacidade</h2>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-line shadow-sm space-y-4">
+            <div className="p-4 rounded-2xl bg-paper border border-line flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm">Armazenamento Seguro</h4>
+                <p className="text-xs text-ink/50 mt-0.5">Seus dados ficam protegidos com fallback local.</p>
+              </div>
+              <CheckCircle2 size={20} className="text-accent" />
+            </div>
+            <button
+              onClick={handleDeleteData}
+              className="w-full py-4 text-red-500 font-bold border-2 border-red-500/20 rounded-full hover:bg-red-50 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2 mt-4"
+            >
+              <Trash2 size={16} /> Apagar todos os meus dados
             </button>
           </div>
         </div>
       </PageWrapper>
     );
   };
+
   const SettingsHelp = () => (
     <PageWrapper>
-      <div className="space-y-12">
-        <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-          <ArrowLeft size={20} />
-        </button>
-        <h2 className="display-title text-5xl">Ajuda.</h2>
-        <div className="space-y-6 max-w-md">
-          <div className="bg-accent/10 border border-accent/20 p-5 sm:p-6 rounded-3xl mb-8">
-            <h3 className="font-bold text-xl mb-4 flex items-center gap-2"><Heart size={20} className="text-accent" /> Contato Humano</h3>
-            <p className="text-sm text-ink/70 mb-6 font-medium">Nossa equipe clínica está pronta para te atender com todo cuidado e atenção.</p>
-            
-            <div className="space-y-4">
-              <a href="https://wa.me/5511999999999" target="_blank" rel="noreferrer" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><FaWhatsapp size={20} /></div>
-                <div className="min-w-0">
-                  <span className="block font-bold text-sm">WhatsApp da Clínica</span>
-                  <span className="block text-xs text-ink/60">(11) 99999-9999</span>
-                </div>
-              </a>
-              <a href="tel:+551133333333" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><PhoneCall size={18} /></div>
-                <div className="min-w-0">
-                  <span className="block font-bold text-sm">Telefone Fixo</span>
-                  <span className="block text-xs text-ink/60">(11) 3333-3333</span>
-                </div>
-              </a>
-              <a href="mailto:contato@serenanutre.com" className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-accent-pink/20 text-accent-pink rounded-full flex items-center justify-center"><Mail size={18} /></div>
-                <div className="min-w-0">
-                  <span className="block font-bold text-sm">E-mail de Suporte</span>
-                  <span className="block truncate text-xs text-ink/60">contato@serenanutre.com</span>
-                </div>
-              </a>
+      <div className="space-y-8 max-w-xl mx-auto">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentPage('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="display-title text-4xl">Ajuda & Contato</h2>
+        </div>
+        <div className="bg-white border border-line p-6 rounded-3xl shadow-sm space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-2xl bg-accent/10 text-accent flex items-center justify-center font-bold">
+              <Heart size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-base">Equipe Mind Nutrition</h3>
+              <p className="text-xs text-ink/50">Estamos à disposição para tirar dúvidas e acolher você.</p>
             </div>
           </div>
-
-          {[
-            { title: 'Dúvidas Frequentes', desc: 'Respostas para as perguntas mais comuns.' },
-            { title: 'Termos de Uso', desc: 'Nossas regras e responsabilidades.' }
-          ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between gap-4 p-5 sm:p-6 bg-white border border-line rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition-all">
-              <div className="min-w-0">
-                <h4 className="font-bold text-lg">{item.title}</h4>
-                <p className="text-xs text-ink/50 font-medium">{item.desc}</p>
-              </div>
-              <ChevronRight size={20} className="text-ink/30" />
+          <a href="https://wa.me/5511999999999" target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-paper p-3.5 rounded-2xl border border-line hover:border-accent transition-colors">
+            <div className="w-9 h-9 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><FaWhatsapp size={18} /></div>
+            <div className="min-w-0">
+              <span className="block font-bold text-xs">WhatsApp da Equipe</span>
+              <span className="block text-[10px] text-ink/60">(11) 99999-9999</span>
             </div>
-          ))}
+          </a>
+          <a href="mailto:contato@mindnutrition.app" className="flex items-center gap-3 bg-paper p-3.5 rounded-2xl border border-line hover:border-accent transition-colors">
+            <div className="w-9 h-9 bg-accent-pink/20 text-accent-pink rounded-full flex items-center justify-center"><Mail size={16} /></div>
+            <div className="min-w-0">
+              <span className="block font-bold text-xs">E-mail de Suporte</span>
+              <span className="block text-[10px] text-ink/60">contato@mindnutrition.app</span>
+            </div>
+          </a>
         </div>
       </div>
     </PageWrapper>
   );
 
-  const ProfilePage = () => {
-    const { toast } = useToast();
-    const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
-    const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
-    const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
-    const liveNeeds = latestWeight && userProfile.height
-      ? calculateNutritionalNeeds(
-        latestWeight,
-        userProfile.height,
-        userProfile.age || 25,
-        userProfile.gender,
-        userProfile.activityLevel || 1.2,
-        userProfile.objectives || []
-      )
-      : null;
-    const [selectedMetric, setSelectedMetric] = useState<null | {
-      label: string;
-      val: string | number;
-      tone: string;
-      title: string;
-      description: string;
-      interpretation: string;
-    }>(null);
-    const profileMetrics = [
-      {
-        label: 'IMC',
-        val: userProfile.imc || liveNeeds?.imc || '--',
-        tone: 'text-accent bg-accent/10 border-accent/20',
-        title: 'Índice de Massa Corporal',
-        description: 'O IMC cruza peso e altura para criar uma leitura geral do estado corporal. Ele é útil como triagem, mas não substitui uma avaliação profissional.',
-        interpretation: 'Use como ponto de contexto. Massa muscular, retenção de líquidos, composição corporal e histórico de saúde podem mudar a interpretação do número.',
-      },
-      {
-        label: 'TMB',
-        val: userProfile.tmb || liveNeeds?.tmb || '--',
-        tone: 'text-accent-pink bg-accent-pink/10 border-accent-pink/20',
-        title: 'Taxa Metabólica Basal',
-        description: 'A TMB estima quanta energia seu corpo usa em repouso para manter funções vitais, como respiração, circulação e temperatura corporal.',
-        interpretation: 'Ela ajuda a personalizar metas e reflexões alimentares. Não é uma meta de consumo por si só, porque rotina, treino, sono e saúde alteram a necessidade diária.',
-      },
-      {
-        label: 'Idade',
-        val: userProfile.age || '--',
-        tone: 'text-ink/70 bg-white border-line',
-        title: 'Idade informada no perfil',
-        description: 'A idade entra nos cálculos metabólicos e ajuda o app a contextualizar recomendações de energia, rotina e evolução corporal.',
-        interpretation: 'Mantenha esse dado atualizado para melhorar estimativas como TMB e leituras de progresso ao longo do tempo.',
-      },
-      {
-        label: 'Peso',
-        val: latestWeight ? `${latestWeight}kg` : '--',
-        tone: 'text-accent bg-white border-line',
-        title: 'Peso corporal mais recente',
-        description: 'Mostra o último peso registrado na evolução corporal. O valor isolado diz pouco; a tendência ao longo das semanas costuma ser mais útil.',
-        interpretation: 'Observe junto com humor, fome, medidas corporais e constância dos registros para evitar conclusões apressadas.',
-      },
-      {
-        label: 'C/Q',
-        val: latestWaist && latestHip ? (latestWaist / latestHip).toFixed(2) : '--',
-        tone: 'text-accent-pink bg-white border-line',
-        title: 'Relação Cintura/Quadril',
-        description: 'A C/Q divide a medida da cintura pela medida do quadril. Ela ajuda a contextualizar distribuição corporal e risco cardiometabólico em triagens.',
-        interpretation: 'É apenas um indicador de acompanhamento. Diferenças de biotipo, técnica de medição e contexto clínico importam bastante.',
-      },
-    ];
-    const profileActions = [
-      { label: 'Editar dados', icon: Edit2, page: 'settings-account' },
-      { label: 'Temas', icon: Palette, page: 'settings-theme' },
-      { label: 'Privacidade', icon: Lock, page: 'settings-privacy' },
-      { label: 'Ajuda', icon: HelpCircle, page: 'settings-help' },
-    ];
-    return (
-    <PageWrapper>
-      <div className="space-y-8">
-        <header className="relative overflow-hidden rounded-[2rem] bg-white border border-line p-6 md:p-8 shadow-sm">
-          <div className="absolute -right-12 -top-12 w-44 h-44 rounded-full bg-accent/10 blur-2xl" />
-          <div className="relative flex flex-col sm:flex-row items-center sm:items-end gap-6">
-            <div className="relative shrink-0">
-              <ProfileAvatar photo={userProfile.photo} size="xl" className="border-4 border-paper shadow-xl" />
-              <button onClick={() => setCurrentPage('settings-account')} className="absolute -bottom-1 -right-1 w-11 h-11 rounded-2xl bg-accent text-paper flex items-center justify-center shadow-lg border-4 border-white">
-                <Camera size={17} />
-              </button>
-            </div>
-            <div className="text-center sm:text-left flex-1 min-w-0">
-              <span className="label-sm text-accent">Perfil</span>
-              <h2 className="display-title text-4xl md:text-5xl mt-2">{userProfile.name || 'Seu perfil'}</h2>
-              <p className="text-sm font-medium text-ink/55 mt-2">{userProfile.email || 'Complete seus dados para personalizar o app'}</p>
-              <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-4">
-                {(userProfile.objectives?.length ? userProfile.objectives.slice(0, 3) : ['Jornada em construção']).map((item: string) => (
-                  <span key={item} className="px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold">{item}</span>
-                ))}
-              </div>
-            </div>
-            <button onClick={() => setCurrentPage('settings-account')} className="w-full shrink-0 px-5 py-3 rounded-2xl bg-ink text-paper text-sm font-bold inline-flex items-center justify-center gap-2 shadow-sm sm:w-auto">
-              <Edit2 size={16} /> Editar
-            </button>
-          </div>
-        </header>
-
-        <div className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <span className="label-sm text-accent">Toque nos indicadores para entender cada termo</span>
-            <HelpCircle size={16} className="text-accent/70 shrink-0" />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {profileMetrics.map(item => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => setSelectedMetric(item)}
-                className={`group rounded-2xl p-4 text-left border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent/30 ${item.tone}`}
-                aria-label={`Entender ${item.label}`}
-              >
-                <span className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase mb-2 opacity-70">
-                  {item.label}
-                  <HelpCircle size={14} className="opacity-60 group-hover:opacity-100" />
-                </span>
-                <span className="block text-2xl font-display text-ink">{item.val}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-[1fr_1.2fr] gap-4">
-          <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
-            <span className="label-sm text-accent">Resumo</span>
-            <p className="font-bold text-lg mt-2">{userProfile.objectives?.[0] || 'Complete seu foco principal'}</p>
-            <p className="text-sm text-ink/50 mt-2">{userProfile.triggers?.length ? `Gatilhos: ${userProfile.triggers.slice(0, 3).join(', ')}` : 'Informe seus gatilhos para personalizar os lembretes e insights.'}</p>
-            <div className="mt-5 w-12 h-12 bg-accent text-paper rounded-2xl flex items-center justify-center">
-              <Brain size={24} />
-            </div>
-            {(!userProfile.objectives?.length || !userProfile.triggers?.length) && (
-              <button onClick={() => setCurrentPage('diagnosis')} className="mt-5 w-full rounded-2xl bg-accent/10 px-4 py-3 text-sm font-bold text-accent transition-colors hover:bg-accent/15">
-                Completar perfil
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {profileActions.map((item) => (
-              <button key={item.label} onClick={() => setCurrentPage(item.page as Page)} className="bg-white border border-line rounded-3xl p-4 text-left shadow-sm hover:border-accent hover:bg-accent/5 transition-all group">
-                <div className="w-11 h-11 rounded-2xl bg-ink/5 flex items-center justify-center text-ink/70 group-hover:bg-accent group-hover:text-paper transition-all mb-4">
-                  <item.icon size={20} />
-                </div>
-                <span className="font-bold text-sm">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <button onClick={() => toast('Mind Nutrition é uma plataforma guiada por IA para uma relação mais saudável com a alimentação. Versão 1.0.0', 'info', 5000)}
-            className="w-full py-4 flex items-center justify-center gap-2 text-center text-ink/50 hover:text-accent font-medium transition-colors">
-            <HelpCircle size={18} /> Sobre o Mind Nutrition
-          </button>
-          <button onClick={() => setCurrentPage('landing')} className="w-full py-6 mt-4 flex items-center justify-center gap-3 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors shadow-sm">
-            <LogOut size={20} />
-            <span className="uppercase tracking-widest text-sm">Voltar ao Início</span>
-          </button>
-        </div>
-      </div>
-      <AnimatePresence>
-        {selectedMetric && (
-          <div className="modal-shell fixed inset-0 z-50 flex">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={MODAL_BACKDROP_CLASS}
-              onClick={() => setSelectedMetric(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 24, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 24, scale: 0.96 }}
-              className="modal-panel relative bg-paper p-6 md:p-8 shadow-2xl max-w-lg"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <span className="label-sm text-accent">Entenda o termo</span>
-                  <h3 className="modal-title font-bold mt-2">{selectedMetric.title}</h3>
-                </div>
-                <button type="button" onClick={() => setSelectedMetric(null)} className="icon-button">
-                  <X size={18} />
-                </button>
-              </div>
-              <div className={`mt-6 rounded-3xl border p-5 ${selectedMetric.tone}`}>
-                <span className="text-[10px] font-bold uppercase opacity-70">{selectedMetric.label}</span>
-                <strong className="mt-1 block text-4xl font-display text-ink">{selectedMetric.val}</strong>
-              </div>
-              <p className="mt-6 text-sm leading-relaxed text-ink/65">{selectedMetric.description}</p>
-              <div className="mt-4 rounded-3xl bg-white border border-line p-5">
-                <span className="label-sm text-accent-pink">Como interpretar</span>
-                <p className="mt-2 text-sm leading-relaxed text-ink/60">{selectedMetric.interpretation}</p>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </PageWrapper>
-    );
-  };
-
   const AdminLoginPage = () => {
-    const { toast } = useToast();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -2922,38 +3091,25 @@ export default function App() {
     };
 
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -15 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="w-full min-h-screen bg-paper flex items-center justify-center px-6"
-      >
-        <div className="w-full max-w-md space-y-10">
-          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm space-y-6">
-            {error && <p className="text-red-500 text-sm font-bold text-center">{error}</p>}
+      <PageWrapper>
+        <div className="max-w-md mx-auto space-y-6 pt-12">
+          <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm space-y-5">
+            <h2 className="display-title text-3xl">Painel Nutricional</h2>
+            {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
             <div>
-              <label className="label-sm text-accent">E-mail</label>
-              <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }}
-                className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none transition-colors text-lg font-medium" placeholder="admin@serenanutre.com" />
+              <label className="label-sm text-accent mb-1 block">E-mail</label>
+              <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }} className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-base outline-none" />
             </div>
             <div>
-              <label className="label-sm text-accent">Senha</label>
-              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
-                className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none transition-colors text-lg font-medium" placeholder="••••••••"
-                onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()} />
+              <label className="label-sm text-accent mb-1 block">Senha</label>
+              <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }} className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-base outline-none" onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} />
             </div>
-            <button onClick={handleAdminLogin}
-              className="w-full py-5 bg-accent text-paper font-bold text-lg rounded-full shadow-lg hover:bg-accent/90 transition-colors">
+            <button onClick={handleAdminLogin} className="w-full py-4 bg-accent text-paper font-bold text-sm uppercase rounded-full shadow-md hover:bg-accent/90">
               Entrar
             </button>
           </div>
-
-          <button onClick={() => setCurrentPage('landing')} className="w-full flex items-center justify-center gap-2 text-ink/50 hover:text-accent font-medium transition-colors">
-            <ArrowLeft size={18} /> Voltar ao site
-          </button>
         </div>
-      </motion.div>
+      </PageWrapper>
     );
   };
 
@@ -2962,312 +3118,29 @@ export default function App() {
       setCurrentPage('admin-login');
       return null;
     }
-
     return (
       <PageWrapper>
-        <div className="space-y-10">
-          <header className="responsive-page-header">
+        <div className="space-y-8">
+          <header className="flex justify-between items-center">
             <div>
               <h2 className="display-title text-4xl">Painel do Nutricionista</h2>
-              <p className="serif-body text-xl text-ink/60 mt-1">Gerencie usuários e conteúdos</p>
+              <p className="text-xs text-ink/60 mt-1">Gerencie usuários e conteúdos</p>
             </div>
-            <button onClick={() => { setAdminLoggedIn(false); localStorage.removeItem('nutriAdminLoggedIn'); setCurrentPage('landing'); }}
-              className="flex items-center justify-center gap-2 text-red-500 font-bold hover:bg-red-50 px-4 py-2 rounded-full transition-colors">
-              <LogOut size={18} /> Sair
+            <button onClick={() => { setAdminLoggedIn(false); localStorage.removeItem('nutriAdminLoggedIn'); setCurrentPage('landing'); }} className="text-red-500 font-bold text-xs flex items-center gap-1">
+              <LogOut size={16} /> Sair
             </button>
           </header>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <button onClick={() => setCurrentPage('admin-users')}
-              className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm hover:border-accent hover:shadow-lg transition-all text-left group">
-              <div className="w-14 h-14 bg-accent/10 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-accent/20 transition-colors">
-                <User size={28} className="text-accent" />
-              </div>
-              <h3 className="font-bold text-xl mb-1">Usuários</h3>
-              <p className="text-sm text-ink/50">{adminUsers.length} usuários cadastrados</p>
-            </button>
-
-            <button onClick={() => setCurrentPage('admin-articles')}
-              className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm hover:border-accent hover:shadow-lg transition-all text-left group">
-              <div className="w-14 h-14 bg-accent-pink/10 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-accent-pink/20 transition-colors">
-                <BookOpen size={28} className="text-accent-pink" />
-              </div>
-              <h3 className="font-bold text-xl mb-1">Artigos</h3>
-              <p className="text-sm text-ink/50">{adminArticles.length} artigos publicados</p>
-            </button>
-
-            <div className="bg-accent/5 border border-accent/10 p-8 rounded-[2.5rem]">
-              <div className="w-14 h-14 bg-accent/10 rounded-2xl flex items-center justify-center mb-4">
-                <Activity size={28} className="text-accent" />
-              </div>
-              <h3 className="font-bold text-xl mb-1">Estatísticas</h3>
-              <p className="text-sm text-ink/50">Em breve</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
+              <h3 className="font-bold text-lg mb-1">Usuários Registrados</h3>
+              <p className="text-2xl font-display text-accent">{adminUsers.length}</p>
+            </div>
+            <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
+              <h3 className="font-bold text-lg mb-1">Artigos na Biblioteca</h3>
+              <p className="text-2xl font-display text-accent-pink">{adminArticles.length}</p>
             </div>
           </div>
         </div>
-      </PageWrapper>
-    );
-  };
-
-  const AdminUsersPage = () => {
-    if (!adminLoggedIn) {
-      setCurrentPage('admin-login');
-      return null;
-    }
-
-    const [selectedUser, setSelectedUser] = useState<any>(null);
-
-    useEffect(() => {
-      if (selectedUser) {
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = '';
-      }
-      return () => { document.body.style.overflow = ''; };
-    }, [selectedUser]);
-
-    return (
-      <PageWrapper>
-        <div className="space-y-10">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setCurrentPage('admin-dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h2 className="display-title text-4xl">Usuários</h2>
-              <p className="serif-body text-xl text-ink/60 mt-1">{adminUsers.length} perfis cadastrados</p>
-            </div>
-          </div>
-
-          {adminUsers.length === 0 ? (
-            <div className="text-center py-16">
-              <User size={48} className="text-ink/20 mx-auto mb-4" />
-              <p className="serif-body text-xl text-ink/50">Nenhum usuário cadastrado ainda</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {adminUsers.map((user, idx) => (
-                <button key={idx} onClick={() => setSelectedUser(user)}
-                  className="w-full bg-white border border-line p-5 sm:p-6 rounded-3xl shadow-sm hover:border-accent hover:shadow-md transition-all flex items-center gap-4 text-left">
-                  <ProfileAvatar photo={user.photo} size="md" className="border-2 border-accent/20" />
-                  <div className="min-w-0 flex-1">
-                    <h4 className="truncate font-bold text-lg">{user.name || 'Sem nome'}</h4>
-                    <p className="truncate text-sm text-ink/50">{user.email || 'Sem e-mail'}</p>
-                  </div>
-                  <div className="hidden text-right sm:block">
-                    <p className="text-xs font-bold text-accent">{user.objectives?.[0] || 'Sem objetivo'}</p>
-                    <p className="text-xs text-ink/40">IMC: {user.imc || '--'}</p>
-                  </div>
-                  <ChevronRight size={20} className="text-ink/20" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <AnimatePresence>
-          {selectedUser && (
-            <div className="modal-shell fixed inset-0 z-50 flex">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setSelectedUser(null)} />
-              <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative bg-paper max-w-lg p-5 md:p-8 shadow-2xl">
-                <div className="flex items-center gap-4 mb-6">
-                  <button onClick={() => setSelectedUser(null)} className="p-2 rounded-full hover:bg-line transition-colors">
-                    <ArrowLeft size={18} />
-                  </button>
-                  <h3 className="font-bold text-xl">Perfil do Usuário</h3>
-                </div>
-
-                <div className="flex flex-col items-center mb-8">
-                  <ProfileAvatar photo={selectedUser.photo} size="lg" className="border-4 border-accent shadow-lg mb-4" />
-                  <h4 className="font-bold text-2xl">{selectedUser.name || 'Sem nome'}</h4>
-                  <p className="text-sm text-ink/50">{selectedUser.email}</p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-accent/10 rounded-2xl p-3 text-center">
-                      <span className="text-[10px] font-bold text-accent uppercase block">IMC</span>
-                      <span className="text-xl font-display">{selectedUser.imc || '--'}</span>
-                    </div>
-                    <div className="bg-accent-pink/10 rounded-2xl p-3 text-center">
-                      <span className="text-[10px] font-bold text-accent-pink uppercase block">TMB</span>
-                      <span className="text-xl font-display">{selectedUser.tmb || '--'}</span>
-                    </div>
-                    <div className="bg-line rounded-2xl p-3 text-center">
-                      <span className="text-[10px] font-bold text-ink/60 uppercase block">Idade</span>
-                      <span className="text-xl font-display">{selectedUser.age || '--'}</span>
-                    </div>
-                  </div>
-
-                  {selectedUser.objectives && selectedUser.objectives.length > 0 && (
-                    <div className="bg-white border border-line p-4 rounded-2xl">
-                      <span className="label-sm text-accent">Objetivos</span>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {selectedUser.objectives.map((obj: string, i: number) => (
-                          <span key={i} className="text-xs font-bold bg-accent/10 text-accent px-3 py-1 rounded-full">{obj}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedUser.comorbidities && selectedUser.comorbidities.length > 0 && (
-                    <div className="bg-white border border-line p-4 rounded-2xl">
-                      <span className="label-sm text-ink/50">Condições de Saúde</span>
-                      <p className="text-sm mt-1">{selectedUser.comorbidities.join(', ')}</p>
-                    </div>
-                  )}
-
-                  {selectedUser.triggers && selectedUser.triggers.length > 0 && (
-                    <div className="bg-white border border-line p-4 rounded-2xl">
-                      <span className="label-sm text-ink/50">Gatilhos Emocionais</span>
-                      <p className="text-sm mt-1">{selectedUser.triggers.join(', ')}</p>
-                    </div>
-                  )}
-
-                  <div className="bg-white border border-line p-4 rounded-2xl">
-                    <span className="label-sm text-ink/50">Peso Atual</span>
-                    <p className="text-xl font-bold mt-1">{selectedUser.weightEvolution?.[selectedUser.weightEvolution.length - 1]?.value || '--'} kg</p>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </PageWrapper>
-    );
-  };
-
-  const AdminArticlesPage = () => {
-    const { toast } = useToast();
-    if (!adminLoggedIn) {
-      setCurrentPage('admin-login');
-      return null;
-    }
-
-    const [showNewArticle, setShowNewArticle] = useState(false);
-    const [newArticle, setNewArticle] = useState({ title: '', type: 'Artigo', summary: '', image: '', duration: '3 min' });
-
-    useEffect(() => {
-      if (showNewArticle) {
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = '';
-      }
-      return () => { document.body.style.overflow = ''; };
-    }, [showNewArticle]);
-
-    const handleAddArticle = () => {
-      if (!newArticle.title || !newArticle.summary) {
-        toast('Preencha título e resumo!', 'error');
-        return;
-      }
-      const article = {
-        ...newArticle,
-        id: Date.now(),
-        icon: BookOpen,
-        image: newArticle.image || 'https://images.unsplash.com/photo-1543362906-acfc16c67564?auto=format&fit=crop&q=80&w=800',
-      };
-      setAdminArticles(prev => [...prev, article]);
-      setShowNewArticle(false);
-      setNewArticle({ title: '', type: 'Artigo', summary: '', image: '', duration: '3 min' });
-      toast('Artigo publicado com sucesso!', 'success');
-    };
-
-    const handleDeleteArticle = (id: number) => {
-      setAdminArticles(prev => prev.filter(a => a.id !== id));
-      toast('Artigo removido!', 'info');
-    };
-
-    return (
-      <PageWrapper>
-        <div className="space-y-10">
-          <div className="responsive-page-header">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setCurrentPage('admin-dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <h2 className="display-title text-4xl">Artigos</h2>
-                <p className="serif-body text-xl text-ink/60 mt-1">{adminArticles.length} artigos publicados</p>
-              </div>
-            </div>
-            <button onClick={() => setShowNewArticle(true)}
-              className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
-              <PlusCircle size={18} /> Novo Artigo
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {adminArticles.map((article) => (
-              <div key={article.id} className="bg-white border border-line p-4 sm:p-6 rounded-3xl shadow-sm flex items-center gap-4">
-                <img src={article.image} alt="" className="w-16 h-16 rounded-2xl object-cover sm:w-20 sm:h-20" />
-                <div className="min-w-0 flex-1">
-                  <span className="text-[10px] font-bold text-accent uppercase">{article.type}</span>
-                  <h4 className="truncate font-bold text-base sm:text-lg">{article.title}</h4>
-                  <p className="text-xs text-ink/50 line-clamp-1">{article.summary}</p>
-                </div>
-                <button onClick={() => handleDeleteArticle(article.id)}
-                  className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors">
-                  <LogOut size={18} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <AnimatePresence>
-          {showNewArticle && (
-            <div className="modal-shell fixed inset-0 z-50 flex">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={() => setShowNewArticle(false)} />
-              <motion.div initial={{ scale: 0.95, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 24 }} className="modal-panel relative bg-paper max-w-lg p-5 md:p-8 shadow-2xl">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-bold text-xl">Novo Artigo</h3>
-                  <button onClick={() => setShowNewArticle(false)} className="p-2 rounded-full hover:bg-line transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="space-y-5">
-                  <div>
-                    <label className="label-sm text-accent">Título</label>
-                    <input type="text" value={newArticle.title} onChange={e => setNewArticle({...newArticle, title: e.target.value})}
-                      className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none text-lg font-medium" placeholder="Título do artigo" />
-                  </div>
-                  <div>
-                    <label className="label-sm text-accent">Tipo</label>
-                    <select value={newArticle.type} onChange={e => setNewArticle({...newArticle, type: e.target.value})}
-                      className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none text-lg font-medium">
-                      <option value="Artigo">Artigo</option>
-                      <option value="Guia">Guia</option>
-                      <option value="Reflexão">Reflexão</option>
-                      <option value="Prática">Prática</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label-sm text-accent">Resumo</label>
-                    <textarea value={newArticle.summary} onChange={e => setNewArticle({...newArticle, summary: e.target.value})}
-                      className="w-full p-4 bg-transparent border-2 border-line rounded-2xl focus:border-accent focus:outline-none text-sm font-medium resize-none h-24" placeholder="Breve descrição do artigo..." />
-                  </div>
-                  <div>
-                    <label className="label-sm text-accent">URL da Imagem (opcional)</label>
-                    <input type="text" value={newArticle.image} onChange={e => setNewArticle({...newArticle, image: e.target.value})}
-                      className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none text-sm font-medium" placeholder="https://..." />
-                  </div>
-                  <div>
-                    <label className="label-sm text-accent">Duração</label>
-                    <input type="text" value={newArticle.duration} onChange={e => setNewArticle({...newArticle, duration: e.target.value})}
-                      className="w-full py-3 bg-transparent border-b-2 border-line focus:border-accent focus:outline-none text-sm font-medium" placeholder="3 min" />
-                  </div>
-
-                  <button onClick={handleAddArticle}
-                    className="w-full py-5 bg-accent text-paper rounded-full font-bold shadow-lg hover:bg-accent/90 transition-colors mt-4">
-                    Publicar Artigo
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
       </PageWrapper>
     );
   };
@@ -3306,52 +3179,60 @@ export default function App() {
           {currentPage === 'meal-details' && <MealDetailsPage key="meal-details" />}
           {currentPage === 'admin-login' && <AdminLoginPage key="admin-login" />}
           {currentPage === 'admin-dashboard' && <AdminDashboardPage key="admin-dashboard" />}
-          {currentPage === 'admin-users' && <AdminUsersPage key="admin-users" />}
-          {currentPage === 'admin-articles' && <AdminArticlesPage key="admin-articles" />}
         </AnimatePresence>
       </main>
 
       {renderMobileNav()}
+      {renderHungerGuideModal()}
+      {renderTutorialModal()}
+      {renderDailyDiaryModal()}
+      {renderSleepModal()}
 
+      {/* Article Reader Modal */}
       <AnimatePresence>
         {selectedArticle && (
-          <div className="modal-shell fixed inset-0 z-50 flex">
+          <div className="modal-shell fixed inset-0 z-50 flex items-end sm:items-center justify-center">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={closeArticle} />
             <motion.div
-              initial={{ y: '100%', scale: 0.95 }} animate={{ y: 0, scale: 1 }} exit={{ y: '100%', scale: 0.95 }}
+              initial={{ y: '100%', scale: 0.95 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: '100%', scale: 0.95 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              drag={window.innerWidth < 768 ? "y" : false} dragConstraints={{ top: 0 }} dragElastic={0.2} onDragEnd={handleArticleDragEnd} style={{ y: articleY }}
-              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl flex flex-col overflow-hidden"
+              drag={typeof window !== 'undefined' && window.innerWidth < 768 ? "y" : false}
+              dragConstraints={{ top: 0 }}
+              dragElastic={0.2}
+              onDragEnd={handleArticleDragEnd}
+              style={{ y: articleY }}
+              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
             >
               <div className="w-12 h-1.5 bg-line rounded-full mx-auto mt-4 mb-2 md:hidden" />
-              <div className="overflow-y-auto flex-1 p-8 md:p-12 pb-32">
+              <div className="overflow-y-auto flex-1 p-6 sm:p-10 pb-28">
                 <div className="flex justify-between items-center mb-4">
                   <span className="label-sm text-accent tracking-[0.2em]">{selectedArticle.type}</span>
-                  <button onClick={closeArticle} className="hidden md:flex w-10 h-10 rounded-full border border-line items-center justify-center hover:bg-line transition-colors">
-                    <ArrowLeft size={16} className="-rotate-90" />
+                  <button onClick={closeArticle} className="w-10 h-10 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+                    <X size={18} />
                   </button>
                 </div>
-                <h2 className="display-title text-5xl mb-8 leading-[0.9]">{selectedArticle.title}</h2>
-                <div className="mask-image-full mb-10 overflow-hidden rounded-[2.5rem] shadow-2xl">
+                <h2 className="display-title text-3xl sm:text-4xl mb-6 leading-tight">{selectedArticle.title}</h2>
+                <div className="mask-image-full mb-6 overflow-hidden rounded-[2rem] shadow-md h-52 sm:h-72">
                   <img src={selectedArticle.image} alt="" className="w-full h-full object-cover" />
                 </div>
-                <div className="prose prose-xl max-w-none text-ink/90">
-                  {(selectedArticle.content || [
-                    selectedArticle.summary || 'Use este espaço como uma pausa para observar sua relação com a alimentação com mais gentileza.',
-                    'As informações da Biblioteca servem para apoiar sua reflexão e não substituem acompanhamento profissional individualizado.'
-                  ]).map((paragraph: string, index: number) => (
-                    <p key={index} className={index === 0 ? 'drop-cap serif-body text-2xl leading-relaxed mb-8' : 'text-xl leading-relaxed mb-6 font-medium'}>{paragraph}</p>
+                <div className="prose prose-lg max-w-none text-ink/90 space-y-4">
+                  {(selectedArticle.content || [selectedArticle.summary]).map((paragraph: string, index: number) => (
+                    <p key={index} className={index === 0 ? 'drop-cap serif-body text-xl sm:text-2xl leading-relaxed mb-6 font-normal' : 'text-base sm:text-lg leading-relaxed font-medium text-ink/85'}>
+                      {paragraph}
+                    </p>
                   ))}
                   {selectedArticle.sourceLabel && (
-                    <div className="mt-10 rounded-3xl border border-line bg-white p-5 text-sm leading-relaxed text-ink/65">
-                      <span className="label-sm text-accent">Fonte</span>
+                    <div className="mt-8 rounded-2xl border border-line bg-white p-4 text-xs leading-relaxed text-ink/65">
+                      <span className="label-sm text-accent">Fonte & Referência</span>
                       {selectedArticle.sourceUrl ? (
-                        <a href={selectedArticle.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block font-bold text-accent hover:underline">{selectedArticle.sourceLabel}</a>
-                      ) : <p className="mt-2 font-bold">{selectedArticle.sourceLabel}</p>}
+                        <a href={selectedArticle.sourceUrl} target="_blank" rel="noreferrer" className="mt-1 block font-bold text-accent hover:underline">{selectedArticle.sourceLabel}</a>
+                      ) : <p className="mt-1 font-bold">{selectedArticle.sourceLabel}</p>}
                     </div>
                   )}
                 </div>
-                <button onClick={closeArticle} className="mt-16 w-full py-6 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-xl">
+                <button onClick={closeArticle} className="mt-10 w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-xl hover:bg-accent/90">
                   Concluir Leitura Consciente
                 </button>
               </div>
