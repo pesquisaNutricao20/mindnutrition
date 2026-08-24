@@ -85,10 +85,10 @@ import {
 } from 'recharts';
 
 export function calculateNutritionalNeeds(
-  weight: number, 
-  heightCm: number, 
-  age: number, 
-  gender: string, 
+  weight: number,
+  heightCm: number,
+  age: number,
+  gender: string,
   activityLevel: number,
   goals: string[] = []
 ) {
@@ -1025,10 +1025,10 @@ export default function App() {
           const savedProfile = withProfileCompletionState(sanitizeProfileDefaults(JSON.parse(saved)));
           setUserProfile(savedProfile);
           setCurrentPage(prev => prev === 'landing' ? getPostLoginPage(savedProfile) : prev);
-        } catch {}
+        } catch { }
       }
       if (savedMeals) {
-        try { setLoggedMeals(JSON.parse(savedMeals)); } catch {}
+        try { setLoggedMeals(JSON.parse(savedMeals)); } catch { }
       }
 
       if (isSupabaseConfigured) {
@@ -1191,11 +1191,8 @@ export default function App() {
           className="topbar-brand"
           aria-label="Ir para o início"
         >
-          <div className="topbar-mark">
-            <img src={iconApp} alt="Mind Nutrition" className="w-full h-full object-contain" />
-          </div>
+          <img src={iconApp} alt="Mind Nutrition" className="w-full h-full object-contain" />
           <div className="min-w-0">
-            <span className="topbar-eyebrow">Seu app de nutrição</span>
             <h1 className="topbar-title logo-wordmark">Mind Nutrition</h1>
           </div>
         </button>
@@ -1715,12 +1712,14 @@ function DiagnosisPage({
   const steps = [
     { id: 'name', title: "Como prefere ser chamado?", subtitle: "Sua identidade é essencial para nós.", type: 'input', field: 'name', placeholder: 'Seu nome ou apelido' },
     { id: 'gender', title: "Como você se identifica?", subtitle: "Escolha a opção que melhor representa você.", type: 'options', field: 'gender', options: ["Mulher", "Homem", "Não Binário(a)", "Outro", "Prefiro não informar"] },
-    { id: 'basics', title: "Sobre sua rotina", subtitle: "Esses dados ajudam a personalizar seu cuidado com gentileza.", type: 'basic', options: [
-      { label: "Sedentário (pouco ou nenhum exercício)", value: 1.2 },
-      { label: "Levemente ativo (exercício leve 1-3 dias/sem)", value: 1.375 },
-      { label: "Moderadamente ativo (exercício 3-5 dias/sem)", value: 1.55 },
-      { label: "Muito ativo (exercício pesado 6-7 dias/sem)", value: 1.725 }
-    ]},
+    {
+      id: 'basics', title: "Sobre sua rotina", subtitle: "Esses dados ajudam a personalizar seu cuidado com gentileza.", type: 'basic', options: [
+        { label: "Sedentário (pouco ou nenhum exercício)", value: 1.2 },
+        { label: "Levemente ativo (exercício leve 1-3 dias/sem)", value: 1.375 },
+        { label: "Moderadamente ativo (exercício 3-5 dias/sem)", value: 1.55 },
+        { label: "Muito ativo (exercício pesado 6-7 dias/sem)", value: 1.725 }
+      ]
+    },
     { id: 'emotions', title: "Como você se sente ultimamente?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'initialEmotions', options: ["Estressado(a)", "Frustrado(a)", "Deprimido(a)", "Solitário(a)", "Ansioso(a)", "Raivoso(a)", "Alegre", "Animado(a)", "Calmo(a)", "Outro"] },
     { id: 'comorbidities', title: "Você possui alguma condição de saúde?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'comorbidities', options: ["Não possuo nenhuma condição", "Sou diabético(a)", "Sou hipertenso(a)", "Tenho alterações da tireoide", "Tenho transtornos emocionais", "Outro"] },
     { id: 'triggers', title: "Quais emoções você costuma sentir antes de comer sem fome física?", subtitle: "Marque uma ou mais opções.", type: 'multiselect', field: 'triggers', options: ["Tédio", "Cansaço", "Raiva", "Tristeza", "Ansiedade", "Alegria", "Outro"], hasHelpGuide: true },
@@ -2624,7 +2623,7 @@ function ProgressPageComponent({
   const handleSaveMetrics = () => {
     const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const updatedProfile = { ...userProfile };
-    
+
     const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', val: number) => {
       if (val <= 0) return;
       const arr = (updatedProfile[key] as any[]) || [];
@@ -2745,7 +2744,7 @@ function ProgressPageComponent({
                   <PolarGrid stroke="var(--line)" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--ink)', fontWeight: 600 }} />
                   <Radar name="Atual" dataKey="A" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.4} isAnimationActive />
-                  <Tooltip formatter={(value: number) => [`${value}%`, 'Nível']} contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }} />
+                  <Tooltip formatter={(value: number | undefined) => `${value}%`} contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }} />
                 </RadarChart>
               )}
             </ChartFrame>
@@ -2791,7 +2790,7 @@ function ProgressPageComponent({
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                   <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
-                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number) => [`${val} kg`, 'Peso']} />
+                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val} kg`} />
                   {weightGoal && (
                     <ReferenceLine y={weightGoal} stroke="var(--accent-pink)" strokeDasharray="4 4" strokeWidth={2} />
                   )}
@@ -2829,7 +2828,7 @@ function ProgressPageComponent({
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                   <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
-                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number) => [`${val}`, 'IMC']} />
+                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val}`} />
                   <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
                   <Area type="monotone" dataKey="value" stroke="var(--accent-pink)" strokeWidth={4} fill="url(#imcGrad)" dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 2.5 }} />
                 </AreaChart>
@@ -2860,7 +2859,7 @@ function ProgressPageComponent({
                         <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(val: number, name: string) => [`${val} (${Math.round((val / loggedMeals.length) * 100)}%)`, name]} />
+                    <Tooltip formatter={(val: number | undefined, name: string | undefined) => `${val}`} />
                   </PieChart>
                 )}
               </ChartFrame>
