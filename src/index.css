@@ -668,38 +668,42 @@ a {
 
 .landing-waves {
   position: absolute;
-  right: 0;
+  left: 50%;
   bottom: 0;
-  left: 0;
   z-index: 2;
-  height: min(28vh, 220px);
+  width: 100vw;
+  height: clamp(150px, 29vh, 260px);
   overflow: hidden;
   pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .landing-wave {
   position: absolute;
   bottom: -2px;
-  left: -12%;
-  width: 124%;
-  height: 100%;
+  left: -40vw;
+  display: block;
+  width: 180vw;
+  max-width: none;
+  height: 112%;
   transform-origin: center bottom;
   will-change: transform;
 }
 
 .landing-wave-back {
-  opacity: 0.42;
-  animation: landing-wave-drift 10s ease-in-out infinite alternate;
+  opacity: 0.5;
+  animation: landing-wave-drift 9s ease-in-out infinite;
 }
 
 .landing-wave-front {
-  opacity: 0.68;
-  animation: landing-wave-drift 7s ease-in-out infinite alternate-reverse;
+  opacity: 0.78;
+  animation: landing-wave-drift 5.8s ease-in-out infinite reverse;
 }
 
 @keyframes landing-wave-drift {
-  from { transform: translateX(-2%) translateY(3px) scaleX(1.02); }
-  to { transform: translateX(2%) translateY(-5px) scaleX(1.08); }
+  0% { transform: translateX(-6%) translateY(5px) scaleX(1.02); }
+  50% { transform: translateX(2%) translateY(-6px) scaleX(1.08); }
+  100% { transform: translateX(8%) translateY(4px) scaleX(1.03); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -712,6 +716,15 @@ a {
 }
 
 @media (max-width: 640px) {
+  .landing-waves {
+    height: clamp(135px, 25vh, 190px);
+  }
+
+  .landing-wave {
+    left: -55vw;
+    width: 210vw;
+  }
+
   .app-topbar {
     height: 68px;
     gap: 0.35rem;

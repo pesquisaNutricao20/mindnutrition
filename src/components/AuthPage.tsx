@@ -216,8 +216,8 @@ export const AuthPage = ({
 
   if (pendingConfirmation) {
     return (
-      <div className="auth-page w-full min-h-screen px-4 py-6 md:px-10 md:py-10">
-        <section className="auth-card mx-auto max-w-2xl bg-white border border-line rounded-[2rem] p-5 md:p-8 shadow-sm">
+      <div className="auth-page w-full min-h-[100dvh] px-3 py-3 sm:px-4 sm:py-6 lg:px-10 lg:py-10">
+        <section className="auth-card mx-auto w-full max-w-2xl bg-white border border-line rounded-[1.5rem] p-4 sm:rounded-[2rem] sm:p-6 lg:p-8 shadow-sm">
           <button type="button" onClick={() => { setPendingConfirmation(false); setError(''); }} className="icon-button">
             <ArrowLeft size={20} className="text-ink" />
           </button>
@@ -276,12 +276,12 @@ export const AuthPage = ({
   }
 
   return (
-    <div className="auth-page w-full min-h-screen px-4 py-6 md:px-10 md:py-10">
-      <section className="auth-card relative mx-auto grid max-w-5xl overflow-hidden rounded-[2rem] border border-line bg-white shadow-sm md:grid-cols-[0.95fr_1.05fr]">
+    <div className="auth-page w-full min-h-[100dvh] px-3 py-3 sm:px-4 sm:py-6 lg:px-10 lg:py-10">
+      <section className="auth-card relative mx-auto grid max-w-5xl overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm sm:rounded-[2rem] lg:grid-cols-[0.95fr_1.05fr]">
         <button type="button" onClick={() => onNavigate('landing')} className="icon-button absolute left-5 top-5 z-30 bg-white/85 backdrop-blur-md">
           <ArrowLeft size={20} className="text-ink" />
         </button>
-        <aside className="relative hidden min-h-[42rem] flex-col justify-between overflow-hidden bg-accent/10 p-8 pt-24 md:flex">
+        <aside className="relative hidden min-h-[42rem] flex-col justify-between overflow-hidden bg-accent/10 p-8 pt-24 lg:flex">
           <div className="relative z-10">
             <div className="relative mb-8 h-52">
               <div className="absolute inset-x-8 bottom-6 h-16 rounded-full bg-accent/20 blur-2xl" />
@@ -305,12 +305,10 @@ export const AuthPage = ({
           </div>
         </aside>
 
-        <div className="p-5 pt-20 md:p-8">
+        <div className="min-w-0 p-4 pt-18 sm:p-6 sm:pt-20 lg:p-8">
           <div className="md:mt-0">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-white p-2 flex items-center justify-center border border-accent/20 shadow-2xs overflow-hidden shrink-0">
-                <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain bg-white block" />
-              </div>
+              <img src={iconApp} alt="Ícone Mind Nutrition" className="h-12 w-12 shrink-0 object-contain" />
               <div>
                 <span className="logo-wordmark text-base font-bold text-ink">Mind Nutrition</span>
                 <p className="text-[11px] font-bold text-accent uppercase tracking-wider">Abordagem Gentil</p>
