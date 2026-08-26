@@ -195,13 +195,13 @@ select {
   justify-content: space-between;
   gap: 0.75rem;
   padding: calc(env(safe-area-inset-top, 0px) + 0.6rem) 1rem 0.6rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, white);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 44%, transparent);
   background:
-    linear-gradient(115deg, color-mix(in srgb, var(--paper) 92%, white), color-mix(in srgb, var(--accent-light) 30%, white)),
-    color-mix(in srgb, var(--paper) 88%, white);
-  backdrop-filter: blur(20px) saturate(1.2);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  box-shadow: 0 18px 45px rgba(28, 42, 38, 0.08);
+    linear-gradient(115deg, color-mix(in srgb, var(--paper) 72%, transparent), color-mix(in srgb, var(--accent-light) 18%, transparent)),
+    color-mix(in srgb, var(--paper) 58%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  box-shadow: 0 12px 32px rgba(28, 42, 38, 0.05);
 }
 
 .topbar-brand,
@@ -586,15 +586,15 @@ select {
   align-items: flex-start;
   justify-content: center;
   padding: 0.75rem;
-  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-top: max(calc(5.5rem + env(safe-area-inset-top, 0px)), 0.75rem);
+  padding-bottom: max(calc(6.5rem + env(safe-area-inset-bottom, 0px)), 0.75rem);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.modal-panel {
+.modal-shell .modal-panel {
   width: 100%;
-  max-height: calc(100dvh - 1.5rem);
+  max-height: calc(100dvh - 12rem);
   overflow-y: auto;
   flex-shrink: 0;
   overscroll-behavior: contain;
@@ -864,9 +864,9 @@ a {
     padding: 1.5rem;
   }
 
-  .modal-panel {
+  .modal-shell .modal-panel {
     border-radius: 2.5rem;
-    max-height: calc(100dvh - 3rem);
+    max-height: calc(100dvh - 8.5rem);
   }
 
   .modal-header {

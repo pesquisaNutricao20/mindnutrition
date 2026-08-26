@@ -1,16 +1,14 @@
-const CACHE_NAME = 'mind-nutrition-v3';
+const CACHE_NAME = 'mind-nutrition-v4';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icon.svg',
-  '/android-chrome-192x192.png',
-  '/android-chrome-512x512.png',
-  '/apple-touch-icon.png',
-  '/favicon-32x32.png',
-  '/favicon-16x16.png',
-  '/favicon.ico',
-  '/icon_app.png'
+  '/pwa/android-chrome-192x192.png',
+  '/pwa/android-chrome-512x512.png',
+  '/pwa/apple-touch-icon.png',
+  '/pwa/favicon-32x32.png',
+  '/pwa/favicon-16x16.png',
+  '/pwa/favicon.ico'
 ];
 
 self.addEventListener('install', (event) => {

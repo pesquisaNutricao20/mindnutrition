@@ -965,6 +965,41 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
   );
 };
 
+function ConfirmationModal({
+  isOpen,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  onClose,
+}: {
+  isOpen: boolean;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="modal-shell fixed inset-0 z-[60] flex items-center justify-center">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
+          <motion.section initial={{ opacity: 0, y: 20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.97 }} className="modal-panel relative z-10 max-w-md rounded-[2rem] border border-red-100 bg-paper p-6 shadow-2xl sm:p-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><Trash2 size={21} /></div>
+            <h3 className="display-title mt-4 text-2xl">{title}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink/65">{description}</p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button type="button" onClick={onClose} className="rounded-full border border-line px-4 py-3 text-xs font-bold text-ink/65 hover:bg-white">Cancelar</button>
+              <button type="button" onClick={() => { onConfirm(); onClose(); }} className="rounded-full bg-red-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-red-700">{confirmLabel}</button>
+            </div>
+          </motion.section>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // =========================================================================
 // MAIN APP COMPONENT
 // =========================================================================
@@ -988,6 +1023,7 @@ export default function App() {
   const [showTutorialModal, setShowTutorialModal] = useState(false);
   const [showDailyDiaryModal, setShowDailyDiaryModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
+  const [aiSummaryShortcut, setAiSummaryShortcut] = useState(0);
   const isHistoryNavigation = useRef(false);
   const [adminLoggedIn, setAdminLoggedIn] = useState(() => localStorage.getItem('nutriAdminLoggedIn') === 'true');
   const [adminUsers, setAdminUsers] = useState<any[]>(() => {
@@ -1380,7 +1416,7 @@ export default function App() {
     // Mobile nav contains 5 symmetrical items: Início, Insights, Registrar (Center), Biblioteca, Perfil
     return (
       <div className="mobile-nav fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 pb-safe pointer-events-none">
-        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/70 bg-paper/90 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-xl">
           {navItems.map((item) => {
             const isActive = currentPage === item.id;
 
@@ -1578,6 +1614,7 @@ export default function App() {
               onOpenTutorial={() => setShowTutorialModal(true)}
               onOpenDiary={() => setShowDailyDiaryModal(true)}
               onOpenSleep={() => setShowSleepModal(true)}
+              onOpenAiSummary={() => { setAiSummaryShortcut(value => value + 1); setCurrentPage('progress'); }}
               onMoodShared={(mood) => {
                 const checkIns = [...(userProfile.checkIns || []), { date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), mood }];
                 persistUserProfile({ ...userProfile, checkIns });
@@ -1618,6 +1655,7 @@ export default function App() {
               onNavigate={setCurrentPage}
               onSaveProfile={persistUserProfile}
               toast={toast}
+              aiSummaryShortcut={aiSummaryShortcut}
             />
           )}
 
@@ -1650,7 +1688,6 @@ export default function App() {
               key="privacy"
               currentUserId={currentUserId}
               onDeleteData={async () => {
-                if (!window.confirm('Apagar seus dados de perfil e refeições? Esta ação não pode ser desfeita.')) return;
                 try {
                   if (currentUserId) await deleteCurrentUserData(currentUserId);
                   await supabase?.auth.signOut();
@@ -1682,6 +1719,7 @@ export default function App() {
               onNavigate={setCurrentPage}
               onUpdate={(meal) => { saveMeal(meal); setSelectedMeal(meal); toast('Refeição atualizada.', 'success'); }}
               onDelete={() => { if (selectedMeal) removeMeal(selectedMeal); setSelectedMeal(null); setCurrentPage('dashboard'); toast('Refeição excluída.', 'success'); }}
+              toast={toast}
             />
           )}
 
@@ -2110,6 +2148,7 @@ function DashboardPage({
   onOpenTutorial,
   onOpenDiary,
   onOpenSleep,
+  onOpenAiSummary,
   onMoodShared,
   onSelectMeal,
   toast
@@ -2120,6 +2159,7 @@ function DashboardPage({
   onOpenTutorial: () => void;
   onOpenDiary: () => void;
   onOpenSleep: () => void;
+  onOpenAiSummary: () => void;
   onMoodShared: (mood: string) => void;
   onSelectMeal: (meal: any) => void;
   toast: any;
@@ -2161,6 +2201,13 @@ function DashboardPage({
           </h2>
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onOpenAiSummary}
+            className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-xs font-bold text-paper shadow-sm transition hover:bg-accent/90"
+          >
+            <Sparkles size={15} /> Resumo IA
+          </button>
           <button
             type="button"
             onClick={onOpenTutorial}
@@ -2719,13 +2766,15 @@ function ProgressPageComponent({
   loggedMeals,
   onNavigate,
   onSaveProfile,
-  toast
+  toast,
+  aiSummaryShortcut,
 }: {
   userProfile: UserProfile;
   loggedMeals: any[];
   onNavigate: (page: Page) => void;
   onSaveProfile: (profile: UserProfile) => void;
   toast: any;
+  aiSummaryShortcut: number;
 }) {
   const [showMetricsModal, setShowMetricsModal] = useState(false);
   const [newMetrics, setNewMetrics] = useState({
@@ -2739,6 +2788,7 @@ function ProgressPageComponent({
   const [typedAiSummary, setTypedAiSummary] = useState('');
   const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState('');
+  const aiSummaryRef = useRef<HTMLElement | null>(null);
 
   const metricFields = [
     { key: 'weight', label: 'Peso', unit: 'kg', icon: TbHealthRecognition, hint: 'Registre em condições parecidas para comparar a evolução.' },
@@ -2836,6 +2886,8 @@ function ProgressPageComponent({
 
   const hasWeightData = sortedWeightEvolution.length > 0;
   const hasImcData = imcData.length > 0;
+  const hasWeightShape = sortedWeightEvolution.length > 1;
+  const hasImcShape = imcData.length > 1;
 
   // Filter only categories with counts > 0 for clean Pie chart
   const hungerPieData = [
@@ -2856,6 +2908,12 @@ function ProgressPageComponent({
       emocional: types.filter(type => type === 'Emocional').length,
     };
   });
+  const sleepTrendData = (userProfile.sleepLogs || []).slice(0, 7).reverse().map((log, index) => ({
+    date: log.date || `Registro ${index + 1}`,
+    hours: log.hours,
+    quality: log.quality,
+  }));
+  const hasSleepTrendData = sleepTrendData.length > 0;
   const metricHistory = metricFields.flatMap(field => {
     const key = `${field.key}Evolution` as 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution';
     return (userProfile[key] || []).map(item => ({ ...item, label: field.label, unit: field.unit, key }));
@@ -2905,6 +2963,15 @@ function ProgressPageComponent({
       setIsAiSummaryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!aiSummaryShortcut) return;
+    const timer = window.setTimeout(() => {
+      aiSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      generateAiSummary();
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [aiSummaryShortcut]);
 
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-6xl mx-auto space-y-10">
@@ -2984,16 +3051,16 @@ function ProgressPageComponent({
         </div>
       </section>
 
-      <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.45 }} className="animated-gradient relative overflow-hidden rounded-[2rem] p-1 shadow-lg">
+      <motion.section ref={aiSummaryRef} id="resumo-nutre" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.45 }} className="animated-gradient relative overflow-hidden rounded-[2rem] p-1 shadow-lg scroll-mt-28">
         <div className="relative rounded-[1.8rem] bg-paper/95 p-5 sm:p-7">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
             <motion.div animate={isAiSummaryLoading ? { y: [0, -6, 0], rotate: [0, -3, 3, 0] } : { y: [0, -3, 0] }} transition={{ duration: isAiSummaryLoading ? 0.8 : 2.8, repeat: Infinity, ease: 'easeInOut' }} className="mx-auto h-24 w-24 shrink-0 sm:mx-0">
-              <img src={mascotAi} alt="Mascote IA do Mind Nutrition" className="h-full w-full object-contain drop-shadow-md" />
+              <img src={mascotAi} alt="Mascote Nutre do Mind Nutrition" className="h-full w-full object-contain drop-shadow-md" />
             </motion.div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <span className="label-sm text-accent">Mascote IA</span>
+                  <span className="label-sm text-accent">Mascote Nutre</span>
                   <h3 className="mt-1 text-xl font-bold">Leitura conectada da sua jornada</h3>
                   <p className="mt-1 text-xs leading-relaxed text-ink/60">Conecta refeições, sono, diário, medidas e a leitura de consciência para destacar padrões observáveis.</p>
                 </div>
@@ -3031,6 +3098,31 @@ function ProgressPageComponent({
         </section>
       </div>
 
+      <section className="mobile-card-padding rounded-[2rem] border border-line bg-white p-6 sm:p-8 shadow-sm">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 font-bold text-base sm:text-lg"><span className="text-indigo-600"><Moon size={21} /></span> Evolução do sono</h3>
+            <p className="mt-1 text-xs leading-relaxed text-ink/55">Horas de descanso nos seus últimos sete registros.</p>
+          </div>
+          <span className="text-[10px] font-bold uppercase text-ink/45">Referência visual: 8h</span>
+        </div>
+        {hasSleepTrendData ? (
+          <ChartFrame className="h-56" minHeight={170}>
+            {({ width, height }) => (
+              <AreaChart width={width} height={height} data={sleepTrendData}>
+                <defs><linearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.38} /><stop offset="95%" stopColor="#6366f1" stopOpacity={0} /></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.55} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
+                <YAxis domain={[0, 12]} ticks={[0, 4, 8, 12]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
+                <Tooltip formatter={(value: number | undefined, _name, item) => [`${value ?? 0}h · ${item?.payload?.quality || 'sem qualidade'}`, 'Sono']} contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} />
+                <ReferenceLine y={8} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
+                <Area type="monotone" dataKey="hours" stroke="#6366f1" strokeWidth={3.5} fill="url(#sleepGrad)" dot={{ r: 4, fill: 'var(--paper)', stroke: '#6366f1', strokeWidth: 2 }} />
+              </AreaChart>
+            )}
+          </ChartFrame>
+        ) : <div className="flex min-h-44 flex-col justify-center rounded-3xl border border-dashed border-line bg-paper/60 p-6 text-center"><p className="font-bold text-sm text-ink/60">Registre uma noite de sono para ver sua evolução aqui.</p></div>}
+      </section>
+
       {/* Gráficos de Evolução (Peso e IMC com ordenação cronológica) */}
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
@@ -3067,10 +3159,11 @@ function ProgressPageComponent({
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                   <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val} kg`} />
+                  {!hasWeightShape && <ReferenceLine x={sortedWeightEvolution[0]?.date} stroke="var(--accent)" strokeWidth={3} />}
                   {weightGoal && (
                     <ReferenceLine y={weightGoal} stroke="var(--accent-pink)" strokeDasharray="4 4" strokeWidth={2} />
                   )}
-                  <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={4} fill="url(#weightGrad)" dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 2.5 }} />
+                  <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={4} fill={hasWeightShape ? 'url(#weightGrad)' : 'transparent'} dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 2.5 }} />
                 </AreaChart>
               )}
             </ChartFrame>
@@ -3105,8 +3198,9 @@ function ProgressPageComponent({
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                   <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val}`} />
+                  {!hasImcShape && <ReferenceLine x={imcData[0]?.date} stroke="var(--accent-pink)" strokeWidth={3} />}
                   <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
-                  <Area type="monotone" dataKey="value" stroke="var(--accent-pink)" strokeWidth={4} fill="url(#imcGrad)" dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 2.5 }} />
+                  <Area type="monotone" dataKey="value" stroke="var(--accent-pink)" strokeWidth={4} fill={hasImcShape ? 'url(#imcGrad)' : 'transparent'} dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 2.5 }} />
                 </AreaChart>
               )}
             </ChartFrame>
@@ -3261,6 +3355,7 @@ function ProfilePageComponent({
   onOpenDiary: () => void;
   toast: any;
 }) {
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
   const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
   const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
@@ -3382,12 +3477,20 @@ function ProfilePageComponent({
           <HelpCircle size={15} /> Sobre o Mind Nutrition
         </button>
         <button
-          onClick={() => onNavigate('landing')}
+          onClick={() => setShowExitConfirmation(true)}
           className="w-full py-4 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2"
         >
-          <LogOut size={16} /> Desconectar / Voltar ao Início
+          <LogOut size={16} /> Sair
         </button>
       </div>
+      <ConfirmationModal
+        isOpen={showExitConfirmation}
+        title="Voltar ao início?"
+        description="Você voltará à tela inicial. Seus dados continuarão salvos para quando quiser retomar sua jornada."
+        confirmLabel="Sair"
+        onConfirm={() => onNavigate('landing')}
+        onClose={() => setShowExitConfirmation(false)}
+      />
     </div>
   );
 }
@@ -3591,7 +3694,9 @@ function PrivacySettingsPage({
   onDeleteData: () => void;
   onNavigate: (page: Page) => void;
 }) {
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   return (
+    <>
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
         <button onClick={() => onNavigate('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
@@ -3608,13 +3713,22 @@ function PrivacySettingsPage({
           <CheckCircle2 size={20} className="text-accent" />
         </div>
         <button
-          onClick={onDeleteData}
+          onClick={() => setShowDeleteConfirmation(true)}
           className="w-full py-4 text-red-500 font-bold border-2 border-red-500/20 rounded-full hover:bg-red-50 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2 mt-4"
         >
-          <Trash2 size={16} /> Apagar todos os meus dados
+          <Trash2 size={16} /> Apagar dados
         </button>
       </div>
     </div>
+    <ConfirmationModal
+      isOpen={showDeleteConfirmation}
+      title="Apagar todos os dados?"
+      description="Seu perfil, refeições, diário, sono e medidas serão removidos. Esta ação não pode ser desfeita."
+      confirmLabel="Apagar dados"
+      onConfirm={onDeleteData}
+      onClose={() => setShowDeleteConfirmation(false)}
+    />
+    </>
   );
 }
 
@@ -3665,19 +3779,32 @@ function MealDetailsPageComponent({
   onNavigate,
   onUpdate,
   onDelete,
+  toast,
 }: {
   selectedMeal: any;
   onNavigate: (page: Page) => void;
   onUpdate: (meal: any) => void;
   onDelete: () => void;
+  toast: any;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(selectedMeal?.title || 'Refeição');
   const [notes, setNotes] = useState(selectedMeal?.notes || '');
+  const [photos, setPhotos] = useState<string[]>(() => selectedMeal?.photos?.length ? selectedMeal.photos : (selectedMeal?.image ? [selectedMeal.image] : []));
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   if (!selectedMeal) return null;
   const mealType = inferMealType(selectedMeal);
-  const mealPhotos = selectedMeal.photos?.length ? selectedMeal.photos : (selectedMeal.image ? [selectedMeal.image] : []);
+  const mealPhotos = photos;
   const satisfactionLabels = ['Nada satisfeito', 'Muito pouco', 'Pouco', 'Moderadamente', 'Satisfeito', 'Muito'];
+
+  const addMealPhotos = async (files: FileList | null) => {
+    const result = await readValidatedImages(files, mealPhotos.length);
+    if (result.error) {
+      toast(result.error, 'error');
+      return;
+    }
+    if (result.images.length) setPhotos(current => [...current, ...result.images]);
+  };
 
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-28 md:pt-32 pb-28 max-w-2xl mx-auto space-y-6">
@@ -3695,7 +3822,7 @@ function MealDetailsPageComponent({
           <button type="button" onClick={() => setIsEditing(editing => !editing)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-line px-3 py-2.5 text-xs font-bold text-accent hover:bg-accent/5">
             <Edit2 size={14} /> {isEditing ? 'Cancelar' : 'Editar'}
           </button>
-          <button type="button" onClick={() => { if (window.confirm('Excluir esta refeição?')) onDelete(); }} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-red-200 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50">
+          <button type="button" onClick={() => setShowDeleteConfirmation(true)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-red-200 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50">
             <Trash2 size={14} /> Excluir
           </button>
         </div>
@@ -3718,7 +3845,19 @@ function MealDetailsPageComponent({
               <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} className="w-full border-b-2 border-line bg-transparent py-2 font-bold outline-none focus:border-accent" />
               <label className="label-sm text-accent block">Anotações</label>
               <textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1000} className="h-24 w-full resize-none rounded-xl border border-line bg-white p-3 text-sm outline-none focus:border-accent" />
-              <button type="button" onClick={() => { onUpdate({ ...selectedMeal, title: title.trim() || 'Refeição', notes: notes.trim() }); setIsEditing(false); }} className="w-full rounded-full bg-accent py-3 text-xs font-bold text-paper">Salvar edição</button>
+              <div>
+                <span className="label-sm text-accent block">Fotos</span>
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {mealPhotos.map((photo, index) => (
+                    <div key={`${photo.slice(0, 24)}-${index}`} className="relative aspect-square overflow-hidden rounded-xl border border-line bg-white">
+                      <img src={photo} alt={`Foto ${index + 1} da refeição`} className="h-full w-full object-cover" />
+                      <button type="button" onClick={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-paper" aria-label={`Remover foto ${index + 1}`}><X size={12} /></button>
+                    </div>
+                  ))}
+                  {mealPhotos.length < MAX_MEAL_PHOTOS && <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-accent bg-accent/5 p-2 text-center text-[10px] font-bold text-accent hover:bg-accent/10"><Camera size={17} />Adicionar<input type="file" accept="image/*" multiple className="sr-only" onChange={(event) => { addMealPhotos(event.target.files); event.target.value = ''; }} /></label>}
+                </div>
+              </div>
+              <button type="button" onClick={() => { onUpdate({ ...selectedMeal, title: title.trim() || 'Refeição', notes: notes.trim(), photos: mealPhotos, image: mealPhotos[0] || '' }); setIsEditing(false); }} className="w-full rounded-full bg-accent py-3 text-xs font-bold text-paper">Salvar edição</button>
             </div>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -3758,14 +3897,22 @@ function MealDetailsPageComponent({
             </div>
           )}
 
-          {selectedMeal.notes && (
+          {notes && (
             <div className="p-5 bg-paper rounded-2xl border border-line">
               <span className="label-sm text-accent mb-1 block">Anotações</span>
-              <p className="text-sm text-ink/80 italic font-medium">"{selectedMeal.notes}"</p>
+              <p className="text-sm text-ink/80 italic font-medium">"{notes}"</p>
             </div>
           )}
         </div>
       </div>
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        title="Excluir esta refeição?"
+        description="A refeição, suas fotos e os sinais registrados serão removidos dos seus dados. Essa ação não pode ser desfeita."
+        confirmLabel="Excluir"
+        onConfirm={onDelete}
+        onClose={() => setShowDeleteConfirmation(false)}
+      />
     </div>
   );
 }

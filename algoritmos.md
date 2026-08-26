@@ -161,7 +161,7 @@ As frases exibidas na interface descrevem a faixa e nunca devem ser interpretada
 
 ## 7. Resumo de IA conectado aos sinais
 
-O resumo de IA é opcional e só é gerado quando a pessoa escolhe o botão nos Insights. O cliente envia os registros ao endpoint interno `/api/ai-insight`; o servidor reduz, anonimiza e limita os dados antes de chamar o modelo `minimax/minimax-m3:free` pela OpenRouter.
+O resumo do Mascote Nutre é opcional e só é gerado quando a pessoa escolhe o botão nos Insights. O cliente envia os registros ao endpoint interno `/api/ai-insight`; o servidor reduz, anonimiza e limita os dados antes de chamar o modelo `minimax/minimax-m3:free` pela OpenRouter.
 
 ### Preparação do contexto
 
