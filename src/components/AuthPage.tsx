@@ -216,13 +216,13 @@ export const AuthPage = ({
 
   if (pendingConfirmation) {
     return (
-      <div className="auth-page w-full min-h-[100dvh] px-3 py-3 sm:px-4 sm:py-6 lg:px-10 lg:py-10">
+      <div className="auth-page w-full px-3 py-3 sm:px-4 sm:py-5 lg:px-10 lg:py-8">
         <section className="auth-card mx-auto w-full max-w-2xl bg-white border border-line rounded-[1.5rem] p-4 sm:rounded-[2rem] sm:p-6 lg:p-8 shadow-sm">
           <button type="button" onClick={() => { setPendingConfirmation(false); setError(''); }} className="icon-button">
             <ArrowLeft size={20} className="text-ink" />
           </button>
-          <div className="mt-6 space-y-6 text-center">
-            <div className="relative mx-auto h-28 w-28 md:h-32 md:w-32">
+          <div className="mt-4 space-y-4 text-center">
+            <div className="relative mx-auto h-20 w-20 md:h-24 md:w-24">
               <div className="absolute inset-x-4 bottom-3 h-10 bg-accent/15 rounded-full blur-2xl" />
               <motion.div
                 className="absolute left-1/2 top-0 h-full -translate-x-1/2 drop-shadow-2xl"
@@ -234,7 +234,7 @@ export const AuthPage = ({
             </div>
             <div className="space-y-2">
               <span className="label-sm text-accent">Quase lá</span>
-              <h2 className="display-title text-4xl md:text-5xl">Confirme seu e-mail.</h2>
+              <h2 className="display-title text-3xl md:text-4xl">Confirme seu e-mail.</h2>
               <p className="serif-body text-lg md:text-xl text-ink/60 max-w-md mx-auto">
                 Enviamos um link de confirmação para:
               </p>
@@ -276,14 +276,14 @@ export const AuthPage = ({
   }
 
   return (
-    <div className="auth-page w-full min-h-[100dvh] px-3 py-3 sm:px-4 sm:py-6 lg:px-10 lg:py-10">
+    <div className="auth-page w-full px-3 py-3 sm:px-4 sm:py-5 lg:px-10 lg:py-8">
       <section className="auth-card relative mx-auto grid max-w-5xl overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm sm:rounded-[2rem] lg:grid-cols-[0.95fr_1.05fr]">
         <button type="button" onClick={() => onNavigate('landing')} className="icon-button absolute left-5 top-5 z-30 bg-white/85 backdrop-blur-md">
           <ArrowLeft size={20} className="text-ink" />
         </button>
-        <aside className="relative hidden min-h-[42rem] flex-col justify-between overflow-hidden bg-accent/10 p-8 pt-24 lg:flex">
+        <aside className="relative hidden min-h-[34rem] flex-col justify-between overflow-hidden bg-accent/10 p-7 pt-16 lg:flex">
           <div className="relative z-10">
-            <div className="relative mb-8 h-52">
+            <div className="relative mb-5 h-36">
               <div className="absolute inset-x-8 bottom-6 h-16 rounded-full bg-accent/20 blur-2xl" />
               <motion.div
                 className="mx-auto h-full drop-shadow-2xl"
@@ -294,8 +294,8 @@ export const AuthPage = ({
               </motion.div>
             </div>
             <span className="label-sm text-accent">Mind Nutrition</span>
-            <h2 className="display-title mt-3 text-5xl">Sua jornada com mais calma.</h2>
-            <p className="mt-5 text-sm font-medium leading-relaxed text-ink/65">
+            <h2 className="display-title mt-3 text-4xl">Sua jornada com mais calma.</h2>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-ink/65">
               Registre refeições, acompanhe sinais do corpo e mantenha seus dados sincronizados quando o Supabase estiver disponível.
             </p>
           </div>
@@ -305,16 +305,16 @@ export const AuthPage = ({
           </div>
         </aside>
 
-        <div className="min-w-0 p-4 pt-18 sm:p-6 sm:pt-20 lg:p-8">
+        <div className="min-w-0 p-4 pt-16 sm:p-5 sm:pt-16 lg:p-7">
           <div className="md:mt-0">
-            <div className="flex items-center gap-3 mb-4">
-              <img src={iconApp} alt="Ícone Mind Nutrition" className="h-12 w-12 shrink-0 object-contain" />
+            <div className="mb-3 flex items-center gap-2.5">
+              <img src={iconApp} alt="Ícone Mind Nutrition" className="h-10 w-10 shrink-0 object-contain" />
               <div>
                 <span className="logo-wordmark text-base font-bold text-ink">Mind Nutrition</span>
                 <p className="text-[11px] font-bold text-accent uppercase tracking-wider">Abordagem Gentil</p>
               </div>
             </div>
-            <div className="relative mx-auto mb-4 h-24 md:hidden">
+            <div className="relative mx-auto mb-3 h-14 md:hidden">
               <div className="absolute inset-x-16 bottom-2 h-10 rounded-full bg-accent/15 blur-2xl" />
               <motion.div
                 className="mx-auto h-full drop-shadow-2xl"
@@ -324,15 +324,15 @@ export const AuthPage = ({
                 <FlyingMascotSprite alt="Mascote Mind Nutrition" className="mx-auto h-full object-contain" />
               </motion.div>
             </div>
-            <h2 className="display-title text-4xl sm:text-5xl">
+            <h2 className="display-title text-3xl sm:text-4xl">
               {isLogin ? 'Entre na sua conta.' : 'Crie sua conta.'}
             </h2>
-            <p className="serif-body mt-3 text-lg text-ink/60">
+            <p className="serif-body mt-2 text-base text-ink/60">
               {isLogin ? 'Que bom te ver de volta.' : 'Vamos começar sua jornada?'}
             </p>
           </div>
 
-          <div className="mt-7 grid grid-cols-2 rounded-2xl border border-line bg-paper p-1">
+          <div className="mt-5 grid grid-cols-2 rounded-2xl border border-line bg-paper p-1">
             <button type="button" onClick={() => { setIsLogin(true); setError(''); }} className={`inline-flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-colors ${isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/55 hover:text-ink'}`}>
               <LogIn size={16} />
               Entrar
@@ -353,20 +353,20 @@ export const AuthPage = ({
             type="button"
             onClick={handleGoogleLogin}
             disabled={isSubmitting || !supabase}
-            className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-line bg-white px-4 py-4 text-base font-bold text-ink shadow-sm transition-colors hover:border-accent hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm font-bold text-ink shadow-sm transition-colors hover:border-accent hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <img src={googleLogo} alt="" className="h-5 w-5 shrink-0" />
             Continuar com Google
           </button>
 
-          <div className="mt-6 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.14em] text-ink/35">
+          <div className="mt-4 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.14em] text-ink/35">
             <span className="h-px flex-1 bg-line" />
             <span>E-mail e senha</span>
             <span className="h-px flex-1 bg-line" />
           </div>
 
           {!isLogin && (
-            <div className="mt-5 flex items-center gap-4 rounded-3xl bg-paper border border-line p-4">
+            <div className="mt-4 flex items-center gap-3 rounded-3xl bg-paper border border-line p-3">
               <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden border border-line bg-white shrink-0">
                 <ProfileAvatar photo={signupPhoto} size="lg" className="border-0" />
               </div>
@@ -381,7 +381,7 @@ export const AuthPage = ({
             </div>
           )}
 
-          <form className="mt-7 space-y-6" onSubmit={handleAuth}>
+          <form className="mt-5 space-y-4" onSubmit={handleAuth}>
             <div>
               <label className="label-sm mb-2 block text-accent" htmlFor="auth-email">E-mail</label>
               <div className="relative">
@@ -390,10 +390,11 @@ export const AuthPage = ({
                   id="auth-email"
                   type="email"
                   value={email}
+                  maxLength={254}
                   onChange={(event) => { setEmail(event.target.value); setError(''); }}
                   placeholder="voce@email.com"
                   autoComplete="email"
-                  className="w-full rounded-2xl border border-line bg-paper py-4 pl-12 pr-4 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
+                  className="w-full rounded-2xl border border-line bg-paper py-3 pl-11 pr-4 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
                 />
               </div>
             </div>
@@ -413,10 +414,11 @@ export const AuthPage = ({
                   id="auth-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
+                  maxLength={128}
                   onChange={(event) => { setPassword(event.target.value); setError(''); }}
                   placeholder="Sua senha aqui"
                   autoComplete={isLogin ? 'current-password' : 'new-password'}
-                  className="w-full rounded-2xl border border-line bg-paper py-4 pl-12 pr-12 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
+                  className="w-full rounded-2xl border border-line bg-paper py-3 pl-11 pr-12 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
                 />
                 <button
                   type="button"
@@ -482,7 +484,7 @@ export const AuthPage = ({
             <button
               type="submit"
               disabled={isSubmitting || !email || !password}
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold text-paper shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-paper shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}
             >
               {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
               {isSubmitting ? 'Processando...' : isLogin ? 'Entrar no app' : 'Criar conta e continuar'}

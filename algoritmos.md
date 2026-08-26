@@ -118,3 +118,43 @@ export function calculateNutritionalNeeds(
   };
 }
 ```
+
+## 5. Consciência geral e Insights integrados
+
+Os Insights não produzem diagnóstico, prescrição ou classificação clínica. Eles organizam os sinais registrados pelo usuário para facilitar a reflexão sobre rotina, fome, sono, emoções e medidas.
+
+### Componentes e pesos
+
+O índice é uma média ponderada apenas dos componentes que possuem dados válidos. Assim, a ausência de um diário ou registro de sono não reduz artificialmente a pontuação.
+
+| Componente | Peso máximo | Sinais considerados |
+| --- | ---: | --- |
+| Refeições | 45% | Fome escolhida, saciedade, humor, anotações, fotos e consistência |
+| Sono | 25% | Horas próximas de 8h e qualidade relatada |
+| Diário | 15% | Humor relatado e detalhe da reflexão |
+| Perfil | 15% | Identificação, medidas, objetivo e contexto inicial |
+
+Para cada componente disponível, aplica-se:
+
+$$ Consciência = \frac{\sum(valor_i \times peso_i)}{\sum(peso_i\ disponível)} $$
+
+Também é exibida a cobertura dos sinais (soma dos pesos com dados). Isso deixa claro quando a leitura ainda é preliminar.
+
+### Faixas de representação
+
+- **0–29:** ponto de partida; o foco é criar registros mínimos sem julgamento.
+- **30–49:** observação inicial; consistência torna os padrões mais claros.
+- **50–69:** construção sólida; há sinais suficientes para comparar contexto e escolhas.
+- **70–84:** boa conexão entre corpo, contexto e rotina.
+- **85–100:** registros consistentes e contextualizados; manter a gentileza em dias difíceis continua sendo importante.
+
+As frases exibidas na interface descrevem a faixa e nunca devem ser interpretadas como avaliação médica ou psicológica.
+
+## 6. Integridade e validação dos dados
+
+- Nome: 1 a 80 caracteres; textos livres possuem limite para evitar entradas acidentais excessivas.
+- Idade: 10 a 120 anos; altura: 80 a 250 cm; peso: 20 a 350 kg.
+- Circunferências corporais: valores positivos e limites plausíveis antes do salvamento.
+- Uma medida por tipo e dia: um novo valor no mesmo dia corrige o registro existente, em vez de duplicá-lo.
+- Registros de medidas, diário, sono e refeições podem ser removidos quando incorretos. A remoção atualiza a leitura dos Insights.
+- Notificações: no máximo três simultâneas; mensagens idênticas não são empilhadas.

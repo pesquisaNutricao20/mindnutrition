@@ -111,6 +111,14 @@ export function calculateNutritionalNeeds(
   };
 }
 
+const getImcInterpretation = (imc?: number | null) => {
+  if (!imc) return { label: 'Sem dados', tone: 'text-ink/50', description: 'Informe peso e altura.' };
+  if (imc < 18.5) return { label: 'Abaixo da faixa de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; avalie o contexto com um profissional.' };
+  if (imc < 25) return { label: 'Faixa de referência', tone: 'text-accent', description: 'Indicador de triagem; não substitui avaliação individual.' };
+  if (imc < 30) return { label: 'Acima da faixa de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; avalie o contexto com um profissional.' };
+  return { label: 'Faixa elevada de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; não substitui acompanhamento profissional.' };
+};
+
 type MetricPoint = { date: string; value: number };
 type MealClassification = 'Física' | 'Emocional' | 'Não classificada';
 
@@ -556,6 +564,45 @@ const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
   };
 };
 
+const getAwarenessNarrative = (score: number) => {
+  if (score < 30) return 'Todo começo conta: registre uma refeição, uma noite de sono ou uma reflexão para tornar seus padrões mais visíveis.';
+  if (score < 50) return 'Você já está reunindo sinais importantes. Pequenos registros consistentes ajudam a transformar percepção em escolhas mais conscientes.';
+  if (score < 70) return 'Sua consciência está em construção sólida: você reconhece sinais do corpo e tem material para observar tendências com mais clareza.';
+  if (score < 85) return 'Você demonstra boa conexão entre contexto, fome e saciedade. Continue usando os registros para ajustar sua rotina com gentileza.';
+  return 'Sua jornada tem registros consistentes e contextualizados. Use os Insights para manter o que funciona e acolher os dias mais difíceis.';
+};
+
+const buildIntegratedInsight = (profile: Partial<UserProfile>, meals: any[]) => {
+  const components: Array<{ label: string; value: number; weight: number; description: string }> = [];
+  if (meals.length) components.push({ label: 'Refeições', value: calculateAwarenessScore(profile, meals), weight: 45, description: 'Fome, saciedade, humor e completude dos registros.' });
+
+  const sleepLogs = profile.sleepLogs || [];
+  if (sleepLogs.length) {
+    const qualityValues = { Ruim: 30, Regular: 55, Bom: 78, Excelente: 95 } as const;
+    const sleepValue = averageNumbers(sleepLogs.map(log => {
+      const durationScore = clampNumber(100 - Math.abs(log.hours - 8) * 18, 25, 100);
+      return (durationScore * 0.55) + (qualityValues[log.quality] * 0.45);
+    })) || 0;
+    components.push({ label: 'Sono', value: Math.round(sleepValue), weight: 25, description: 'Duração e qualidade relatadas do descanso.' });
+  }
+
+  const notes = profile.dailyNotes || [];
+  if (notes.length) {
+    const moodValue = averageNumbers(notes.map(note => getMoodScore(note.mood) ?? 58)) || 58;
+    const detailValue = averageNumbers(notes.map(note => clampNumber((note.text?.trim().length || 0) * 2.2, 25, 100))) || 25;
+    components.push({ label: 'Diário', value: Math.round((moodValue * 0.55) + (detailValue * 0.45)), weight: 15, description: 'Humor e riqueza de contexto das reflexões.' });
+  }
+
+  const profileValue = calculateProfileInsightScore(profile);
+  if (profileValue) components.push({ label: 'Perfil', value: profileValue, weight: 15, description: 'Medidas e informações que personalizam a leitura.' });
+
+  const totalWeight = components.reduce((sum, component) => sum + component.weight, 0);
+  const score = totalWeight
+    ? Math.round(components.reduce((sum, component) => sum + component.value * component.weight, 0) / totalWeight)
+    : 0;
+  return { score, components, coverage: Math.round((totalWeight / 100) * 100), narrative: getAwarenessNarrative(score) };
+};
+
 const getReadingDuration = (article: { summary?: string; content?: string[] }) => {
   const words = [article.summary || '', ...(article.content || [])]
     .join(' ')
@@ -793,6 +840,7 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
           <textarea
             value={diaryText}
             onChange={(e) => setDiaryText(e.target.value)}
+            maxLength={1200}
             placeholder="Como foi o seu dia? Sentiu ansiedade no trabalho? Celebrou algo especial? Descreva livremente..."
             className="w-full h-32 p-4 rounded-2xl bg-white border border-line focus:border-accent focus:outline-none text-sm resize-none font-medium"
           />
@@ -814,11 +862,13 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
           <button
             type="button"
             onClick={() => {
+              if (diaryText.trim().length < 3) return;
               onSave(diaryText, diaryMood);
               setDiaryText('');
               onClose();
             }}
-            className="w-full py-4 bg-accent text-paper rounded-full font-bold text-sm shadow-md hover:bg-accent/90"
+            disabled={diaryText.trim().length < 3}
+            className="w-full py-4 bg-accent text-paper rounded-full font-bold text-sm shadow-md hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-45"
           >
             Salvar no Diário
           </button>
@@ -892,17 +942,19 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              maxLength={250}
               placeholder="Ex: Acordei durante a noite, tomei café tarde..."
               className="w-full px-4 py-3 rounded-2xl bg-white border border-line text-xs font-medium focus:border-accent focus:outline-none"
             />
           </div>
           <button
             type="button"
+            disabled={hours < 3 || hours > 12}
             onClick={() => {
               onSave(hours, quality, notes);
               onClose();
             }}
-            className="w-full py-4 bg-accent text-paper rounded-full font-bold text-sm shadow-md hover:bg-accent/90"
+            className="w-full py-4 bg-accent text-paper rounded-full font-bold text-sm shadow-md hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-45"
           >
             Registrar Sono
           </button>
@@ -1446,19 +1498,19 @@ export default function App() {
         <AnimatePresence mode="wait">
           {currentPage === 'landing' && (
             <PageWrapper noPadding key="landing">
-              <div className="landing-gradient w-full h-[100dvh] overflow-hidden fixed inset-0 z-50 bg-paper">
+              <div className="landing-gradient relative z-50 w-full min-h-[34rem] overflow-hidden bg-paper sm:min-h-[38rem]">
                 <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-paper via-transparent to-paper pointer-events-none z-0" />
-                <div className="w-full h-full flex flex-col relative z-10 max-w-[2000px] mx-auto">
-                  <div className="flex-1 flex flex-col justify-center px-8 md:px-16 pb-20 md:pb-32 overflow-y-auto">
+                <div className="relative z-10 mx-auto flex min-h-[34rem] w-full max-w-[2000px] flex-col sm:min-h-[38rem]">
+                  <div className="flex flex-1 flex-col justify-center px-5 py-8 pb-28 sm:px-8 md:px-16">
                     <div className="max-w-4xl mx-auto w-full">
-                      <div className="flex items-center gap-3 mb-6">
-                        <img src={iconApp} alt="Ícone Mind Nutrition" className="h-12 w-12 object-contain" />
-                        <span className="logo-wordmark text-2xl text-accent">Mind Nutrition</span>
+                      <div className="mb-4 flex items-center gap-2.5">
+                        <img src={iconApp} alt="Ícone Mind Nutrition" className="h-10 w-10 object-contain" />
+                        <span className="logo-wordmark text-xl text-accent">Mind Nutrition</span>
                       </div>
-                      <h1 className="display-title mb-10 text-accent text-[3.2rem] sm:text-[4.5rem] md:text-[6rem] leading-[0.9]">Sua jornada começa aqui.</h1>
+                      <h1 className="display-title mb-6 text-accent text-[2.65rem] sm:text-[3.7rem] md:text-[4.6rem] leading-[0.92]">Sua jornada começa aqui.</h1>
 
-                      <div className="max-w-xl mb-10 bg-white/70 backdrop-blur-md p-6 sm:p-8 rounded-[2rem] border border-line shadow-sm relative z-20">
-                        <p className="serif-body text-2xl md:text-3xl text-ink leading-tight mb-4">
+                      <div className="relative z-20 mb-6 max-w-xl rounded-[1.5rem] border border-line bg-white/70 p-4 shadow-sm backdrop-blur-md sm:p-5">
+                        <p className="serif-body mb-2 text-xl leading-tight text-ink sm:text-2xl">
                           Vá além do ruído das dietas.
                         </p>
                         <p className="text-ink/75 font-medium text-sm md:text-base leading-relaxed">
@@ -1466,10 +1518,10 @@ export default function App() {
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap gap-4 z-20 relative">
+                      <div className="relative z-20 flex flex-wrap gap-3">
                         <button
                           onClick={() => setCurrentPage(currentUserId ? getPostLoginPage(userProfile) : 'auth')}
-                          className="group relative inline-flex items-center gap-4 bg-accent text-paper px-8 sm:px-10 py-5 rounded-[2rem] font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 active:scale-95 transition-all"
+                          className="group relative inline-flex items-center gap-3 rounded-2xl bg-accent px-6 py-3.5 text-sm font-bold uppercase tracking-widest text-paper shadow-lg transition-all hover:scale-105 active:scale-95"
                         >
                           <FaBrain size={22} />
                           <span>{currentUserId ? 'Continuar Jornada' : 'Começar Jornada'}</span>
@@ -1792,15 +1844,15 @@ function DiagnosisPage({
       return;
     }
     if (current.type === 'basic') {
-      if (!tempProfile.age || tempProfile.age < 10) {
+      if (!tempProfile.age || tempProfile.age < 10 || tempProfile.age > 120) {
         setErrorMsg('Informe uma idade válida para continuar.');
         return;
       }
     }
     if (current.type === 'measurements') {
       const initialWeight = tempProfile.weightEvolution?.[0]?.value || 0;
-      if (!tempProfile.height || initialWeight <= 0) {
-        setErrorMsg('Preencha altura e peso para continuar.');
+      if (tempProfile.height < 80 || tempProfile.height > 250 || initialWeight < 20 || initialWeight > 350) {
+        setErrorMsg('Informe altura e peso dentro de faixas plausíveis para continuar.');
         return;
       }
       const result = calculateNutritionalNeeds(
@@ -1863,6 +1915,7 @@ function DiagnosisPage({
               placeholder={current.placeholder}
               className="w-full py-4 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-medium"
               value={tempProfile.name}
+              maxLength={80}
               onChange={(e) => { setTempProfile({ ...tempProfile, name: e.target.value }); setErrorMsg(''); }}
               onKeyDown={(e) => e.key === 'Enter' && handleNext()}
               autoFocus
@@ -1923,6 +1976,8 @@ function DiagnosisPage({
               <label className="label-sm text-accent mb-2 block">Qual é a sua idade?</label>
               <input
                 type="number"
+                min="10"
+                max="120"
                 placeholder="Ex: 28"
                 className="w-full py-3 bg-transparent border-b-2 border-ink focus:border-accent focus:outline-none text-2xl font-bold"
                 value={tempProfile.age || ''}
@@ -2011,6 +2066,8 @@ function DiagnosisPage({
                 <label className="label-sm text-accent mb-1 block">Altura (cm)</label>
                 <input
                   type="number"
+                  min="80"
+                  max="250"
                   placeholder="Ex: 170"
                   className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-bold outline-none"
                   onChange={(e) => { setTempProfile({ ...tempProfile, height: parseFloat(e.target.value) || 0 }); setErrorMsg(''); }}
@@ -2020,6 +2077,8 @@ function DiagnosisPage({
                 <label className="label-sm text-accent mb-1 block">Peso Atual (kg)</label>
                 <input
                   type="number"
+                  min="20"
+                  max="350"
                   placeholder="Ex: 70.5"
                   className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-2xl font-bold outline-none"
                   onChange={(e) => {
@@ -2087,7 +2146,8 @@ function DashboardPage({
     'A esperança pode tornar o momento presente menos difícil de suportar. - Thich Nhat Hanh'
   ];
 
-  const awarenessScore = calculateAwarenessScore(userProfile, loggedMeals);
+  const integratedInsight = buildIntegratedInsight(userProfile, loggedMeals);
+  const awarenessScore = integratedInsight.score;
   const firstName = userProfile.name?.trim().split(/\s+/)[0] || 'você';
   const latestMood = userProfile.checkIns?.[userProfile.checkIns.length - 1]?.mood;
   const latestSleep = userProfile.sleepLogs?.[0];
@@ -2457,6 +2517,7 @@ function MealLogPage({
               <input
                 type="text"
                 value={log.title}
+                maxLength={100}
                 onChange={(e) => setLog({ ...log, title: e.target.value })}
                 placeholder="Ex: Almoço com a família, Lanche da tarde..."
                 className="w-full py-2 bg-transparent border-b-2 border-line focus:border-accent text-lg font-bold outline-none"
@@ -2525,6 +2586,7 @@ function MealLogPage({
                 placeholder="Descreva o prato, os sabores, texturas ou como está seu ritmo ao comer..."
                 className="w-full h-28 bg-transparent text-sm font-medium resize-none focus:outline-none"
                 value={log.notes}
+                maxLength={1000}
                 onChange={e => setLog({ ...log, notes: e.target.value })}
               />
             </div>
@@ -2740,6 +2802,26 @@ function ProgressPageComponent({
     toast('Métricas corporais atualizadas!', 'success');
   };
 
+  const removeMetricRecord = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', date: string) => {
+    const next = { ...userProfile, [key]: (userProfile[key] || []).filter(item => item.date !== date) };
+    const latestWeightAfterRemoval = getLatestMetricValue(next.weightEvolution);
+    if (next.height && latestWeightAfterRemoval) {
+      Object.assign(next, calculateNutritionalNeeds(latestWeightAfterRemoval, next.height, next.age || 25, next.gender || 'Feminino', next.activityLevel || 1.2, next.objectives || []));
+    }
+    onSaveProfile(next);
+    toast('Registro removido. Você pode inserir a medida correta.', 'success');
+  };
+
+  const removeDiaryRecord = (id: string) => {
+    onSaveProfile({ ...userProfile, dailyNotes: (userProfile.dailyNotes || []).filter(note => note.id !== id) });
+    toast('Anotação removida.', 'success');
+  };
+
+  const removeSleepRecord = (id: string) => {
+    onSaveProfile({ ...userProfile, sleepLogs: (userProfile.sleepLogs || []).filter(log => log.id !== id) });
+    toast('Registro de sono removido.', 'success');
+  };
+
   const latestWeight = getLatestMetricValue(userProfile.weightEvolution);
   const hasBodyBaseline = Boolean(userProfile.height && latestWeight);
   const profileReadinessScore = calculateProfileInsightScore(userProfile);
@@ -2748,7 +2830,8 @@ function ProgressPageComponent({
   const physicalMeals = mealTypes.filter(type => type === 'Física').length;
   const emotionalMeals = mealTypes.filter(type => type === 'Emocional').length;
   const unclassifiedMeals = Math.max(loggedMeals.length - physicalMeals - emotionalMeals, 0);
-  const awarenessScore = calculateAwarenessScore(userProfile, loggedMeals);
+  const integratedInsight = buildIntegratedInsight(userProfile, loggedMeals);
+  const awarenessScore = integratedInsight.score;
   const radarData = buildRadarData(userProfile, loggedMeals, awarenessScore);
   const weightGoal = getWeightGoal(userProfile);
 
@@ -2780,6 +2863,10 @@ function ProgressPageComponent({
       emocional: types.filter(type => type === 'Emocional').length,
     };
   });
+  const metricHistory = metricFields.flatMap(field => {
+    const key = `${field.key}Evolution` as 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution';
+    return (userProfile[key] || []).map(item => ({ ...item, label: field.label, unit: field.unit, key }));
+  }).sort((a, b) => parseDateForSorting(b.date) - parseDateForSorting(a.date)).slice(0, 8);
 
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-6xl mx-auto space-y-10">
@@ -2800,17 +2887,16 @@ function ProgressPageComponent({
 
       {/* Sinais da sua jornada (Radar) & Consciência */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="mobile-card-padding animated-gradient text-paper p-8 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: 'easeOut' }} className="mobile-card-padding animated-gradient text-paper p-8 rounded-[2.5rem] shadow-lg flex flex-col justify-center lg:col-span-1">
           <h3 className="label-sm text-paper mb-3 glass-badge font-bold inline-block self-start">Consciência Geral</h3>
-          <div className="text-6xl sm:text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</div>
+          <motion.div initial={{ scale: 0.82, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.16, type: 'spring', stiffness: 180, damping: 18 }} className="text-6xl sm:text-7xl font-display mb-2 text-paper drop-shadow-md">{awarenessScore}%</motion.div>
           <p className="text-xs sm:text-sm font-medium text-paper/90 leading-relaxed">
-            {loggedMeals.length
-              ? 'Calculado a partir da atenção à saciedade, notas, fotos e consistência das refeições.'
-              : 'Complete o perfil ou registre refeições para refinar sua pontuação.'}
+            {integratedInsight.narrative}
           </p>
-        </div>
+          <span className="mt-4 text-[10px] font-bold uppercase tracking-wider text-paper/75">Leitura baseada em {integratedInsight.coverage}% dos sinais disponíveis</span>
+        </motion.div>
 
-        <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.45, ease: 'easeOut' }} className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-lg flex items-center gap-2">
               <span className="text-accent"><Brain size={20} /></span> Insights da jornada
@@ -2838,17 +2924,36 @@ function ProgressPageComponent({
               <p className="font-bold text-base">Complete seus dados para liberar o radar de jornada.</p>
             </div>
           )}
-        </div>
+        </motion.div>
       </div>
+
+      <section className="rounded-[2rem] border border-line bg-white p-5 sm:p-6 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <span className="label-sm text-accent">Como a leitura é formada</span>
+            <h3 className="mt-1 text-lg font-bold">Sinais conectados, não um diagnóstico</h3>
+          </div>
+          <p className="text-xs text-ink/55">Quanto mais registros válidos, mais representativo fica o resultado.</p>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {integratedInsight.components.map((component, index) => (
+            <motion.div key={component.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + index * 0.06 }} className="rounded-2xl border border-line bg-paper p-4">
+              <div className="flex items-center justify-between gap-3"><span className="font-bold text-sm">{component.label}</span><span className="font-display text-2xl text-accent">{component.value}%</span></div>
+              <p className="mt-2 text-xs leading-relaxed text-ink/55">{component.description}</p>
+            </motion.div>
+          ))}
+          {!integratedInsight.components.length && <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-ink/60 sm:col-span-2 lg:col-span-4">Comece preenchendo o perfil, registrando uma refeição ou anotando sono e diário.</p>}
+        </div>
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <section className="rounded-3xl border border-line bg-white p-5">
-          <span className="label-sm text-accent">Sono</span>
+          <div className="flex items-center justify-between gap-2"><span className="label-sm text-accent">Sono</span>{userProfile.sleepLogs?.[0] && <button type="button" onClick={() => removeSleepRecord(userProfile.sleepLogs![0].id)} className="text-[10px] font-bold text-red-500 hover:underline">Apagar</button>}</div>
           <p className="mt-2 text-lg font-bold">{userProfile.sleepLogs?.[0] ? `${userProfile.sleepLogs[0].hours}h · ${userProfile.sleepLogs[0].quality}` : 'Sem registro'}</p>
           <p className="mt-1 text-xs text-ink/55">O descanso ajuda a interpretar seus sinais de fome.</p>
         </section>
         <section className="rounded-3xl border border-line bg-white p-5">
-          <span className="label-sm text-accent">Diário</span>
+          <div className="flex items-center justify-between gap-2"><span className="label-sm text-accent">Diário</span>{userProfile.dailyNotes?.[0] && <button type="button" onClick={() => removeDiaryRecord(userProfile.dailyNotes![0].id)} className="text-[10px] font-bold text-red-500 hover:underline">Apagar</button>}</div>
           <p className="mt-2 text-lg font-bold">{userProfile.dailyNotes?.length || 0} registros</p>
           <p className="mt-1 line-clamp-2 text-xs text-ink/55">{userProfile.dailyNotes?.[0]?.text || 'Registre acontecimentos e emoções para enriquecer seus insights.'}</p>
         </section>
@@ -3050,6 +3155,15 @@ function ProgressPageComponent({
                 </label>
               ))}
             </div>
+            <div className="mt-5 rounded-2xl border border-line bg-white p-4">
+              <div className="flex items-center justify-between gap-3"><span className="font-bold text-sm">Registros recentes</span><span className="text-[10px] font-bold uppercase text-ink/45">Corrija ou apague</span></div>
+              {metricHistory.length ? <div className="mt-3 space-y-2">{metricHistory.map(item => (
+                <div key={`${item.key}-${item.date}`} className="flex items-center justify-between gap-3 rounded-xl bg-paper px-3 py-2">
+                  <span className="text-xs font-medium"><b>{item.label}:</b> {item.value} {item.unit} · {item.date}</span>
+                  <button type="button" onClick={() => removeMetricRecord(item.key, item.date)} className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Apagar registro"><Trash2 size={14} /></button>
+                </div>
+              ))}</div> : <p className="mt-2 text-xs text-ink/55">Nenhuma medida salva ainda.</p>}
+            </div>
             <div className="mt-6 flex gap-3">
               <button type="button" onClick={() => setShowMetricsModal(false)} className="flex-1 py-4 rounded-full border border-line text-sm font-bold text-ink/60 hover:bg-white">
                 Cancelar
@@ -3089,6 +3203,9 @@ function ProfilePageComponent({
       userProfile.objectives || []
     )
     : null;
+  const currentImc = userProfile.imc ?? liveNeeds?.imc ?? null;
+  const imcInterpretation = getImcInterpretation(currentImc);
+  const currentTmb = userProfile.tmb ?? liveNeeds?.tmb ?? null;
 
   const profileActions = [
     { label: 'Editar Dados', icon: Edit2, page: 'settings-account' },
@@ -3131,13 +3248,15 @@ function ProfilePageComponent({
 
       {/* Cards de Métricas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-line text-center">
-          <span className="text-[10px] font-bold uppercase text-accent inline-flex items-center gap-1">IMC Atual <button type="button" onClick={() => toast('IMC significa Índice de Massa Corporal: uma relação entre peso e altura usada como triagem indicativa, não como diagnóstico.', 'info')} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-accent text-[10px]" aria-label="Entender IMC">?</button></span>
-          <span className="text-2xl font-display">{userProfile.imc || liveNeeds?.imc || '--'}</span>
+        <div className="col-span-2 bg-white p-4 rounded-2xl border border-line sm:col-span-1">
+          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase text-accent">IMC atual</span><button type="button" onClick={() => toast('IMC é uma relação entre peso e altura usada como triagem. Ele não diagnostica saúde e precisa ser interpretado no seu contexto.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent text-xs font-bold text-accent" aria-label="Entender IMC">?</button></div>
+          <div className="mt-2 flex items-end justify-between gap-3"><span className="text-3xl font-display">{currentImc ?? '--'}</span><span className={`text-right text-[10px] font-bold ${imcInterpretation.tone}`}>{imcInterpretation.label}</span></div>
+          <p className="mt-2 text-[10px] leading-relaxed text-ink/50">{imcInterpretation.description}</p>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-line text-center">
-          <span title="Taxa Metabólica Basal: energia que o corpo usa em repouso para funções vitais." className="text-[10px] font-bold uppercase text-accent-pink block cursor-help">TMB Estimada <Info size={11} className="inline" /></span>
-          <span className="text-2xl font-display">{userProfile.tmb || liveNeeds?.tmb || '--'} kcal</span>
+        <div className="col-span-2 bg-white p-4 rounded-2xl border border-line sm:col-span-1">
+          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase text-accent-pink">TMB estimada</span><button type="button" onClick={() => toast('TMB é a energia mínima que seu corpo usa em repouso para funções vitais. É uma estimativa, não uma meta alimentar isolada.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent-pink text-xs font-bold text-accent-pink" aria-label="Entender TMB">?</button></div>
+          <div className="mt-2 text-3xl font-display">{currentTmb ?? '--'}<span className="ml-1 text-sm font-sans font-bold text-ink/55">kcal/dia</span></div>
+          <p className="mt-2 text-[10px] leading-relaxed text-ink/50">Energia estimada em repouso, antes da atividade do dia.</p>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-line text-center">
           <span className="text-[10px] font-bold uppercase text-ink/50 block">Peso</span>
