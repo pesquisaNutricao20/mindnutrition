@@ -1246,7 +1246,7 @@ export default function App() {
           className="topbar-brand"
           aria-label="Ir para o início"
         >
-          <img src={iconApp} alt="Mind Nutrition" className="w-full h-full object-contain" />
+          <img src={iconApp} alt="Ícone Mind Nutrition" className="h-10 w-10 shrink-0 object-contain" />
           <div className="min-w-0">
             <h1 className="topbar-title logo-wordmark">Mind Nutrition</h1>
           </div>
@@ -1289,9 +1289,6 @@ export default function App() {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
     return (
       <aside className="app-sidebar">
-        <div className="w-12 h-12 mb-6 rounded-2xl overflow-hidden p-1 border border-accent/20 bg-white shadow-sm flex items-center justify-center">
-          <img src={iconApp} alt="Mind Nutrition" className="w-full h-full object-contain" />
-        </div>
         {navItems.map((item) => {
           const isActive = currentPage === item.id;
           return (
@@ -1449,7 +1446,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {currentPage === 'landing' && (
             <PageWrapper noPadding key="landing">
-              <div className="landing-gradient w-full h-[100dvh] overflow-hidden fixed inset-0 z-50 bg-paper" style={{ backgroundImage: 'radial-gradient(var(--line) 1px, transparent 1px)', backgroundSize: '30px 30px' }}>
+              <div className="landing-gradient w-full h-[100dvh] overflow-hidden fixed inset-0 z-50 bg-paper">
                 <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-paper via-transparent to-paper pointer-events-none z-0" />
                 <div className="w-full h-full flex flex-col relative z-10 max-w-[2000px] mx-auto">
                   <div className="flex-1 flex flex-col justify-center px-8 md:px-16 pb-20 md:pb-32 overflow-y-auto">
@@ -1481,6 +1478,14 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                </div>
+                <div className="landing-waves" aria-hidden="true">
+                  <svg className="landing-wave landing-wave-back" viewBox="0 0 1440 320" preserveAspectRatio="none">
+                    <path fill="var(--accent-pink)" d="M0,192L48,181.3C96,171,192,149,288,138.7C384,128,480,128,576,149.3C672,171,768,213,864,208C960,203,1056,149,1152,133.3C1248,117,1344,139,1392,149.3L1440,160L1440,320L0,320Z" />
+                  </svg>
+                  <svg className="landing-wave landing-wave-front" viewBox="0 0 1440 320" preserveAspectRatio="none">
+                    <path fill="var(--accent)" d="M0,224L48,208C96,192,192,160,288,154.7C384,149,480,171,576,192C672,213,768,235,864,229.3C960,224,1056,192,1152,181.3C1248,171,1344,181,1392,186.7L1440,192L1440,320L0,320Z" />
+                  </svg>
                 </div>
               </div>
             </PageWrapper>
@@ -3127,7 +3132,7 @@ function ProfilePageComponent({
       {/* Cards de Métricas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white p-4 rounded-2xl border border-line text-center">
-          <span className="text-[10px] font-bold uppercase text-accent block">IMC Atual</span>
+          <span className="text-[10px] font-bold uppercase text-accent inline-flex items-center gap-1">IMC Atual <button type="button" onClick={() => toast('IMC significa Índice de Massa Corporal: uma relação entre peso e altura usada como triagem indicativa, não como diagnóstico.', 'info')} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-accent text-[10px]" aria-label="Entender IMC">?</button></span>
           <span className="text-2xl font-display">{userProfile.imc || liveNeeds?.imc || '--'}</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-line text-center">

@@ -140,7 +140,7 @@ select {
   position: fixed;
   inset: 0;
   background-image: var(--paper-noise);
-  opacity: 0.05;
+  opacity: 0.075;
   pointer-events: none;
   z-index: 9999;
   mix-blend-mode: multiply;
@@ -173,6 +173,10 @@ select {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background-image:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--accent) 14%, transparent) 1px, transparent 0),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-light) 20%, var(--paper)), var(--paper) 45%, color-mix(in srgb, var(--accent-pink-light) 24%, var(--paper)));
+  background-size: 22px 22px, 100% 100%;
 }
 
 .app-main {
@@ -655,9 +659,51 @@ a {
 
 .landing-gradient {
   background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--accent) 15%, transparent) 1px, transparent 0),
     radial-gradient(circle at 20% 18%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 34%),
     radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--accent-pink) 18%, transparent), transparent 32%),
     linear-gradient(150deg, var(--paper), color-mix(in srgb, var(--accent-light) 42%, white), var(--paper));
+  background-size: 24px 24px, auto, auto, auto;
+}
+
+.landing-waves {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: min(28vh, 220px);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.landing-wave {
+  position: absolute;
+  bottom: -2px;
+  left: -12%;
+  width: 124%;
+  height: 100%;
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+.landing-wave-back {
+  opacity: 0.42;
+  animation: landing-wave-drift 10s ease-in-out infinite alternate;
+}
+
+.landing-wave-front {
+  opacity: 0.68;
+  animation: landing-wave-drift 7s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes landing-wave-drift {
+  from { transform: translateX(-2%) translateY(3px) scaleX(1.02); }
+  to { transform: translateX(2%) translateY(-5px) scaleX(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-wave { animation: none; }
 }
 
 @keyframes themeFlow {
