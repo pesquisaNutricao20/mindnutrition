@@ -11,7 +11,6 @@ import {
   LogIn,
   Mail,
   MailCheck,
-  ShieldCheck,
   UserPlus,
 } from 'lucide-react';
 import { getFriendlySupabaseError, getSupabaseConfigMessage, supabase } from '../lib/supabase';
@@ -281,7 +280,7 @@ export const AuthPage = ({
         <button type="button" onClick={() => onNavigate('landing')} className="icon-button absolute left-5 top-5 z-30 bg-white/85 backdrop-blur-md">
           <ArrowLeft size={20} className="text-ink" />
         </button>
-        <aside className="relative hidden min-h-[34rem] flex-col justify-between overflow-hidden bg-accent/10 p-7 pt-16 lg:flex">
+        <aside className="relative hidden min-h-[34rem] flex-col overflow-hidden bg-accent/10 p-7 pt-16 lg:flex">
           <div className="relative z-10">
             <div className="relative mb-5 h-36">
               <div className="absolute inset-x-8 bottom-6 h-16 rounded-full bg-accent/20 blur-2xl" />
@@ -293,15 +292,10 @@ export const AuthPage = ({
                 <FlyingMascotSprite alt="Mascote Mind Nutrition" className="mx-auto h-full object-contain" />
               </motion.div>
             </div>
-            <span className="label-sm text-accent">Mind Nutrition</span>
             <h2 className="display-title mt-3 text-4xl">Sua jornada com mais calma.</h2>
             <p className="mt-3 text-sm font-medium leading-relaxed text-ink/65">
               Registre refeições, acompanhe sinais do corpo e mantenha seus dados sincronizados quando o Supabase estiver disponível.
             </p>
-          </div>
-          <div className="relative z-10 rounded-3xl border border-line bg-white/70 p-4 text-sm font-medium text-ink/65">
-            <ShieldCheck size={18} className="mb-2 text-accent" />
-            Autenticação segura, feedback claro e fallback local para não interromper seu uso pessoal.
           </div>
         </aside>
 

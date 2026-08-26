@@ -46,7 +46,6 @@ import { motion, AnimatePresence, useAnimation, useMotionValue } from 'motion/re
 import { useToast } from './components/Toast';
 import { AuthPage } from './components/AuthPage';
 import { ProfileAvatar } from './components/ui/ProfileAvatar';
-import { HungerOdometer } from './components/ui/HungerOdometer';
 import { FlyingMascotSprite } from './components/ui/FlyingMascotSprite';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { MascotBubble } from './components/ui/MascotBubble';
@@ -67,6 +66,7 @@ import {
   upsertProfile,
 } from './lib/supabase';
 import iconApp from './assets/logo/icon_app.png';
+import mascotAi from './assets/mascote_ai3.png';
 import {
   BarChart,
   Bar,
@@ -709,7 +709,7 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
         <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
           <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
-            <div className="flex items-start justify-between gap-4">
+              <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Pausa de Observação & Orientação</span>
                 <h3 className="modal-title font-title mt-2 text-2xl sm:text-3xl font-bold">Fome Física x Fome Emocional</h3>
@@ -771,7 +771,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
         <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
           <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
-            <div className="flex items-start justify-between gap-4">
+              <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Boas-vindas</span>
                 <h3 className="modal-title font-title mt-1 text-2xl font-bold">Como Funciona o Mind Nutrition?</h3>
@@ -827,7 +827,7 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
     <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
       <div className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
-        <div className="flex items-start justify-between gap-4">
+        <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Diário Livre</span>
             <h3 className="modal-title font-title mt-1 text-2xl font-bold">Anotações & Reflexões do Dia</h3>
@@ -896,7 +896,7 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
     <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
       <div className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
-        <div className="flex items-start justify-between gap-4">
+        <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Módulo de Sono</span>
             <h3 className="modal-title font-title mt-1 text-2xl font-bold">Como foi seu descanso?</h3>
@@ -1284,7 +1284,6 @@ export default function App() {
     const pageLabelMap: Partial<Record<Page, string>> = {
       'meal-details': 'Detalhes',
       'settings-account': 'Conta',
-      'settings-theme': 'Temas',
       'settings-privacy': 'Privacidade',
       'settings-help': 'Ajuda',
     };
@@ -1645,14 +1644,6 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'settings-theme' && (
-            <ThemeSettingsPage
-              key="themes"
-              themeId={themeId}
-              onSetTheme={setThemeId}
-              onNavigate={setCurrentPage}
-            />
-          )}
 
           {currentPage === 'settings-privacy' && (
             <PrivacySettingsPage
@@ -1758,7 +1749,7 @@ export default function App() {
             >
               <div className="w-12 h-1.5 bg-line rounded-full mx-auto mt-4 mb-2 md:hidden" />
               <div className="overflow-y-auto flex-1 p-6 sm:p-10 pb-28">
-                <div className="flex justify-between items-center mb-4">
+                <div className="article-reader-header -mx-6 -mt-6 mb-4 flex items-center justify-between px-6 pt-6 pb-3 sm:-mx-10 sm:-mt-10 sm:px-10 sm:pt-10">
                   <span className="label-sm text-accent tracking-[0.2em]">{selectedArticle.type}</span>
                   <button onClick={closeArticle} className="w-10 h-10 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
                     <X size={18} />
@@ -2375,7 +2366,7 @@ function MealLogPage({
     preHunger: number;
     hungerType: MealClassification;
     preMood: string;
-    postHunger: number;
+    postHunger: number | null;
     postMood: string;
     satisfaction: number;
     notes: string;
@@ -2385,7 +2376,7 @@ function MealLogPage({
     preHunger: 5,
     hungerType: 'Física',
     preMood: 'Neutro',
-    postHunger: 5,
+    postHunger: null,
     postMood: 'Neutro',
     satisfaction: 4,
     notes: '',
@@ -2467,7 +2458,7 @@ function MealLogPage({
               </div>
               <div className="mx-auto mt-3 flex w-full max-w-xs flex-col items-center">
                 <motion.div animate={{ y: [0, -5, 0], rotate: [0, -1.5, 0, 1.5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }} className="h-20 w-20">
-                  <FlyingMascotSprite alt="Mascote piscando" frameMs={520} className="h-full w-full object-contain" />
+                  <FlyingMascotSprite alt="Mascote voando" className="h-full w-full object-contain" />
                 </motion.div>
                 <span className="mt-1 text-center text-[10px] font-bold text-ink/45">Pausa breve: como seu corpo e suas emoções estão?</span>
               </div>
@@ -2609,14 +2600,8 @@ function MealLogPage({
         {step === 'post' && (
           <>
             <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
-              <h3 className="font-bold text-lg mb-1">Reavalie sua fome (Saciedade)</h3>
-              <p className="text-xs text-ink/55 mb-4">Como seu estômago está se sentindo agora?</p>
-              <HungerOdometer value={log.postHunger} onChange={v => setLog({ ...log, postHunger: v })} />
-            </div>
-
-            <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
-              <h3 className="font-bold text-lg mb-1">Como você se sente após comer?</h3>
-              <p className="text-xs text-ink/55 mb-4">Avalie o quanto esta refeição atendeu às suas necessidades físicas.</p>
+              <h3 className="font-bold text-lg mb-1">Como foi sua saciedade?</h3>
+              <p className="text-xs text-ink/55 mb-4">Avalie o quanto esta refeição atendeu às suas necessidades físicas, sem precisar graduar a fome novamente.</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {[0, 1, 2, 3, 4, 5].map((val) => (
                   <button
@@ -2662,7 +2647,7 @@ function MealLogPage({
                   type: inferredType,
                   inferredType,
                   mood: log.postMood || log.preMood,
-                  hungerDelta: log.postHunger - log.preHunger,
+                  hungerDelta: log.postHunger === null ? null : log.postHunger - log.preHunger,
                   image: log.photos[0] || ''
                 };
                 onSaveMeal(newMeal);
@@ -2750,6 +2735,10 @@ function ProgressPageComponent({
     abdomen: userProfile.abdomenEvolution?.[userProfile.abdomenEvolution.length - 1]?.value || 0,
     hip: userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value || 0,
   });
+  const [aiSummary, setAiSummary] = useState('');
+  const [typedAiSummary, setTypedAiSummary] = useState('');
+  const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState('');
 
   const metricFields = [
     { key: 'weight', label: 'Peso', unit: 'kg', icon: TbHealthRecognition, hint: 'Registre em condições parecidas para comparar a evolução.' },
@@ -2872,6 +2861,51 @@ function ProgressPageComponent({
     return (userProfile[key] || []).map(item => ({ ...item, label: field.label, unit: field.unit, key }));
   }).sort((a, b) => parseDateForSorting(b.date) - parseDateForSorting(a.date)).slice(0, 8);
 
+  useEffect(() => {
+    if (!aiSummary) {
+      setTypedAiSummary('');
+      return;
+    }
+    let index = 0;
+    setTypedAiSummary('');
+    const timer = window.setInterval(() => {
+      index += 3;
+      setTypedAiSummary(aiSummary.slice(0, index));
+      if (index >= aiSummary.length) window.clearInterval(timer);
+    }, 14);
+    return () => window.clearInterval(timer);
+  }, [aiSummary]);
+
+  const generateAiSummary = async () => {
+    setIsAiSummaryLoading(true);
+    setAiSummaryError('');
+    setAiSummary('');
+    try {
+      const response = await fetch('/api/ai-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile: userProfile,
+          meals: loggedMeals,
+          signals: {
+            awarenessScore,
+            coverage: integratedInsight.coverage,
+            components: integratedInsight.components.map(component => ({ label: component.label, value: component.value })),
+          },
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || typeof result.summary !== 'string') {
+        throw new Error(result.message || 'Não foi possível gerar o resumo agora.');
+      }
+      setAiSummary(result.summary);
+    } catch (error) {
+      setAiSummaryError(error instanceof Error ? error.message : 'Não foi possível gerar o resumo agora.');
+    } finally {
+      setIsAiSummaryLoading(false);
+    }
+  };
+
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-6xl mx-auto space-y-10">
       <div className="responsive-page-header">
@@ -2949,6 +2983,35 @@ function ProgressPageComponent({
           {!integratedInsight.components.length && <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-ink/60 sm:col-span-2 lg:col-span-4">Comece preenchendo o perfil, registrando uma refeição ou anotando sono e diário.</p>}
         </div>
       </section>
+
+      <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.45 }} className="animated-gradient relative overflow-hidden rounded-[2rem] p-1 shadow-lg">
+        <div className="relative rounded-[1.8rem] bg-paper/95 p-5 sm:p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+            <motion.div animate={isAiSummaryLoading ? { y: [0, -6, 0], rotate: [0, -3, 3, 0] } : { y: [0, -3, 0] }} transition={{ duration: isAiSummaryLoading ? 0.8 : 2.8, repeat: Infinity, ease: 'easeInOut' }} className="mx-auto h-24 w-24 shrink-0 sm:mx-0">
+              <img src={mascotAi} alt="Mascote IA do Mind Nutrition" className="h-full w-full object-contain drop-shadow-md" />
+            </motion.div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <span className="label-sm text-accent">Mascote IA</span>
+                  <h3 className="mt-1 text-xl font-bold">Leitura conectada da sua jornada</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-ink/60">Conecta refeições, sono, diário, medidas e a leitura de consciência para destacar padrões observáveis.</p>
+                </div>
+                <button type="button" onClick={generateAiSummary} disabled={isAiSummaryLoading} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-accent px-4 py-2.5 text-xs font-bold text-paper shadow-sm transition hover:bg-accent/90 disabled:cursor-wait disabled:opacity-70">
+                  <Sparkles size={15} /> {isAiSummaryLoading ? 'Lendo seus sinais...' : aiSummary ? 'Gerar novamente' : 'Gerar resumo'}
+                </button>
+              </div>
+              <div className="mt-4 min-h-20 rounded-2xl border border-line bg-white/80 p-4 text-sm leading-relaxed text-ink/75">
+                {isAiSummaryLoading && <div className="flex items-center gap-2 text-ink/55"><span>O mascote está conectando seus registros</span><span className="inline-flex gap-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent [animation-delay:-0.2s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent [animation-delay:-0.1s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent" /></span></div>}
+                {!isAiSummaryLoading && aiSummaryError && <p className="text-red-600">{aiSummaryError}</p>}
+                {!isAiSummaryLoading && typedAiSummary && <p className="whitespace-pre-line">{typedAiSummary}<span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-accent align-[-2px]" /></p>}
+                {!isAiSummaryLoading && !typedAiSummary && !aiSummaryError && <p className="text-ink/55">Quando estiver pronta, gere uma leitura breve e acolhedora a partir dos registros que você já fez.</p>}
+              </div>
+              <p className="mt-3 text-[10px] leading-relaxed text-ink/50">O resumo é educativo, usa apenas dados resumidos e não substitui acompanhamento profissional.</p>
+            </div>
+          </div>
+        </div>
+      </motion.section>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <section className="rounded-3xl border border-line bg-white p-5">
@@ -3135,10 +3198,14 @@ function ProgressPageComponent({
         <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
           <div className="modal-panel relative w-full max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl rounded-[2.5rem] border border-line z-10">
-            <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button absolute right-5 top-5 h-10 w-10"><X size={18} /></button>
-            <span className="label-sm text-accent">Métricas Corporais</span>
-            <h3 className="display-title text-3xl mt-1">Atualizar Medidas</h3>
-            <p className="text-xs text-ink/60 mt-1">Insira suas medidas com tranquilidade para acompanhar tendências.</p>
+            <div className="modal-header flex items-start justify-between gap-4">
+              <div>
+                <span className="label-sm text-accent">Métricas Corporais</span>
+                <h3 className="display-title text-3xl mt-1">Atualizar Medidas</h3>
+                <p className="text-xs text-ink/60 mt-1">Insira suas medidas com tranquilidade para acompanhar tendências.</p>
+              </div>
+              <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button h-10 w-10 shrink-0"><X size={18} /></button>
+            </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {metricFields.map((field) => (
                 <label key={field.key} className="block p-4 rounded-2xl bg-white border border-line">
@@ -3213,7 +3280,6 @@ function ProfilePageComponent({
 
   const profileActions = [
     { label: 'Editar Dados', icon: Edit2, page: 'settings-account' },
-    { label: 'Temas do App', icon: Palette, page: 'settings-theme' },
     { label: 'Privacidade', icon: Lock, page: 'settings-privacy' },
     { label: 'Ajuda & Contato', icon: HelpCircle, page: 'settings-help' },
   ];
@@ -3526,7 +3592,7 @@ function PrivacySettingsPage({
   onNavigate: (page: Page) => void;
 }) {
   return (
-    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-8 md:pt-12 pb-28 max-w-xl mx-auto space-y-8">
+    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
         <button onClick={() => onNavigate('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
           <ArrowLeft size={20} />
@@ -3558,7 +3624,7 @@ function SettingsHelpPage({
   onNavigate: (page: Page) => void;
 }) {
   return (
-    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-8 md:pt-12 pb-28 max-w-xl mx-auto space-y-8">
+    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
         <button onClick={() => onNavigate('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
           <ArrowLeft size={20} />
@@ -3614,21 +3680,25 @@ function MealDetailsPageComponent({
   const satisfactionLabels = ['Nada satisfeito', 'Muito pouco', 'Pouco', 'Moderadamente', 'Satisfeito', 'Muito'];
 
   return (
-    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-8 md:pt-12 pb-28 max-w-2xl mx-auto space-y-6">
-      <header className="flex items-center gap-4 border-b border-line pb-4">
-        <button onClick={() => onNavigate('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <span className="label-sm text-accent">Detalhes da Refeição</span>
-          <h2 className="display-title text-3xl">{title}</h2>
+    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-28 md:pt-32 pb-28 max-w-2xl mx-auto space-y-6">
+      <header className="border-b border-line pb-4">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <button onClick={() => onNavigate('dashboard')} className="h-11 w-11 shrink-0 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors" aria-label="Voltar ao início">
+            <ArrowLeft size={20} />
+          </button>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <span className="label-sm text-accent">Detalhes da Refeição</span>
+            <h2 className="display-title break-words text-3xl sm:text-4xl">{title}</h2>
+          </div>
         </div>
-        <button type="button" onClick={() => setIsEditing(editing => !editing)} className="ml-auto inline-flex items-center gap-1 rounded-xl border border-line px-3 py-2 text-xs font-bold text-accent hover:bg-accent/5">
-          <Edit2 size={14} /> {isEditing ? 'Cancelar' : 'Editar'}
-        </button>
-        <button type="button" onClick={() => { if (window.confirm('Excluir esta refeição?')) onDelete(); }} className="inline-flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50">
-          <Trash2 size={14} /> Excluir
-        </button>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+          <button type="button" onClick={() => setIsEditing(editing => !editing)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-line px-3 py-2.5 text-xs font-bold text-accent hover:bg-accent/5">
+            <Edit2 size={14} /> {isEditing ? 'Cancelar' : 'Editar'}
+          </button>
+          <button type="button" onClick={() => { if (window.confirm('Excluir esta refeição?')) onDelete(); }} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-red-200 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50">
+            <Trash2 size={14} /> Excluir
+          </button>
+        </div>
       </header>
 
       <div className="bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm">
@@ -3651,7 +3721,7 @@ function MealDetailsPageComponent({
               <button type="button" onClick={() => { onUpdate({ ...selectedMeal, title: title.trim() || 'Refeição', notes: notes.trim() }); setIsEditing(false); }} className="w-full rounded-full bg-accent py-3 text-xs font-bold text-paper">Salvar edição</button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="p-4 rounded-2xl bg-accent/10 border border-accent/20">
               <span className="text-[10px] font-bold uppercase text-accent block">Tipo de Fome</span>
               <span className="text-lg font-bold text-ink">{mealType}</span>
@@ -3670,8 +3740,8 @@ function MealDetailsPageComponent({
               <span className="text-sm font-bold text-ink">{selectedMeal.preMood || 'Neutro'} ➔ {selectedMeal.postMood || selectedMeal.mood || 'Neutro'}</span>
             </div>
             <div className="p-4 rounded-2xl bg-paper border border-line">
-              <span className="text-[10px] font-bold uppercase text-ink/50 block">Fome Antes / Depois</span>
-              <span className="text-sm font-bold text-ink">{selectedMeal.preHunger ?? 5}/10 ➔ {selectedMeal.postHunger ?? 5}/10</span>
+              <span className="text-[10px] font-bold uppercase text-ink/50 block">Fome antes da refeição</span>
+              <span className="text-sm font-bold text-ink">{selectedMeal.preHunger ?? 5}/10{selectedMeal.postHunger !== null && selectedMeal.postHunger !== undefined ? ` ➔ ${selectedMeal.postHunger}/10` : ''}</span>
             </div>
           </div>
 

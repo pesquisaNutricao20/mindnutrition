@@ -158,3 +158,17 @@ As frases exibidas na interface descrevem a faixa e nunca devem ser interpretada
 - Uma medida por tipo e dia: um novo valor no mesmo dia corrige o registro existente, em vez de duplicá-lo.
 - Registros de medidas, diário, sono e refeições podem ser removidos quando incorretos. A remoção atualiza a leitura dos Insights.
 - Notificações: no máximo três simultâneas; mensagens idênticas não são empilhadas.
+
+## 7. Resumo de IA conectado aos sinais
+
+O resumo de IA é opcional e só é gerado quando a pessoa escolhe o botão nos Insights. O cliente envia os registros ao endpoint interno `/api/ai-insight`; o servidor reduz, anonimiza e limita os dados antes de chamar o modelo `minimax/minimax-m3:free` pela OpenRouter.
+
+### Preparação do contexto
+
+1. Selecionar no máximo 30 refeições recentes, 7 registros de sono, 5 entradas de diário e 4 medições por tipo.
+2. Remover nome, e-mail, fotos e identificadores. Textos livres são compactados e truncados.
+3. Organizar os sinais de fome, saciedade, humor, qualidade/horas de sono, diário, evolução corporal, objetivo e a pontuação determinística de consciência.
+4. Pedir ao modelo uma abertura acolhedora e três observações breves sobre relações que apareçam nos dados.
+5. Impedir diagnóstico, prescrição alimentar/calórica, culpa e invenção de dados. Quando a cobertura for baixa, o modelo deve explicitar a limitação e propor um registro simples.
+
+A chave `OPEN_ROUTER_KEY` fica exclusivamente no processo do servidor. Ela nunca deve ser enviada ao navegador, incluída em variáveis `VITE_*`, commits ou logs.
