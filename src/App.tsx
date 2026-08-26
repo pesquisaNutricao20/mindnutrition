@@ -57,6 +57,7 @@ import {
   getFriendlySupabaseError,
   getCurrentSession,
   insertMeal,
+  deleteMeal,
   isSupabaseDataSyncAvailable,
   isSupabaseConfigured,
   loadMeals,
@@ -555,6 +556,15 @@ const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
   };
 };
 
+const getReadingDuration = (article: { summary?: string; content?: string[] }) => {
+  const words = [article.summary || '', ...(article.content || [])]
+    .join(' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return `${Math.max(1, Math.ceil(words / 200))} min`;
+};
+
 const DEFAULT_LIBRARY_ARTICLES = [
   {
     id: 'fome-fisica-emocional',
@@ -913,19 +923,19 @@ export default function App() {
     if (window.location.pathname === '/nutricionista') {
       return localStorage.getItem('nutriAdminLoggedIn') === 'true' ? 'admin-dashboard' : 'admin-login';
     }
-    const savedUser = localStorage.getItem('nutriUser');
-    return savedUser ? 'dashboard' : 'landing';
+    return 'landing';
   });
   const [diagnosisStep, setDiagnosisStep] = useState(0);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [themeId, setThemeId] = useState(() => localStorage.getItem('mindTheme') || DEFAULT_THEME_ID);
+  const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
   const [showHungerModal, setShowHungerModal] = useState(false);
   const [showTutorialModal, setShowTutorialModal] = useState(false);
   const [showDailyDiaryModal, setShowDailyDiaryModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
+  const isHistoryNavigation = useRef(false);
   const [adminLoggedIn, setAdminLoggedIn] = useState(() => localStorage.getItem('nutriAdminLoggedIn') === 'true');
   const [adminUsers, setAdminUsers] = useState<any[]>(() => {
     const saved = localStorage.getItem('nutriAllUsers');
@@ -947,6 +957,7 @@ export default function App() {
     checkIns: [],
     dailyNotes: [],
     sleepLogs: [],
+    readArticleIds: [],
     height: 0,
     weightEvolution: [],
     waistEvolution: [],
@@ -1024,7 +1035,6 @@ export default function App() {
         try {
           const savedProfile = withProfileCompletionState(sanitizeProfileDefaults(JSON.parse(saved)));
           setUserProfile(savedProfile);
-          setCurrentPage(prev => prev === 'landing' ? getPostLoginPage(savedProfile) : prev);
         } catch { }
       }
       if (savedMeals) {
@@ -1040,23 +1050,24 @@ export default function App() {
             const metadataPhoto = metadata.avatar_url || metadata.picture || '';
             setCurrentUserId(session.user.id);
             const remoteProfile = await loadProfile(session.user.id).catch(() => null);
-            const remoteMeals = isSupabaseDataSyncAvailable()
-              ? await loadMeals(session.user.id).catch(() => [])
-              : [];
+            let remoteMeals: any[] | null = null;
+            if (isSupabaseDataSyncAvailable()) {
+              try { remoteMeals = await loadMeals(session.user.id); } catch { remoteMeals = null; }
+            }
             if (remoteProfile && active) {
               setUserProfile(prev => {
-                const hydrated = withProfileCompletionState(mergeProfileData(prev, {
+                const hydrated = withProfileCompletionState(sanitizeProfileDefaults({
                   ...remoteProfile,
                   email: session.user.email || remoteProfile.email || prev.email,
                   name: remoteProfile.name || prev.name || metadataName,
                   photo: remoteProfile.photo || prev.photo || metadataPhoto,
-                }));
+                } as UserProfile));
                 localStorage.setItem('nutriUser', JSON.stringify(hydrated));
                 setCurrentPage(page => page === 'landing' || page === 'dashboard' ? getPostLoginPage(hydrated) : page);
                 return hydrated;
               });
             }
-            if (remoteMeals.length && active) {
+            if (remoteMeals !== null && active) {
               setLoggedMeals(remoteMeals);
               localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
             }
@@ -1071,6 +1082,38 @@ export default function App() {
     hydrate();
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setCurrentUserId(null);
+        return;
+      }
+      setCurrentUserId(session.user.id);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const page = event.state?.mindNutritionPage as Page | undefined;
+      if (!page) return;
+      isHistoryNavigation.current = true;
+      setCurrentPage(page);
+    };
+    window.history.replaceState({ mindNutritionPage: currentPage }, '');
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (isHistoryNavigation.current) {
+      isHistoryNavigation.current = false;
+      return;
+    }
+    window.history.pushState({ mindNutritionPage: currentPage }, '');
+  }, [currentPage]);
 
   useEffect(() => {
     if (!isLoading) localStorage.setItem('nutriUser', JSON.stringify(userProfile));
@@ -1113,17 +1156,29 @@ export default function App() {
   };
 
   const closeArticle = () => {
+    if (selectedArticle?.id && !(userProfile.readArticleIds || []).includes(selectedArticle.id)) {
+      persistUserProfile({ ...userProfile, readArticleIds: [...(userProfile.readArticleIds || []), selectedArticle.id] });
+    }
     articleControls.start({ y: '100%' }).then(() => setSelectedArticle(null));
   };
 
   const saveMeal = (meal: any) => {
-    const updated = [meal, ...loggedMeals];
+    const updated = [meal, ...loggedMeals.filter(existing => existing.id !== meal.id)];
     setLoggedMeals(updated);
     localStorage.setItem('nutriMeals', JSON.stringify(updated));
     if (currentUserId) {
       insertMeal(currentUserId, meal).catch((err) => {
         console.info('Supabase meal sync skipped:', getFriendlySupabaseError(err));
       });
+    }
+  };
+
+  const removeMeal = (meal: any) => {
+    const updated = loggedMeals.filter(item => item.id !== meal.id);
+    setLoggedMeals(updated);
+    localStorage.setItem('nutriMeals', JSON.stringify(updated));
+    if (currentUserId && meal.id) {
+      deleteMeal(currentUserId, meal.id).catch((err) => console.info('Supabase meal deletion skipped:', getFriendlySupabaseError(err)));
     }
   };
 
@@ -1355,17 +1410,25 @@ export default function App() {
     const metadataPhoto = metadata.avatar_url || metadata.picture || '';
     setCurrentUserId(user.id);
     const remoteProfile = await loadProfile(user.id).catch(() => null);
-    const remoteMeals = isSupabaseDataSyncAvailable()
-      ? await loadMeals(user.id).catch(() => [])
-      : [];
-    const nextProfile = withProfileCompletionState(mergeProfileData(userProfile, {
-      ...(remoteProfile || {}),
-      photo: signupPhoto || metadataPhoto || userProfile.photo,
-      name: remoteProfile?.name || userProfile.name || metadataName,
-      email: user.email || '',
-    }));
+    let remoteMeals: any[] | null = null;
+    if (isSupabaseDataSyncAvailable()) {
+      try { remoteMeals = await loadMeals(user.id); } catch { remoteMeals = null; }
+    }
+    const nextProfile = remoteProfile && isLogin
+      ? withProfileCompletionState(sanitizeProfileDefaults({
+          ...remoteProfile,
+          photo: remoteProfile.photo || metadataPhoto || userProfile.photo,
+          name: remoteProfile.name || metadataName || userProfile.name,
+          email: user.email || remoteProfile.email || '',
+        } as UserProfile))
+      : withProfileCompletionState(mergeProfileData(userProfile, {
+          ...(remoteProfile || {}),
+          photo: signupPhoto || metadataPhoto || userProfile.photo,
+          name: remoteProfile?.name || userProfile.name || metadataName,
+          email: user.email || '',
+        }));
     await persistUserProfile(nextProfile, user.id);
-    if (remoteMeals.length) {
+    if (remoteMeals !== null) {
       setLoggedMeals(remoteMeals);
       localStorage.setItem('nutriMeals', JSON.stringify(remoteMeals));
     }
@@ -1392,15 +1455,10 @@ export default function App() {
                   <div className="flex-1 flex flex-col justify-center px-8 md:px-16 pb-20 md:pb-32 overflow-y-auto">
                     <div className="max-w-4xl mx-auto w-full">
                       <div className="flex items-center gap-3 mb-6">
-                        <div className="w-14 h-14 rounded-2xl bg-white p-2 border border-accent/20 shadow-md">
-                          <img src={iconApp} alt="Mind Nutrition Logo" className="w-full h-full object-contain" />
-                        </div>
-                        <span className="label-sm text-accent tracking-[0.2em]">Mind Nutrition</span>
+                        <img src={iconApp} alt="Ícone Mind Nutrition" className="h-12 w-12 object-contain" />
+                        <span className="logo-wordmark text-2xl text-accent">Mind Nutrition</span>
                       </div>
-                      <div className="mb-10 relative inline-block">
-                        <h1 className="font-title text-accent text-[4rem] sm:text-[5.5rem] md:text-[7.5rem] leading-[0.85] tracking-tight relative z-10">Mind</h1>
-                        <h1 className="font-title text-accent-pink -mt-2 md:-mt-6 text-right text-[3.8rem] sm:text-[5.2rem] md:text-[7.5rem] leading-[0.85] tracking-tight relative z-10">Nutrition</h1>
-                      </div>
+                      <h1 className="display-title mb-10 text-accent text-[3.2rem] sm:text-[4.5rem] md:text-[6rem] leading-[0.9]">Sua jornada começa aqui.</h1>
 
                       <div className="max-w-xl mb-10 bg-white/70 backdrop-blur-md p-6 sm:p-8 rounded-[2rem] border border-line shadow-sm relative z-20">
                         <p className="serif-body text-2xl md:text-3xl text-ink leading-tight mb-4">
@@ -1413,22 +1471,11 @@ export default function App() {
 
                       <div className="flex flex-wrap gap-4 z-20 relative">
                         <button
-                          onClick={() => {
-                            const saved = localStorage.getItem('nutriUser');
-                            if (saved) {
-                              try {
-                                setCurrentPage(getPostLoginPage(JSON.parse(saved)));
-                              } catch {
-                                setCurrentPage('diagnosis');
-                              }
-                            } else {
-                              setCurrentPage('auth');
-                            }
-                          }}
+                          onClick={() => setCurrentPage(currentUserId ? getPostLoginPage(userProfile) : 'auth')}
                           className="group relative inline-flex items-center gap-4 bg-accent text-paper px-8 sm:px-10 py-5 rounded-[2rem] font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 active:scale-95 transition-all"
                         >
                           <FaBrain size={22} />
-                          <span>{localStorage.getItem('nutriUser') ? 'Continuar Jornada' : 'Começar Jornada'}</span>
+                          <span>{currentUserId ? 'Continuar Jornada' : 'Começar Jornada'}</span>
                           <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                         </button>
                       </div>
@@ -1502,6 +1549,7 @@ export default function App() {
               key="content"
               onSelectArticle={setSelectedArticle}
               onNavigate={setCurrentPage}
+              readArticleIds={userProfile.readArticleIds || []}
             />
           )}
 
@@ -1583,6 +1631,8 @@ export default function App() {
               key="meal-details"
               selectedMeal={selectedMeal}
               onNavigate={setCurrentPage}
+              onUpdate={(meal) => { saveMeal(meal); setSelectedMeal(meal); toast('Refeição atualizada.', 'success'); }}
+              onDelete={() => { if (selectedMeal) removeMeal(selectedMeal); setSelectedMeal(null); setCurrentPage('dashboard'); toast('Refeição excluída.', 'success'); }}
             />
           )}
 
@@ -2257,6 +2307,7 @@ function MealLogPage({
   const [log, setLog] = useState<{
     title: string;
     preHunger: number;
+    hungerType: MealClassification;
     preMood: string;
     postHunger: number;
     postMood: string;
@@ -2266,6 +2317,7 @@ function MealLogPage({
   }>({
     title: 'Refeição',
     preHunger: 5,
+    hungerType: 'Física',
     preMood: 'Neutro',
     postHunger: 5,
     postMood: 'Neutro',
@@ -2307,7 +2359,7 @@ function MealLogPage({
   };
 
   return (
-    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-8 md:pt-12 pb-28 max-w-2xl mx-auto space-y-8">
+    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-2xl mx-auto space-y-8">
       <header className="flex items-center gap-4 border-b border-line pb-6">
         <button
           type="button"
@@ -2349,6 +2401,18 @@ function MealLogPage({
               </div>
               <div className="pt-4">
                 <HungerOdometer value={log.preHunger} onChange={v => setLog({ ...log, preHunger: v })} />
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                {(['Física', 'Emocional'] as MealClassification[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setLog({ ...log, hungerType: type })}
+                    className={`rounded-2xl border-2 px-4 py-3 text-sm font-bold transition-colors ${log.hungerType === type ? 'border-accent bg-accent text-paper' : 'border-line bg-white text-ink/60 hover:border-accent'}`}
+                  >
+                    Fome {type}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -2517,10 +2581,10 @@ function MealLogPage({
             <button
               type="button"
               onClick={() => {
-                const inferredType = inferMealType(log);
+                const inferredType = log.hungerType;
                 const newMeal = {
                   ...log,
-                  id: Date.now().toString(),
+                  id: crypto.randomUUID(),
                   title: log.title?.trim() || 'Refeição',
                   date: new Date().toISOString(),
                   time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
@@ -2545,10 +2609,12 @@ function MealLogPage({
 
 function ContentPageComponent({
   onSelectArticle,
-  onNavigate
+  onNavigate,
+  readArticleIds,
 }: {
   onSelectArticle: (article: any) => void;
   onNavigate: (page: Page) => void;
+  readArticleIds: string[];
 }) {
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-6xl mx-auto space-y-8">
@@ -2581,8 +2647,9 @@ function ContentPageComponent({
                 <p className="text-xs text-ink/60 line-clamp-2 mb-3 leading-relaxed">{item.summary}</p>
               </div>
               <div className="flex items-center gap-1.5 text-accent text-xs font-bold mt-2">
-                <Library size={14} /> {item.duration} de leitura
+                <Library size={14} /> {getReadingDuration(item)} de leitura
               </div>
+              {readArticleIds.includes(item.id) && <span className="mt-3 inline-flex w-fit items-center gap-1 rounded-full bg-accent/10 px-2 py-1 text-[10px] font-bold text-accent"><CheckCircle2 size={12} /> Lido</span>}
             </div>
           </button>
         ))}
@@ -2621,13 +2688,26 @@ function ProgressPageComponent({
   ] as const;
 
   const handleSaveMetrics = () => {
+    const providedValues = Object.values(newMetrics).filter(value => value > 0);
+    if (!providedValues.length) {
+      toast('Informe ao menos uma medida para salvar.', 'error');
+      return;
+    }
+    if (newMetrics.weight > 350 || newMetrics.waist > 250 || newMetrics.arm > 100 || newMetrics.abdomen > 250 || newMetrics.hip > 250) {
+      toast('Revise as medidas informadas: um dos valores está fora de uma faixa plausível.', 'error');
+      return;
+    }
     const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const updatedProfile = { ...userProfile };
 
     const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', val: number) => {
       if (val <= 0) return;
       const arr = (updatedProfile[key] as any[]) || [];
-      (updatedProfile[key] as any) = sortMetricsChronologically([...arr, { date, value: val }]);
+      const existingForDate = arr.findIndex(item => item.date === date);
+      const next = existingForDate >= 0
+        ? arr.map((item, index) => index === existingForDate ? { ...item, value: val } : item)
+        : [...arr, { date, value: val }];
+      (updatedProfile[key] as any) = sortMetricsChronologically(next);
     };
 
     updateEvolution('weightEvolution', newMetrics.weight);
@@ -2678,9 +2758,9 @@ function ProgressPageComponent({
 
   // Filter only categories with counts > 0 for clean Pie chart
   const hungerPieData = [
-    { name: 'Fome Física', value: physicalMeals, color: '#6BAF9E' },
-    { name: 'Fome Emocional', value: emotionalMeals, color: '#C9A3B5' },
-    { name: 'Não classificada', value: unclassifiedMeals, color: '#5A9485' },
+    { name: 'Fome Física', value: physicalMeals, color: 'var(--accent)' },
+    { name: 'Fome Emocional', value: emotionalMeals, color: 'var(--accent-pink)' },
+    { name: 'Não classificada', value: unclassifiedMeals, color: 'var(--accent-light)' },
   ].filter(item => item.value > 0);
 
   const hasMealData = loggedMeals.length > 0;
@@ -2709,7 +2789,7 @@ function ProgressPageComponent({
           </div>
         </div>
         <button onClick={() => setShowMetricsModal(true)} className="bg-accent text-paper px-6 py-3 rounded-full font-bold text-sm shadow-sm hover:bg-accent/90 active:scale-95 transition-all inline-flex items-center gap-2">
-          <PlusCircle size={18} /> Adicionar Medidas
+          <PlusCircle size={18} /> Atualizar medidas
         </button>
       </div>
 
@@ -2728,9 +2808,9 @@ function ProgressPageComponent({
         <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-lg flex items-center gap-2">
-              <span className="text-accent"><Brain size={20} /></span> Sinais da sua jornada
+              <span className="text-accent"><Brain size={20} /></span> Insights da jornada
             </h3>
-            <button type="button" onClick={() => toast('O radar equilibra Saciedade, Consciência, Energia, Humor, Constância e Contexto.', 'info')} className="text-xs text-accent font-bold flex items-center gap-1">
+            <button type="button" onClick={() => toast('O gráfico mostra o equilíbrio entre saciedade, consciência, energia, humor, constância e contexto.', 'info')} className="text-xs text-accent font-bold flex items-center gap-1">
               <Info size={14} /> Entender Eixos
             </button>
           </div>
@@ -2756,6 +2836,24 @@ function ProgressPageComponent({
         </div>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-3">
+        <section className="rounded-3xl border border-line bg-white p-5">
+          <span className="label-sm text-accent">Sono</span>
+          <p className="mt-2 text-lg font-bold">{userProfile.sleepLogs?.[0] ? `${userProfile.sleepLogs[0].hours}h · ${userProfile.sleepLogs[0].quality}` : 'Sem registro'}</p>
+          <p className="mt-1 text-xs text-ink/55">O descanso ajuda a interpretar seus sinais de fome.</p>
+        </section>
+        <section className="rounded-3xl border border-line bg-white p-5">
+          <span className="label-sm text-accent">Diário</span>
+          <p className="mt-2 text-lg font-bold">{userProfile.dailyNotes?.length || 0} registros</p>
+          <p className="mt-1 line-clamp-2 text-xs text-ink/55">{userProfile.dailyNotes?.[0]?.text || 'Registre acontecimentos e emoções para enriquecer seus insights.'}</p>
+        </section>
+        <section className="rounded-3xl border border-line bg-white p-5">
+          <span className="label-sm text-accent">IMC atual</span>
+          <p className="mt-2 text-lg font-bold">{userProfile.imc ?? imcData.at(-1)?.value ?? '--'}</p>
+          <p className="mt-1 text-xs text-ink/55">Indicador calculado com a última altura e pesagem.</p>
+        </section>
+      </div>
+
       {/* Gráficos de Evolução (Peso e IMC com ordenação cronológica) */}
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
@@ -2763,6 +2861,7 @@ function ProgressPageComponent({
             <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
               <span className="text-accent"><TbHealthRecognition size={22} /></span> Evolução do Peso
             </h3>
+            <button type="button" onClick={() => setShowMetricsModal(true)} className="text-xs font-bold text-accent hover:underline">Atualizar peso</button>
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-ink/60">
                 <div className="w-2.5 h-2.5 rounded-full bg-accent" /> Histórico
@@ -2886,7 +2985,7 @@ function ProgressPageComponent({
           <h3 className="font-bold text-base sm:text-lg mb-1 flex items-center gap-2">
             <span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Semanal
           </h3>
-          <p className="mb-4 text-xs text-ink/50">Distribuição de refeições nos dias da semana.</p>
+          <p className="mb-4 text-xs text-ink/50">Acumulado de todas as refeições registradas em cada dia da semana.</p>
           {hasMealData ? (
             <>
               <ChartFrame className="h-44" minHeight={140}>
@@ -2936,6 +3035,8 @@ function ProgressPageComponent({
                   <input
                     type="number"
                     step="0.1"
+                    min="0"
+                    max={field.key === 'weight' ? 350 : 250}
                     value={newMetrics[field.key] || ''}
                     onChange={e => setNewMetrics({ ...newMetrics, [field.key]: parseFloat(e.target.value) || 0 })}
                     placeholder="0"
@@ -3030,7 +3131,7 @@ function ProfilePageComponent({
           <span className="text-2xl font-display">{userProfile.imc || liveNeeds?.imc || '--'}</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-line text-center">
-          <span className="text-[10px] font-bold uppercase text-accent-pink block">TMB Estimada</span>
+          <span title="Taxa Metabólica Basal: energia que o corpo usa em repouso para funções vitais." className="text-[10px] font-bold uppercase text-accent-pink block cursor-help">TMB Estimada <Info size={11} className="inline" /></span>
           <span className="text-2xl font-display">{userProfile.tmb || liveNeeds?.tmb || '--'} kcal</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-line text-center">
@@ -3055,7 +3156,7 @@ function ProfilePageComponent({
             </button>
           </div>
           <div className="space-y-3">
-            {userProfile.dailyNotes.slice(0, 3).map((note) => (
+            {userProfile.dailyNotes.map((note) => (
               <div key={note.id} className="p-4 rounded-2xl bg-paper border border-line/60">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-[10px] font-bold uppercase text-accent">{note.date} • Humor: {note.mood || 'Neutro'}</span>
@@ -3111,21 +3212,41 @@ function AccountSettingsPage({
   const [gender, setGender] = useState(userProfile.gender || 'Mulher');
   const [age, setAge] = useState(userProfile.age || 25);
   const [height, setHeight] = useState(userProfile.height || 165);
+  const [photo, setPhoto] = useState(userProfile.photo || DEFAULT_PROFILE_PHOTO);
+  const [objectives, setObjectives] = useState(userProfile.objectives || []);
+  const [error, setError] = useState('');
+
+  const handlePhoto = async (files: FileList | null) => {
+    const result = await readValidatedImages(files, 0);
+    if (result.error) { setError(result.error); return; }
+    if (result.images[0]) setPhoto(result.images[0]);
+  };
 
   const handleSave = () => {
+    if (!name.trim() || name.trim().length > 80) {
+      setError('Informe um nome entre 1 e 80 caracteres.');
+      return;
+    }
+    if (age < 10 || age > 120 || height < 80 || height > 250) {
+      setError('Revise idade e altura: os valores estão fora de uma faixa plausível.');
+      return;
+    }
+    setError('');
     const updated = {
       ...userProfile,
       name: name.trim(),
       email: email.trim(),
       gender,
       age,
-      height
+      height,
+      photo,
+      objectives,
     };
     onSaveProfile(updated);
   };
 
   return (
-    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-8 md:pt-12 pb-28 max-w-xl mx-auto space-y-8">
+    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
         <button onClick={() => onNavigate('profile')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
           <ArrowLeft size={20} />
@@ -3134,11 +3255,20 @@ function AccountSettingsPage({
       </div>
 
       <div className="bg-white p-6 sm:p-8 rounded-[2rem] border border-line shadow-sm space-y-5">
+        {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
+        <div className="flex items-center gap-4">
+          <ProfileAvatar photo={photo} size="lg" />
+          <label className="cursor-pointer rounded-2xl bg-accent/10 px-4 py-3 text-xs font-bold text-accent hover:bg-accent/20">
+            <Camera size={14} className="mr-1 inline" /> Alterar foto
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => handlePhoto(event.target.files)} />
+          </label>
+        </div>
         <div>
           <label className="label-sm text-accent mb-1 block">Nome de exibição</label>
           <input
             type="text"
             value={name}
+            maxLength={80}
             onChange={(e) => setName(e.target.value)}
             className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-lg font-bold outline-none"
           />
@@ -3171,6 +3301,8 @@ function AccountSettingsPage({
             <label className="label-sm text-accent mb-1 block">Idade</label>
             <input
               type="number"
+              min="10"
+              max="120"
               value={age}
               onChange={(e) => setAge(parseInt(e.target.value, 10) || 0)}
               className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-sm font-bold outline-none"
@@ -3181,10 +3313,21 @@ function AccountSettingsPage({
           <label className="label-sm text-accent mb-1 block">Altura (cm)</label>
           <input
             type="number"
+            min="80"
+            max="250"
             value={height}
             onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
             className="w-full py-3 border-b-2 border-line focus:border-accent bg-transparent text-sm font-bold outline-none"
           />
+        </div>
+        <div>
+          <label className="label-sm text-accent mb-2 block">Meta principal</label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {['Emagrecimento consciente', 'Melhorar a relação com a comida', 'Ganho de peso', 'Hipertrofia', 'Cuidar da minha saúde'].map((objective) => {
+              const selected = objectives.includes(objective);
+              return <button type="button" key={objective} onClick={() => setObjectives(selected ? objectives.filter(item => item !== objective) : [...objectives, objective])} className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${selected ? 'border-accent bg-accent/10 text-accent' : 'border-line text-ink/60 hover:border-accent'}`}>{objective}</button>;
+            })}
+          </div>
         </div>
 
         <button
@@ -3325,11 +3468,18 @@ function SettingsHelpPage({
 
 function MealDetailsPageComponent({
   selectedMeal,
-  onNavigate
+  onNavigate,
+  onUpdate,
+  onDelete,
 }: {
   selectedMeal: any;
   onNavigate: (page: Page) => void;
+  onUpdate: (meal: any) => void;
+  onDelete: () => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [title, setTitle] = useState(selectedMeal?.title || 'Refeição');
+  const [notes, setNotes] = useState(selectedMeal?.notes || '');
   if (!selectedMeal) return null;
   const mealType = inferMealType(selectedMeal);
   const mealPhotos = selectedMeal.photos?.length ? selectedMeal.photos : (selectedMeal.image ? [selectedMeal.image] : []);
@@ -3343,8 +3493,14 @@ function MealDetailsPageComponent({
         </button>
         <div>
           <span className="label-sm text-accent">Detalhes da Refeição</span>
-          <h2 className="display-title text-3xl">{selectedMeal.title || 'Refeição'}</h2>
+          <h2 className="display-title text-3xl">{title}</h2>
         </div>
+        <button type="button" onClick={() => setIsEditing(editing => !editing)} className="ml-auto inline-flex items-center gap-1 rounded-xl border border-line px-3 py-2 text-xs font-bold text-accent hover:bg-accent/5">
+          <Edit2 size={14} /> {isEditing ? 'Cancelar' : 'Editar'}
+        </button>
+        <button type="button" onClick={() => { if (window.confirm('Excluir esta refeição?')) onDelete(); }} className="inline-flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50">
+          <Trash2 size={14} /> Excluir
+        </button>
       </header>
 
       <div className="bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm">
@@ -3358,6 +3514,15 @@ function MealDetailsPageComponent({
         ) : null}
 
         <div className="p-6 space-y-6">
+          {isEditing && (
+            <div className="space-y-3 rounded-2xl border border-line bg-paper p-4">
+              <label className="label-sm text-accent block">Nome da refeição</label>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} className="w-full border-b-2 border-line bg-transparent py-2 font-bold outline-none focus:border-accent" />
+              <label className="label-sm text-accent block">Anotações</label>
+              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1000} className="h-24 w-full resize-none rounded-xl border border-line bg-white p-3 text-sm outline-none focus:border-accent" />
+              <button type="button" onClick={() => { onUpdate({ ...selectedMeal, title: title.trim() || 'Refeição', notes: notes.trim() }); setIsEditing(false); }} className="w-full rounded-full bg-accent py-3 text-xs font-bold text-paper">Salvar edição</button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-4 rounded-2xl bg-accent/10 border border-accent/20">
               <span className="text-[10px] font-bold uppercase text-accent block">Tipo de Fome</span>

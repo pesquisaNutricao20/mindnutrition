@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mind-nutrition-v2';
+const CACHE_NAME = 'mind-nutrition-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -36,15 +36,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request).then((response) => {
+    fetch(event.request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
         return response;
-      });
-      return cached || network;
-    })
+      }).catch(() => caches.match(event.request))
   );
 });

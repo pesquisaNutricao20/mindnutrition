@@ -123,7 +123,7 @@ export async function upsertProfile(userId: string, email: string, profile: Reco
     photo: profile.photo || '',
     data: profile,
     updated_at: new Date().toISOString(),
-  });
+  }, { onConflict: 'id' });
   if (error) {
     if (isSupabaseSchemaMissingError(error)) {
       skipRemoteDataSync();
@@ -152,11 +152,12 @@ export async function loadMeals(userId: string) {
 
 export async function insertMeal(userId: string, meal: Record<string, unknown>) {
   if (!isSupabaseDataSyncAvailable()) return;
-  const { error } = await supabase.from('meals').insert({
+  const { error } = await supabase.from('meals').upsert({
+    id: meal.id as string,
     user_id: userId,
     payload: meal,
     created_at: meal.date || new Date().toISOString(),
-  });
+  }, { onConflict: 'id' });
   if (error) {
     if (isSupabaseSchemaMissingError(error)) {
       skipRemoteDataSync();
@@ -164,6 +165,12 @@ export async function insertMeal(userId: string, meal: Record<string, unknown>) 
     }
     throw error;
   }
+}
+
+export async function deleteMeal(userId: string, mealId: string) {
+  if (!isSupabaseDataSyncAvailable()) return;
+  const { error } = await supabase.from('meals').delete().eq('user_id', userId).eq('id', mealId);
+  if (error) throw error;
 }
 
 export async function deleteCurrentUserData(userId: string) {

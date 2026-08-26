@@ -55,7 +55,10 @@ select {
 
 button {
   touch-action: manipulation;
+  cursor: pointer;
 }
+
+button:disabled { cursor: not-allowed; }
 
 img,
 svg,
@@ -770,4 +773,3 @@ button:active:not(:disabled),
 .swipe-tab-container {
   touch-action: pan-y pinch-zoom;
 }
-

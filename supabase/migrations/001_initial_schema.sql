@@ -56,6 +56,11 @@ drop policy if exists "meals_delete_own" on public.meals;
 create policy "meals_delete_own" on public.meals
   for delete using ((select auth.uid()) = user_id);
 
+drop policy if exists "meals_update_own" on public.meals;
+create policy "meals_update_own" on public.meals
+  for update using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
 -- ============ RPC: delete_current_user_data ============
 
 create or replace function public.delete_current_user_data()

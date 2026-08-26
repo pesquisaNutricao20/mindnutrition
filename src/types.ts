@@ -47,6 +47,7 @@ export interface UserProfile {
   checkIns: { date: string; mood: string }[];
   dailyNotes?: DailyNote[];
   sleepLogs?: SleepLog[];
+  readArticleIds?: string[];
   height: number;
   weightEvolution: { date: string; value: number }[];
   waistEvolution: { date: string; value: number }[];

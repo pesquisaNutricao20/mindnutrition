@@ -56,6 +56,12 @@ create policy "Users can delete their own meals"
   on public.meals for delete
   using ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can update their own meals" on public.meals;
+create policy "Users can update their own meals"
+  on public.meals for update
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
 create or replace function public.delete_current_user_data()
 returns void
 language plpgsql
