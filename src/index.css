@@ -550,6 +550,16 @@ select {
   width: min(100%, 72rem);
 }
 
+.auth-page .display-title {
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 0.96;
+}
+
+.auth-page .serif-body {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
 .icon-button {
   width: 3rem;
   height: 3rem;
@@ -577,13 +587,26 @@ select {
   justify-content: center;
   padding: 0.75rem;
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .modal-panel {
   width: 100%;
   max-height: min(90dvh, 56rem);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 45%, transparent) transparent;
   border-radius: 1.75rem 1.75rem 1rem 1rem;
+}
+
+.modal-panel::-webkit-scrollbar { width: 6px; }
+.modal-panel::-webkit-scrollbar-track { background: transparent; }
+.modal-panel::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
 }
 
 .modal-title {
@@ -668,22 +691,22 @@ a {
 
 .landing-waves {
   position: absolute;
-  left: 50%;
+  right: 0;
   bottom: 0;
+  left: 0;
   z-index: 2;
-  width: 100vw;
+  width: 100%;
   height: clamp(150px, 29vh, 260px);
   overflow: hidden;
   pointer-events: none;
-  transform: translateX(-50%);
 }
 
 .landing-wave {
   position: absolute;
   bottom: -2px;
-  left: -40vw;
+  left: -30%;
   display: block;
-  width: 180vw;
+  width: 160%;
   max-width: none;
   height: 112%;
   transform-origin: center bottom;
@@ -701,9 +724,9 @@ a {
 }
 
 @keyframes landing-wave-drift {
-  0% { transform: translateX(-6%) translateY(5px) scaleX(1.02); }
-  50% { transform: translateX(2%) translateY(-6px) scaleX(1.08); }
-  100% { transform: translateX(8%) translateY(4px) scaleX(1.03); }
+  0% { transform: translateX(-4%) translateY(5px) scaleX(1.02); }
+  50% { transform: translateX(3%) translateY(-6px) scaleX(1.08); }
+  100% { transform: translateX(-4%) translateY(4px) scaleX(1.03); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -721,8 +744,18 @@ a {
   }
 
   .landing-wave {
-    left: -55vw;
-    width: 210vw;
+    left: -35%;
+    width: 170%;
+  }
+
+  .auth-page .display-title {
+    font-size: clamp(1.9rem, 8vw, 2.5rem);
+    line-height: 0.98;
+  }
+
+  .auth-page .serif-body {
+    font-size: 0.98rem;
+    line-height: 1.35;
   }
 
   .app-topbar {

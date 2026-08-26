@@ -47,6 +47,7 @@ import { useToast } from './components/Toast';
 import { AuthPage } from './components/AuthPage';
 import { ProfileAvatar } from './components/ui/ProfileAvatar';
 import { HungerOdometer } from './components/ui/HungerOdometer';
+import { FlyingMascotSprite } from './components/ui/FlyingMascotSprite';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { MascotBubble } from './components/ui/MascotBubble';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
@@ -1498,10 +1499,10 @@ export default function App() {
         <AnimatePresence mode="wait">
           {currentPage === 'landing' && (
             <PageWrapper noPadding key="landing">
-              <div className="landing-gradient relative z-50 w-full min-h-[34rem] overflow-hidden bg-paper sm:min-h-[38rem]">
+              <div className="landing-gradient fixed inset-0 z-50 h-[100dvh] w-screen overflow-hidden bg-paper">
                 <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-paper via-transparent to-paper pointer-events-none z-0" />
-                <div className="relative z-10 mx-auto flex min-h-[34rem] w-full max-w-[2000px] flex-col sm:min-h-[38rem]">
-                  <div className="flex flex-1 flex-col justify-center px-5 py-8 pb-28 sm:px-8 md:px-16">
+                <div className="relative z-10 mx-auto flex h-full w-full max-w-[2000px] flex-col">
+                  <div className="flex flex-1 flex-col justify-center px-5 py-6 pb-32 sm:px-8 md:px-16">
                     <div className="max-w-4xl mx-auto w-full">
                       <div className="mb-4 flex items-center gap-2.5">
                         <img src={iconApp} alt="Ícone Mind Nutrition" className="h-10 w-10 object-contain" />
@@ -2454,7 +2455,7 @@ function MealLogPage({
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h3 className="font-bold text-lg">De onde vem sua fome?</h3>
-                  <p className="text-xs text-ink/55 mt-0.5">Avalie seu nível corporal de 0 (sem fome física) a 10 (fome intensa).</p>
+                  <p className="text-xs text-ink/55 mt-0.5">Escolha o sinal que melhor representa este momento.</p>
                 </div>
                 <button
                   type="button"
@@ -2464,10 +2465,13 @@ function MealLogPage({
                   <HelpCircle size={15} /> Diferenciar Fomes
                 </button>
               </div>
-              <div className="pt-4">
-                <HungerOdometer value={log.preHunger} onChange={v => setLog({ ...log, preHunger: v })} />
+              <div className="mx-auto mt-3 flex w-full max-w-xs flex-col items-center">
+                <motion.div animate={{ y: [0, -5, 0], rotate: [0, -1.5, 0, 1.5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }} className="h-20 w-20">
+                  <FlyingMascotSprite alt="Mascote piscando" frameMs={520} className="h-full w-full object-contain" />
+                </motion.div>
+                <span className="mt-1 text-center text-[10px] font-bold text-ink/45">Pausa breve: como seu corpo e suas emoções estão?</span>
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 {(['Física', 'Emocional'] as MealClassification[]).map((type) => (
                   <button
                     key={type}

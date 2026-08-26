@@ -311,7 +311,6 @@ export const AuthPage = ({
               <img src={iconApp} alt="Ícone Mind Nutrition" className="h-10 w-10 shrink-0 object-contain" />
               <div>
                 <span className="logo-wordmark text-base font-bold text-ink">Mind Nutrition</span>
-                <p className="text-[11px] font-bold text-accent uppercase tracking-wider">Abordagem Gentil</p>
               </div>
             </div>
             <div className="relative mx-auto mb-3 h-14 md:hidden">
