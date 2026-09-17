@@ -1919,20 +1919,20 @@ function DiagnosisPage({
         <span className="text-xs font-bold text-ink/40">{step + 1}/{steps.length}</span>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="display-title text-3xl sm:text-4xl">{current.title}</h2>
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h2 className="display-title min-w-0 text-3xl leading-tight sm:text-4xl">{current.title}</h2>
           {current.hasHelpGuide && (
             <button
               type="button"
               onClick={onOpenHungerModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold hover:bg-accent/20"
+              className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-accent/10 px-3 py-2 text-xs font-bold text-accent hover:bg-accent/20"
             >
-              <HelpCircle size={14} /> Diferenciar Fomes
+              <HelpCircle size={14} /> <span className="sm:hidden">Entender fome</span><span className="hidden sm:inline">Diferenciar Fomes</span>
             </button>
           )}
         </div>
-        <p className="serif-body text-lg text-ink/65">{current.subtitle}</p>
+        <p className="serif-body max-w-2xl text-base leading-relaxed text-ink/65 sm:text-lg">{current.subtitle}</p>
       </div>
 
       <div className="pt-2">

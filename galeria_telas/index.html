@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#31889B">
+  <meta name="description" content="Galeria de telas do MindNutrition.">
+  <title>Galeria de telas · MindNutrition</title>
+  <link rel="icon" href="assets/logo.png" type="image/png">
+  <link rel="stylesheet" href="style.css">
+  <script src="fotos/indice.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#galeria">Ir para as telas</a>
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="MindNutrition — início da galeria">
+      <img src="assets/logo.png" alt="" width="42" height="42">
+      <span>MindNutrition<span class="brand-note">GALERIA DE TELAS</span></span>
+    </a>
+    <span class="collection-label"><span class="status-dot"></span> Uma visão do aplicativo</span>
+  </header>
+
+  <main id="conteudo" class="shell">
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">CONHEÇA A EXPERIÊNCIA</p>
+        <h1 id="page-title">Tela por <span>tela.</span></h1>
+        <p class="intro-copy">Um olhar sobre os espaços do MindNutrition.<br>Selecione uma imagem para ver os detalhes.</p>
+      </div>
+      <div class="collection-count" aria-live="polite" aria-atomic="true"><strong id="total">00</strong><span id="count-label">telas na galeria</span></div>
+    </section>
+
+    <section id="galeria" aria-label="Telas do aplicativo" tabindex="-1">
+      <div class="gallery-heading"><h2>Explore as telas</h2><span class="view-hint">Clique para ampliar <span aria-hidden="true">↗</span></span></div>
+      <div id="grid" class="gallery-grid"></div>
+      <div id="empty" class="empty-state" hidden>
+        <div class="empty-art" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h3>As telas aparecem por aqui.</h3>
+        <p>Nenhuma imagem disponível no momento.</p>
+      </div>
+      <noscript><p class="notice">Ative o JavaScript para visualizar a galeria de telas.</p></noscript>
+    </section>
+    <footer class="footer"><span>MindNutrition</span><span>Consciência em cada escolha.</span></footer>
+  </main>
+
+  <dialog id="lightbox" aria-labelledby="viewer-title">
+    <div class="lightbox-shell">
+      <header class="viewer-header">
+        <div class="viewer-heading"><p class="eyebrow">MINDNUTRITION · GALERIA</p><h2 id="viewer-title"></h2></div>
+        <button type="button" id="close" class="icon-button close-button" aria-label="Fechar imagem">×</button>
+      </header>
+      <div id="viewer" class="viewer" tabindex="0" aria-label="Imagem ampliada; use as setas para navegar">
+        <img id="viewer-image" alt="">
+        <p id="viewer-error" class="viewer-error" role="status" hidden>Não foi possível carregar esta imagem.</p>
+      </div>
+      <footer class="viewer-footer">
+        <div class="viewer-nav"><button type="button" id="previous" class="icon-button" aria-label="Imagem anterior">←</button><span id="position" aria-live="polite" aria-atomic="true"></span><button type="button" id="next" class="icon-button" aria-label="Próxima imagem">→</button></div>
+        <div class="viewer-actions"><button type="button" id="zoom" class="text-button" aria-pressed="false">Ampliar</button><a id="original" class="text-button" href="#" target="_blank" rel="noopener">Abrir original <span aria-hidden="true">↗</span></a></div>
+      </footer>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -17,7 +17,7 @@ export const APP_THEMES: AppTheme[] = [
   {
     id: 'ocean',
     name: 'Oceano Azul',
-    description: 'A identidade visual exclusiva do Mind Nutrition.',
+    description: 'A identidade visual do Mind Nutrition.',
     colors: {
       ink: '#273238',
       paper: '#F5FAFB',

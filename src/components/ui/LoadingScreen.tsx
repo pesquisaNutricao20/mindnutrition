@@ -5,8 +5,8 @@ export const LoadingScreen = () => (
   <div className="fixed inset-0 z-[10000] bg-paper flex flex-col items-center justify-center w-full h-full">
     <div className="paper-texture" />
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative flex w-full max-w-4xl flex-col items-center justify-center overflow-hidden px-4">
-      <div className="relative h-36 w-full overflow-hidden md:h-44">
-        <motion.div animate={{ x: ['-42vw', '42vw', '42vw', '-42vw', '-42vw'], y: [8, -8, 8, -8, 8], rotate: [-2, 3, 0, -3, 0], scaleX: [1, 1, -1, -1, 1] }} transition={{ duration: 5.2, repeat: Infinity, ease: 'easeInOut', times: [0, 0.45, 0.5, 0.95, 1] }} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+      <div className="relative flex h-36 w-full items-center justify-center overflow-hidden md:h-44">
+        <motion.div animate={{ y: [7, -13, 7], rotate: [-3, 3, -3] }} transition={{ duration: 2.1, repeat: Infinity, ease: 'easeInOut' }} className="relative">
           <FlyingMascotSprite className="h-28 w-28 object-contain md:h-36 md:w-36" />
         </motion.div>
       </div>
