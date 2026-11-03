@@ -54,3 +54,22 @@ Adicione essa linha ao `.env.local` (ou às variáveis de ambiente do servidor),
 - A sessão é um cookie `HttpOnly`, `SameSite=Strict` e assinado com HMAC. O login tem limite de tentativas por IP e valida a origem da requisição.
 
 Sem `ADMIN_KEY_HASH` (ou `ADMIN_KEY`), o login retorna uma mensagem pedindo a configuração no servidor.
+
+## Deploy na Vercel
+
+O `vercel.json` já configura o fallback de SPA (para abrir `/nutricionista` direto) e os headers de segurança/cache. Cadastre as variáveis em **Settings → Environment Variables** (Production e Preview) e faça um novo deploy:
+
+| Variável | Uso |
+|---|---|
+| `ADMIN_KEY_HASH` | Login do painel (hash gerado com `npm run admin:hash`) |
+| `ADMIN_SESSION_SECRET` | Opcional; segredo do cookie de sessão |
+| `ADMIN_SESSION_TTL_HOURS` | Opcional; validade da sessão (padrão 8, máximo 72) |
+| `GROQ_API_KEY` | IA de texto e de imagem |
+| `SUPABASE_URL` | URL do projeto Supabase (servidor) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Chave service role (somente servidor) |
+| `VITE_PUBLICSUPABASE_URL` | URL pública usada no build do cliente |
+| `VITE_PUBLICSUPABASE_ANON_KEY` | Chave anon pública usada no build do cliente |
+
+As variáveis `VITE_*` são embutidas no build: altere-as antes de gerar o deploy. Nunca use prefixo `VITE_` em segredos.
+
+Depois do deploy, `GET /api/health` retorna apenas booleanos indicando se IA, admin e Supabase administrativo estão configurados — útil para conferir as variáveis sem expor valores.
