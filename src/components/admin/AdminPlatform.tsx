@@ -393,7 +393,7 @@ function UsersTable({ users, loading }: { users: AdminUser[]; loading: boolean }
 
   return (
     <div className="overflow-hidden rounded-3xl border border-line bg-white shadow-sm">
-      <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_120px] gap-4 border-b border-line bg-paper/60 px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-ink/40 md:grid">
+      <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_120px] gap-4 border-b border-line bg-paper/60 px-5 py-3 text-[10px] font-bold text-ink/40 md:grid">
         <span>Paciente</span>
         <span>Perfil</span>
         <span>IMC</span>
@@ -426,7 +426,7 @@ function UsersTable({ users, loading }: { users: AdminUser[]; loading: boolean }
               <span className={`inline-flex min-w-[52px] justify-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${imcTone(user.imc)}`}>
                 {user.imc ? user.imc.toFixed(1) : '—'}
               </span>
-              <span className={`text-[10px] font-bold uppercase md:hidden ${user.onboardingComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
+              <span className={`text-[10px] font-bold md:hidden ${user.onboardingComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
                 {user.onboardingComplete ? 'Ativo' : 'Pendente'}
               </span>
             </div>
@@ -1119,7 +1119,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                   { label: 'IMC médio', value: stats.averageImc ?? '—' },
                 ].map((item) => (
                   <div key={item.label} className="rounded-2xl border border-line bg-white px-4 py-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">{item.label}</p>
+                    <p className="text-[10px] font-bold text-ink/40">{item.label}</p>
                     <p className="mt-0.5 font-display text-xl font-semibold text-ink">{item.value}</p>
                   </div>
                 ))}

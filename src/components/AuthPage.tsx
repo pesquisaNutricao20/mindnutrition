@@ -363,7 +363,7 @@ export const AuthPage = ({
             Continuar com Google
           </button>
 
-          <div className="mt-4 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.14em] text-ink/35">
+          <div className="mt-4 flex items-center gap-3 text-[10px] font-bold tracking-[0.14em] text-ink/35">
             <span className="h-px flex-1 bg-line" />
             <span>E-mail e senha</span>
             <span className="h-px flex-1 bg-line" />

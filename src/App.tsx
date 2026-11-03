@@ -582,7 +582,7 @@ const getPostLoginPage = (profile: Partial<UserProfile>): Page => (
   isProfileComplete(profile) ? 'dashboard' : 'diagnosis'
 );
 
-const MODAL_BACKDROP_CLASS = 'absolute inset-0 bg-ink/85';
+const MODAL_BACKDROP_CLASS = 'modal-backdrop absolute inset-0';
 const COLORS = ['#6BAF9E', '#C9A3B5', '#5A9485', '#8EBAAA', '#D6EDE6'];
 
 const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
@@ -757,7 +757,7 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
       {isOpen && (
         <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
               <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Pausa de Observação & Orientação</span>
@@ -819,7 +819,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
       {isOpen && (
         <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.div initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.96 }} className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
               <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Boas-vindas</span>
@@ -875,7 +875,7 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
   return (
     <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-      <div className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
+      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Diário Livre</span>
@@ -944,7 +944,7 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
   return (
     <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-      <div className="modal-panel relative max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
+      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Módulo de Sono</span>
@@ -1034,7 +1034,7 @@ function ConfirmationModal({
       {isOpen && (
         <div className="modal-shell fixed inset-0 z-[60] flex items-center justify-center">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.section initial={{ opacity: 0, y: 20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.97 }} className="modal-panel relative z-10 max-w-md rounded-[2rem] border border-red-100 bg-paper p-6 shadow-2xl sm:p-8">
+          <motion.section initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative z-10 max-w-full md:max-w-md rounded-[2rem] border border-red-100 bg-paper p-6 shadow-2xl sm:p-8">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><Trash2 size={21} /></div>
             <h3 className="display-title mt-4 text-2xl">{title}</h3>
             <p className="mt-2 text-sm leading-relaxed text-ink/65">{description}</p>
@@ -1048,6 +1048,141 @@ function ConfirmationModal({
     </AnimatePresence>
   );
 }
+
+// =========================================================================
+// AI SUMMARY MODAL
+// =========================================================================
+
+const SUMMARY_BULLET = /^([•▪*-])\s+/;
+const SUMMARY_SUGGESTION = /^sugest[ãa]o\s*:\s*/i;
+
+function splitSummaryBlocks(text: string) {
+  const opening: string[] = [];
+  const observations: string[] = [];
+  let suggestion = '';
+  text.split('\n').map(line => line.trim()).filter(Boolean).forEach((rawLine) => {
+    const isBullet = SUMMARY_BULLET.test(rawLine);
+    const line = rawLine.replace(SUMMARY_BULLET, '');
+    if (SUMMARY_SUGGESTION.test(line)) suggestion = line.replace(SUMMARY_SUGGESTION, '');
+    else if (isBullet) observations.push(line);
+    else opening.push(line);
+  });
+  const capitalizedSuggestion = suggestion ? suggestion.charAt(0).toUpperCase() + suggestion.slice(1) : '';
+  return { opening: opening.join(' '), observations, suggestion: capitalizedSuggestion };
+}
+
+type AiSummaryModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  onRegenerate: () => void;
+  summary: string;
+  isTypingComplete: boolean;
+  signals: { score: number; coverage: number; components: { label: string; value: number }[] };
+};
+
+const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComplete, signals }: AiSummaryModalProps) => {
+  const { opening, observations, suggestion } = splitSummaryBlocks(summary);
+  const tiles = [
+    { label: 'Consciência', value: `${signals.score}%` },
+    { label: 'Cobertura dos sinais', value: `${signals.coverage}%` },
+  ];
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
+          <motion.section
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 34, stiffness: 320 }}
+            className="modal-panel relative max-w-full md:max-w-2xl overflow-hidden rounded-[2rem] border border-line bg-paper shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Resumo do Mascote Nutre"
+          >
+            <div className="animated-gradient relative overflow-hidden p-5 text-paper sm:p-7">
+              <Sparkles size={96} className="absolute -right-5 -top-7 text-paper/20" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <img src={mascotAi} alt="Mascote Nutre do Mind Nutrition" className="h-14 w-14 shrink-0 rounded-2xl bg-paper/15 object-contain p-1 drop-shadow-md" />
+                  <div className="min-w-0">
+                    <span className="label-sm text-paper">Mascote Nutre</span>
+                    <h3 className="display-title mt-1 text-xl sm:text-3xl">Sua leitura conectada</h3>
+                  </div>
+                </div>
+                <button type="button" onClick={onClose} aria-label="Fechar resumo" className="shrink-0 rounded-full bg-paper/15 p-2.5 text-paper transition hover:bg-paper/25">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-5 sm:p-8">
+              <div className="grid grid-cols-2 gap-3">
+                {tiles.map(tile => (
+                  <div key={tile.label} className="rounded-2xl border border-line bg-paper/60 px-4 py-3">
+                    <p className="text-[10px] font-bold text-ink/45">{tile.label}</p>
+                    <p className="font-display mt-0.5 text-2xl text-accent">{tile.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {opening && <p className="serif-body text-lg leading-relaxed text-ink/85">{opening}</p>}
+
+              {observations.length > 0 && (
+                <div className="space-y-3">
+                  <span className="label-sm text-accent">O que seus registros mostram</span>
+                  {observations.map((observation, index) => (
+                    <div key={`${index}-${observation.slice(0, 12)}`} className="flex gap-3 rounded-2xl border border-line bg-white p-4">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">{index + 1}</span>
+                      <p className="text-sm leading-relaxed text-ink/75">{observation}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {signals.components.length > 0 && (
+                <div className="rounded-2xl border border-line bg-paper/60 p-4">
+                  <span className="label-sm text-accent">Como chegamos aí</span>
+                  <div className="mt-3 space-y-3">
+                    {signals.components.map(component => (
+                      <div key={component.label}>
+                        <div className="flex items-center justify-between gap-3 text-xs font-bold"><span>{component.label}</span><span className="text-accent">{component.value}%</span></div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-accent transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, component.value))}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {suggestion && (
+                <div className="flex gap-3 rounded-2xl border border-accent/25 bg-accent/5 p-4">
+                  <Leaf size={19} className="mt-0.5 shrink-0 text-accent" />
+                  <p className="text-sm leading-relaxed text-ink/80">{suggestion}</p>
+                </div>
+              )}
+
+              {!isTypingComplete && <span className="inline-block h-4 w-0.5 animate-pulse bg-accent align-[-2px]" />}
+
+              <p className="text-[10px] leading-relaxed text-ink/50">
+                Este resumo é educativo, usa apenas dados resumidos e não substitui acompanhamento profissional.
+              </p>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button type="button" onClick={onClose} className="flex-1 rounded-full border border-line px-4 py-3.5 text-sm font-bold text-ink/65 transition hover:bg-white">
+                  Fechar
+                </button>
+                <button type="button" onClick={onRegenerate} className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-accent px-4 py-3.5 text-sm font-bold text-paper shadow-md transition hover:bg-accent/90">
+                  <RefreshCw size={15} /> Gerar novamente
+                </button>
+              </div>
+            </div>
+          </motion.section>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 // =========================================================================
 // MAIN APP COMPONENT
@@ -1841,7 +1976,7 @@ export default function App() {
               <div className="w-12 h-1.5 bg-line rounded-full mx-auto mt-4 mb-2 md:hidden" />
               <div className="overflow-y-auto flex-1 p-6 sm:p-10 pb-28">
                 <div className="article-reader-header -mx-6 -mt-6 mb-4 flex items-center justify-between px-6 pt-6 pb-3 sm:-mx-10 sm:-mt-10 sm:px-10 sm:pt-10">
-                  <span className="label-sm text-accent tracking-[0.2em]">{selectedArticle.type}</span>
+                  <span className="label-sm text-accent">{selectedArticle.type}</span>
                   <button onClick={closeArticle} className="w-10 h-10 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
                     <X size={18} />
                   </button>
@@ -2333,13 +2468,13 @@ function DashboardPage({
             className="rounded-[1.75rem] border border-white/30 bg-white/15 p-5 backdrop-blur-md text-left transition-transform hover:scale-[1.02] active:scale-98"
           >
             <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-paper/80 uppercase">Hoje, {firstName}</p>
+              <p className="text-xs font-bold text-paper/80">Hoje, {firstName}</p>
               <ChevronRight size={16} className="text-paper/70" />
             </div>
             <p className="mt-1.5 text-lg font-bold truncate">{latestMood ? `Humor registrado: ${latestMood}` : 'Toque para ver seus sinais da jornada'}</p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-black/10 p-2.5"><span className="block text-xl font-bold">{loggedMeals.length}</span><span className="text-[9px] font-bold uppercase tracking-wide text-paper/70">refeições</span></div>
-              <div className="rounded-xl bg-black/10 p-2.5"><span className="block text-xl font-bold">{awarenessScore}%</span><span className="text-[9px] font-bold uppercase tracking-wide text-paper/70">consciência</span></div>
+              <div className="rounded-xl bg-black/10 p-2.5"><span className="block text-xl font-bold">{loggedMeals.length}</span><span className="text-[9px] font-bold tracking-wide text-paper/70">refeições</span></div>
+              <div className="rounded-xl bg-black/10 p-2.5"><span className="block text-xl font-bold">{awarenessScore}%</span><span className="text-[9px] font-bold tracking-wide text-paper/70">consciência</span></div>
             </div>
           </button>
         </div>
@@ -2544,7 +2679,7 @@ function MealAiAnalysisCard({
         <div className="mt-4 space-y-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-paper">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-[10px] font-bold text-paper">
                 <Utensils size={12} /> {analysis.dish || 'Prato identificado'}
               </span>
               {analysis.confidence && (
@@ -2560,7 +2695,7 @@ function MealAiAnalysisCard({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {nutrientItems.map(item => (
                 <div key={item.label} className="rounded-xl border border-line bg-white p-2.5">
-                  <span className="block text-[10px] font-bold uppercase text-ink/45">{item.label}</span>
+                  <span className="block text-[10px] font-bold text-ink/45">{item.label}</span>
                   <span className="mt-0.5 block text-xs font-bold text-ink">{item.value}</span>
                 </div>
               ))}
@@ -2569,7 +2704,7 @@ function MealAiAnalysisCard({
 
           {!!analysis.colors?.length && (
             <div>
-              <span className="text-[10px] font-bold uppercase text-ink/45">Cores do prato</span>
+              <span className="text-[10px] font-bold text-ink/45">Cores do prato</span>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {analysis.colors.map(color => (
                   <span key={color} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-ink/70 border border-line">{color}</span>
@@ -2584,7 +2719,7 @@ function MealAiAnalysisCard({
 
           {!!analysis.attentionPoints?.length && (
             <div>
-              <span className="text-[10px] font-bold uppercase text-ink/45">Pontos de atenção</span>
+              <span className="text-[10px] font-bold text-ink/45">Pontos de atenção</span>
               <ul className="mt-1.5 space-y-1.5">
                 {analysis.attentionPoints.map(point => (
                   <li key={point} className="flex items-start gap-2 text-xs text-ink/65"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />{point}</li>
@@ -3068,6 +3203,7 @@ function ProgressPageComponent({
   const [typedAiSummary, setTypedAiSummary] = useState('');
   const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState('');
+  const [showAiSummaryModal, setShowAiSummaryModal] = useState(false);
   const aiSummaryRef = useRef<HTMLElement | null>(null);
 
   const metricFields = [
@@ -3243,6 +3379,7 @@ function ProgressPageComponent({
     setIsAiSummaryLoading(true);
     setAiSummaryError('');
     setAiSummary('');
+    setShowAiSummaryModal(false);
     try {
       const insightProfile = {
         objectives: userProfile.objectives,
@@ -3288,6 +3425,7 @@ function ProgressPageComponent({
         throw new Error(result.message || 'Não foi possível gerar o resumo agora.');
       }
       setAiSummary(result.summary);
+      setShowAiSummaryModal(true);
     } catch (error) {
       setAiSummaryError(error instanceof Error ? error.message : 'Não foi possível gerar o resumo agora.');
     } finally {
@@ -3329,7 +3467,7 @@ function ProgressPageComponent({
           <p className="text-xs sm:text-sm font-medium text-paper/90 leading-relaxed">
             {integratedInsight.narrative}
           </p>
-          <span className="mt-4 text-[10px] font-bold uppercase tracking-wider text-paper/75">Leitura baseada em {integratedInsight.coverage}% dos sinais disponíveis</span>
+          <span className="mt-4 text-[10px] font-bold text-paper/75">Leitura baseada em {integratedInsight.coverage}% dos sinais disponíveis</span>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.45, ease: 'easeOut' }} className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
@@ -3402,8 +3540,18 @@ function ProgressPageComponent({
               <div className="mt-4 min-h-20 rounded-2xl border border-line bg-white/80 p-4 text-sm leading-relaxed text-ink/75">
                 {isAiSummaryLoading && <div className="flex items-center gap-2 text-ink/55"><span>O mascote está conectando seus registros</span><span className="inline-flex gap-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent [animation-delay:-0.2s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent [animation-delay:-0.1s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent" /></span></div>}
                 {!isAiSummaryLoading && aiSummaryError && <p className="text-red-600">{aiSummaryError}</p>}
-                {!isAiSummaryLoading && typedAiSummary && <p className="whitespace-pre-line">{typedAiSummary}<span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-accent align-[-2px]" /></p>}
-                {!isAiSummaryLoading && !typedAiSummary && !aiSummaryError && <p className="text-ink/55">Quando estiver pronta, gere uma leitura breve e acolhedora a partir dos registros que você já fez.</p>}
+                {!isAiSummaryLoading && aiSummary && (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-accent">Leitura pronta</p>
+                      <p className="mt-1 line-clamp-2 text-ink/70">{aiSummary}</p>
+                    </div>
+                    <button type="button" onClick={() => setShowAiSummaryModal(true)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-accent px-4 py-2.5 text-xs font-bold text-accent transition hover:bg-accent hover:text-paper">
+                      <BookOpen size={15} /> Ver resumo
+                    </button>
+                  </div>
+                )}
+                {!isAiSummaryLoading && !aiSummary && !aiSummaryError && <p className="text-ink/55">Quando estiver pronta, gere uma leitura breve e acolhedora a partir dos registros que você já fez.</p>}
               </div>
               <p className="mt-3 text-[10px] leading-relaxed text-ink/50">O resumo é educativo, usa apenas dados resumidos e não substitui acompanhamento profissional.</p>
             </div>
@@ -3435,7 +3583,7 @@ function ProgressPageComponent({
             <h3 className="flex items-center gap-2 font-bold text-base sm:text-lg"><span className="text-indigo-600"><Moon size={21} /></span> Evolução do sono</h3>
             <p className="mt-1 text-xs leading-relaxed text-ink/55">Horas de descanso nos seus últimos sete registros.</p>
           </div>
-          <span className="text-[10px] font-bold uppercase text-ink/45">Referência visual: 8h</span>
+          <span className="text-[10px] font-bold text-ink/45">Referência visual: 8h</span>
         </div>
         {hasSleepTrendData ? (
           <ChartFrame className="h-56" minHeight={170}>
@@ -3463,11 +3611,11 @@ function ProgressPageComponent({
             </h3>
             <button type="button" onClick={() => setShowMetricsModal(true)} className="text-xs font-bold text-accent hover:underline">Atualizar peso</button>
             <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-ink/60">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-ink/60">
                 <div className="w-2.5 h-2.5 rounded-full bg-accent" /> Histórico
               </span>
               {weightGoal && (
-                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-accent-pink">
+                <span className="flex items-center gap-1.5 text-[10px] font-bold text-accent-pink">
                   <div className="w-2.5 h-2.5 rounded-full bg-accent-pink" /> Meta ({weightGoal}kg)
                 </span>
               )}
@@ -3510,7 +3658,7 @@ function ProgressPageComponent({
             <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
               <span className="text-accent-pink"><Activity size={22} /></span> Evolução do IMC
             </h3>
-            <span className="text-[10px] font-bold uppercase text-ink/40">Triagem indicativa</span>
+            <span className="text-[10px] font-bold text-ink/40">Triagem indicativa</span>
           </div>
           <p className="mb-4 text-xs text-ink/50 leading-relaxed">
             Calculado a partir de altura e peso ao longo do tempo.
@@ -3622,7 +3770,7 @@ function ProgressPageComponent({
       {showMetricsModal && (
         <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
-          <div className="modal-panel relative w-full max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl rounded-[2.5rem] border border-line z-10">
+          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl rounded-[2.5rem] border border-line z-10">
             <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Métricas Corporais</span>
@@ -3652,7 +3800,7 @@ function ProgressPageComponent({
               ))}
             </div>
             <div className="mt-5 rounded-2xl border border-line bg-white p-4">
-              <div className="flex items-center justify-between gap-3"><span className="font-bold text-sm">Registros recentes</span><span className="text-[10px] font-bold uppercase text-ink/45">Corrija ou apague</span></div>
+              <div className="flex items-center justify-between gap-3"><span className="font-bold text-sm">Registros recentes</span><span className="text-[10px] font-bold text-ink/45">Corrija ou apague</span></div>
               {metricHistory.length ? <div className="mt-3 space-y-2">{metricHistory.map(item => (
                 <div key={`${item.key}-${item.date}`} className="flex items-center justify-between gap-3 rounded-xl bg-paper px-3 py-2">
                   <span className="text-xs font-medium"><b>{item.label}:</b> {item.value} {item.unit} · {item.date}</span>
@@ -3671,6 +3819,15 @@ function ProgressPageComponent({
           </div>
         </div>
       )}
+
+      <AiSummaryModal
+        isOpen={showAiSummaryModal}
+        onClose={() => setShowAiSummaryModal(false)}
+        onRegenerate={() => { setShowAiSummaryModal(false); generateAiSummary(); }}
+        summary={typedAiSummary}
+        isTypingComplete={typedAiSummary === aiSummary}
+        signals={{ score: awarenessScore, coverage: integratedInsight.coverage, components: integratedInsight.components }}
+      />
     </div>
   );
 }
@@ -3745,21 +3902,21 @@ function ProfilePageComponent({
       {/* Cards de Métricas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="col-span-2 bg-white p-4 rounded-2xl border border-line sm:col-span-1">
-          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase text-accent">IMC atual</span><button type="button" onClick={() => toast('IMC é uma relação entre peso e altura usada como triagem. Ele não diagnostica saúde e precisa ser interpretado no seu contexto.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent text-xs font-bold text-accent" aria-label="Entender IMC">?</button></div>
+          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold text-accent">IMC atual</span><button type="button" onClick={() => toast('IMC é uma relação entre peso e altura usada como triagem. Ele não diagnostica saúde e precisa ser interpretado no seu contexto.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent text-xs font-bold text-accent" aria-label="Entender IMC">?</button></div>
           <div className="mt-2 flex items-end justify-between gap-3"><span className="text-3xl font-display">{currentImc ?? '--'}</span><span className={`text-right text-[10px] font-bold ${imcInterpretation.tone}`}>{imcInterpretation.label}</span></div>
           <p className="mt-2 text-[10px] leading-relaxed text-ink/50">{imcInterpretation.description}</p>
         </div>
         <div className="col-span-2 bg-white p-4 rounded-2xl border border-line sm:col-span-1">
-          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase text-accent-pink">TMB estimada</span><button type="button" onClick={() => toast('TMB é a energia mínima que seu corpo usa em repouso para funções vitais. É uma estimativa, não uma meta alimentar isolada.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent-pink text-xs font-bold text-accent-pink" aria-label="Entender TMB">?</button></div>
+          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold text-accent-pink">TMB estimada</span><button type="button" onClick={() => toast('TMB é a energia mínima que seu corpo usa em repouso para funções vitais. É uma estimativa, não uma meta alimentar isolada.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent-pink text-xs font-bold text-accent-pink" aria-label="Entender TMB">?</button></div>
           <div className="mt-2 text-3xl font-display">{currentTmb ?? '--'}<span className="ml-1 text-sm font-sans font-bold text-ink/55">kcal/dia</span></div>
           <p className="mt-2 text-[10px] leading-relaxed text-ink/50">Energia estimada em repouso, antes da atividade do dia.</p>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-line text-center">
-          <span className="text-[10px] font-bold uppercase text-ink/50 block">Peso</span>
+          <span className="text-[10px] font-bold text-ink/50 block">Peso</span>
           <span className="text-2xl font-display">{latestWeight ? `${latestWeight} kg` : '--'}</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-line text-center">
-          <span className="text-[10px] font-bold uppercase text-ink/50 block">Altura</span>
+          <span className="text-[10px] font-bold text-ink/50 block">Altura</span>
           <span className="text-2xl font-display">{userProfile.height ? `${userProfile.height} cm` : '--'}</span>
         </div>
       </div>
@@ -3779,7 +3936,7 @@ function ProfilePageComponent({
             {userProfile.dailyNotes.map((note) => (
               <div key={note.id} className="p-4 rounded-2xl bg-paper border border-line/60">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-[10px] font-bold uppercase text-accent">{note.date} • Humor: {note.mood || 'Neutro'}</span>
+                  <span className="text-[10px] font-bold text-accent">{note.date} • Humor: {note.mood || 'Neutro'}</span>
                 </div>
                 <p className="text-xs sm:text-sm text-ink/80 font-medium">"{note.text}"</p>
               </div>
@@ -4193,11 +4350,11 @@ function MealDetailsPageComponent({
           )}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="p-4 rounded-2xl bg-accent/10 border border-accent/20">
-              <span className="text-[10px] font-bold uppercase text-accent block">Tipo de Fome</span>
+              <span className="text-[10px] font-bold text-accent block">Tipo de Fome</span>
               <span className="text-lg font-bold text-ink">{mealType}</span>
             </div>
             <div className="p-4 rounded-2xl bg-paper border border-line">
-              <span className="text-[10px] font-bold uppercase text-ink/50 block">Satisfação Física</span>
+              <span className="text-[10px] font-bold text-ink/50 block">Satisfação Física</span>
               <span className="text-lg font-bold text-ink">
                 {selectedMeal.satisfaction ?? 4}/5 ({satisfactionLabels[selectedMeal.satisfaction ?? 4]})
               </span>
@@ -4206,11 +4363,11 @@ function MealDetailsPageComponent({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="p-4 rounded-2xl bg-paper border border-line">
-              <span className="text-[10px] font-bold uppercase text-ink/50 block">Humor Antes / Depois</span>
+              <span className="text-[10px] font-bold text-ink/50 block">Humor Antes / Depois</span>
               <span className="text-sm font-bold text-ink">{selectedMeal.preMood || 'Neutro'} ➔ {selectedMeal.postMood || selectedMeal.mood || 'Neutro'}</span>
             </div>
             <div className="p-4 rounded-2xl bg-paper border border-line">
-              <span className="text-[10px] font-bold uppercase text-ink/50 block">Fome antes da refeição</span>
+              <span className="text-[10px] font-bold text-ink/50 block">Fome antes da refeição</span>
               <span className="text-sm font-bold text-ink">{selectedMeal.preHunger ?? 5}/10{selectedMeal.postHunger !== null && selectedMeal.postHunger !== undefined ? ` ➔ ${selectedMeal.postHunger}/10` : ''}</span>
             </div>
           </div>
