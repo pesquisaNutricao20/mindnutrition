@@ -183,23 +183,20 @@ select {
 
 .app-topbar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 76px;
+  top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  left: 1rem;
+  right: 1rem;
+  height: 4rem;
   z-index: 45;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: calc(env(safe-area-inset-top, 0px) + 0.6rem) 1rem 0.6rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 44%, transparent);
-  background:
-    linear-gradient(115deg, color-mix(in srgb, var(--paper) 72%, transparent), color-mix(in srgb, var(--accent-light) 18%, transparent)),
-    color-mix(in srgb, var(--paper) 58%, transparent);
-  backdrop-filter: blur(16px) saturate(1.15);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  box-shadow: 0 12px 32px rgba(28, 42, 38, 0.05);
+  padding: 0 1rem;
+  border: 1px solid color-mix(in srgb, white 55%, transparent);
+  border-radius: 9999px;
+  background: var(--paper);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.14);
 }
 
 .topbar-brand,
@@ -344,8 +341,9 @@ select {
     flex: 1;
   }
   .app-topbar {
-    left: 84px;
-    width: calc(100vw - 84px);
+    left: calc(84px + 1rem);
+    right: 1rem;
+    width: auto;
   }
   .app-main > * {
     max-width: 100%;
@@ -881,10 +879,9 @@ a {
   }
 
   .app-topbar {
-    height: 68px;
     gap: 0.35rem;
-    padding-left: 0.65rem;
-    padding-right: 0.65rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 
   .topbar-section {

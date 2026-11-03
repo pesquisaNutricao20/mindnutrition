@@ -1188,7 +1188,7 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 34, stiffness: 320 }}
-            style={{ maxHeight: expanded ? '92dvh' : '70dvh' }}
+            style={{ maxHeight: expanded ? '96dvh' : '90dvh' }}
             className="modal-panel relative max-w-full md:max-w-2xl overflow-hidden border border-line bg-paper shadow-2xl"
             role="dialog"
             aria-modal="true"
@@ -1738,7 +1738,7 @@ export default function App() {
     // Mobile nav contains 5 symmetrical items: Início, Insights, Registrar (Center), Biblioteca, Perfil
     return (
       <div className="mobile-nav fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 pb-safe pointer-events-none">
-        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-md">
           {navItems.map((item) => {
             const isActive = currentPage === item.id;
 
