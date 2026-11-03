@@ -129,10 +129,20 @@ export const AuthPage = ({
     try {
       const result = isLogin
         ? await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
-        : await supabase.auth.signUp({ email: normalizedEmail, password });
+        : await supabase.auth.signUp({
+            email: normalizedEmail,
+            password,
+            options: { emailRedirectTo: getAuthRedirectUrl() },
+          });
       if (result.error) throw result.error;
 
-      const user = result.data.user || result.data.session?.user;
+      if (!isLogin && !result.data.session) {
+        setPendingConfirmation(true);
+        onShowToast('Enviamos um link de confirmação para o seu e-mail.', 'info');
+        return;
+      }
+
+      const user = result.data.session?.user || result.data.user;
       if (!user) {
         setPendingConfirmation(true);
         return;
@@ -153,6 +163,7 @@ export const AuthPage = ({
       const { error: resendError } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
+        options: { emailRedirectTo: getAuthRedirectUrl() },
       });
       if (resendError) throw resendError;
       onShowToast('E-mail de confirmação reenviado.', 'success');

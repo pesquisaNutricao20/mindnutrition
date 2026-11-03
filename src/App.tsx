@@ -38,6 +38,10 @@ import {
   PenTool,
   BedDouble,
   Compass,
+  ScanLine,
+  Utensils,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { TbHealthRecognition } from 'react-icons/tb';
 import { PiHeartbeat } from 'react-icons/pi';
@@ -49,6 +53,7 @@ import { ProfileAvatar } from './components/ui/ProfileAvatar';
 import { FlyingMascotSprite } from './components/ui/FlyingMascotSprite';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { MascotBubble } from './components/ui/MascotBubble';
+import { AdminPlatform } from './components/admin/AdminPlatform';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
 import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL_PHOTOS } from './constants';
 import type { Page, UserProfile, DailyNote, SleepLog } from './types';
@@ -63,6 +68,7 @@ import {
   loadMeals,
   loadProfile,
   supabase,
+  toIsoTimestamp,
   upsertProfile,
 } from './lib/supabase';
 import iconApp from './assets/logo/icon_app.png';
@@ -95,10 +101,11 @@ export function calculateNutritionalNeeds(
   goals: string[] = []
 ) {
   if (!weight || !heightCm || !age) return { imc: 0, tmb: 0, net: 0 };
-  const heightM = heightCm / 100;
+  const heightCmSafe = heightCm > 0 && heightCm < 3 ? heightCm * 100 : heightCm;
+  const heightM = heightCmSafe / 100;
   const imc = weight / (heightM * heightM);
 
-  let tmb = (10 * weight) + (6.25 * heightCm) - (5 * age);
+  let tmb = (10 * weight) + (6.25 * heightCmSafe) - (5 * age);
   tmb = (gender === 'Masculino' || gender === 'Homem') ? tmb + 5 : tmb - 161;
 
   let net = tmb * (activityLevel || 1.2);
@@ -120,7 +127,7 @@ const getImcInterpretation = (imc?: number | null) => {
   return { label: 'Faixa elevada de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; não substitui acompanhamento profissional.' };
 };
 
-type MetricPoint = { date: string; value: number };
+type MetricPoint = { date: string; value: number; recordedAt?: string };
 type MealClassification = 'Física' | 'Emocional' | 'Não classificada';
 
 export const HUNGER_DEFINITIONS = {
@@ -172,26 +179,36 @@ const normalizeText = (value: unknown) => String(value || '')
   .trim();
 
 const getLatestMetricValue = (items?: MetricPoint[]) => {
-  const latest = [...(items || [])].reverse().find(item => Number.isFinite(item.value) && item.value > 0);
-  return latest?.value || null;
+  const sorted = sortMetricsChronologically(items);
+  const latest = sorted[sorted.length - 1];
+  return latest && Number.isFinite(latest.value) && latest.value > 0 ? latest.value : null;
 };
 
-const parseDateForSorting = (dateStr: string) => {
+const parseDateForSorting = (dateStr: string, recordedAt?: string) => {
+  if (recordedAt) {
+    const stamped = new Date(recordedAt).getTime();
+    if (!Number.isNaN(stamped)) return stamped;
+  }
   if (!dateStr) return 0;
   if (dateStr === 'Hoje') return Date.now();
-  if (dateStr.includes('/')) {
-    const parts = dateStr.split('/');
+  if (dateStr.includes('/') || dateStr.includes('.')) {
+    const parts = dateStr.split(/[\/.]/);
     if (parts.length === 2) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
-      const currentYear = new Date().getFullYear();
-      return new Date(currentYear, month, day).getTime();
+      const now = new Date();
+      const candidate = new Date(now.getFullYear(), month, day, 12);
+      // Um registro de dezembro visto em janeiro pertence ao ano anterior.
+      if (candidate.getTime() > now.getTime() + 45 * 24 * 60 * 60 * 1000) {
+        candidate.setFullYear(now.getFullYear() - 1);
+      }
+      return candidate.getTime();
     }
     if (parts.length === 3) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
-      return new Date(year < 100 ? 2000 + year : year, month, day).getTime();
+      return new Date(year < 100 ? 2000 + year : year, month, day, 12).getTime();
     }
   }
   const parsed = new Date(dateStr).getTime();
@@ -199,7 +216,23 @@ const parseDateForSorting = (dateStr: string) => {
 };
 
 const sortMetricsChronologically = (items: MetricPoint[] = []) => {
-  return [...items].sort((a, b) => parseDateForSorting(a.date) - parseDateForSorting(b.date));
+  const byDay = new Map<string, MetricPoint>();
+  items.forEach((item) => {
+    const value = Number(item?.value);
+    if (!item?.date || !Number.isFinite(value) || value <= 0) return;
+    const timestamp = parseDateForSorting(item.date, item.recordedAt);
+    if (!timestamp) return;
+    const day = new Date(timestamp);
+    const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+    const normalized: MetricPoint = { ...item, value, recordedAt: item.recordedAt || new Date(timestamp).toISOString() };
+    const previous = byDay.get(key);
+    if (!previous || parseDateForSorting(previous.date, previous.recordedAt) <= timestamp) {
+      byDay.set(key, normalized);
+    }
+  });
+  return Array.from(byDay.values()).sort(
+    (a, b) => parseDateForSorting(a.date, a.recordedAt) - parseDateForSorting(b.date, b.recordedAt)
+  );
 };
 
 const getMoodScore = (mood?: string | null) => {
@@ -555,9 +588,25 @@ const COLORS = ['#6BAF9E', '#C9A3B5', '#5A9485', '#8EBAAA', '#D6EDE6'];
 const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
   const currentDateLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const normalizeDates = (items: MetricPoint[] = []) => items.map(item => item.date === 'Hoje' ? { ...item, date: currentDateLabel } : item);
+  const weightEvolution = sortMetricsChronologically(normalizeDates(profile.weightEvolution));
+  const rawHeight = Number(profile.height);
+  const height = Number.isFinite(rawHeight) && rawHeight > 0
+    ? (rawHeight < 3 ? Number((rawHeight * 100).toFixed(1)) : rawHeight)
+    : 0;
+  const latestWeight = getLatestMetricValue(weightEvolution);
+  const computedImc = height && latestWeight
+    ? Number((latestWeight / Math.pow(height / 100, 2)).toFixed(1))
+    : null;
+  const storedImc = Number(profile.imc);
+  const imc = computedImc && computedImc >= 10 && computedImc <= 80
+    ? computedImc
+    : (Number.isFinite(storedImc) && storedImc >= 10 && storedImc <= 80 ? storedImc : profile.imc);
+
   return {
     ...profile,
-    weightEvolution: sortMetricsChronologically(normalizeDates(profile.weightEvolution)),
+    height,
+    ...(imc !== undefined ? { imc } : {}),
+    weightEvolution,
     waistEvolution: sortMetricsChronologically(normalizeDates(profile.waistEvolution)),
     armEvolution: sortMetricsChronologically(normalizeDates(profile.armEvolution)),
     abdomenEvolution: sortMetricsChronologically(normalizeDates(profile.abdomenEvolution)),
@@ -1008,9 +1057,7 @@ export default function App() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState<Page>(() => {
-    if (window.location.pathname === '/nutricionista') {
-      return localStorage.getItem('nutriAdminLoggedIn') === 'true' ? 'admin-dashboard' : 'admin-login';
-    }
+    if (window.location.pathname === '/nutricionista') return 'admin-dashboard';
     return 'landing';
   });
   const [diagnosisStep, setDiagnosisStep] = useState(0);
@@ -1025,14 +1072,6 @@ export default function App() {
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [aiSummaryShortcut, setAiSummaryShortcut] = useState(0);
   const isHistoryNavigation = useRef(false);
-  const [adminLoggedIn, setAdminLoggedIn] = useState(() => localStorage.getItem('nutriAdminLoggedIn') === 'true');
-  const [adminUsers, setAdminUsers] = useState<any[]>(() => {
-    const saved = localStorage.getItem('nutriAllUsers');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [adminArticles, setAdminArticles] = useState<any[]>(() => {
-    return [...DEFAULT_LIBRARY_ARTICLES];
-  });
   const [userProfile, setUserProfile] = useState<UserProfile>({
     name: '',
     email: '',
@@ -1096,9 +1135,16 @@ export default function App() {
     const sessionUserId = userId || (await getCurrentSession().catch(() => null))?.user?.id || null;
     if (sessionUserId && profileToPersist.email) {
       setCurrentUserId(sessionUserId);
-      upsertProfile(sessionUserId, profileToPersist.email, profileToPersist as unknown as Record<string, unknown>).catch((err) => {
-        console.info('Supabase profile sync skipped:', getFriendlySupabaseError(err));
-      });
+      void upsertProfile(sessionUserId, profileToPersist.email, profileToPersist as unknown as Record<string, unknown>)
+        .then((result) => {
+          if (result.queued) {
+            toast('Perfil salvo neste aparelho. Vamos sincronizar quando a conexão voltar.', 'info');
+          }
+        })
+        .catch((err) => {
+          console.info('Supabase profile sync skipped:', getFriendlySupabaseError(err));
+          toast(getFriendlySupabaseError(err), 'error');
+        });
     }
   };
 
@@ -1206,22 +1252,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoading) localStorage.setItem('nutriUser', JSON.stringify(userProfile));
-    if (userProfile.name && userProfile.email) {
-      const allUsers = JSON.parse(localStorage.getItem('nutriAllUsers') || '[]');
-      const existingIndex = allUsers.findIndex((u: any) => u.email === userProfile.email);
-      if (existingIndex >= 0) {
-        allUsers[existingIndex] = userProfile;
-      } else {
-        allUsers.push(userProfile);
-      }
-      localStorage.setItem('nutriAllUsers', JSON.stringify(allUsers));
-      setAdminUsers(allUsers);
-    }
   }, [userProfile, isLoading]);
-
-  useEffect(() => {
-    localStorage.setItem('nutriArticles', JSON.stringify(adminArticles));
-  }, [adminArticles]);
 
   const articleControls = useAnimation();
   const articleY = useMotionValue(0);
@@ -1251,23 +1282,49 @@ export default function App() {
     articleControls.start({ y: '100%' }).then(() => setSelectedArticle(null));
   };
 
-  const saveMeal = (meal: any) => {
-    const updated = [meal, ...loggedMeals.filter(existing => existing.id !== meal.id)];
+  const saveMeal = async (meal: any) => {
+    const normalizedMeal = {
+      ...meal,
+      id: meal.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+      date: toIsoTimestamp(meal.date),
+    };
+    const updated = [normalizedMeal, ...loggedMeals.filter(existing => existing.id !== normalizedMeal.id)];
     setLoggedMeals(updated);
     localStorage.setItem('nutriMeals', JSON.stringify(updated));
-    if (currentUserId) {
-      insertMeal(currentUserId, meal).catch((err) => {
-        console.info('Supabase meal sync skipped:', getFriendlySupabaseError(err));
-      });
+
+    if (!currentUserId) {
+      toast('Refeição salva neste aparelho. Entre na sua conta para sincronizar na nuvem.', 'info');
+      return { synced: false, queued: false };
+    }
+
+    try {
+      const result = await insertMeal(currentUserId, normalizedMeal);
+      if (result.queued) {
+        toast('Refeição salva neste aparelho. Sincronizamos assim que a conexão voltar.', 'info');
+      } else if (!result.synced) {
+        toast('Refeição salva localmente. A nuvem ainda não está configurada.', 'info');
+      }
+      return result;
+    } catch (err) {
+      console.info('Supabase meal sync skipped:', getFriendlySupabaseError(err));
+      toast(getFriendlySupabaseError(err), 'error');
+      return { synced: false, queued: false };
     }
   };
 
-  const removeMeal = (meal: any) => {
+  const removeMeal = async (meal: any) => {
     const updated = loggedMeals.filter(item => item.id !== meal.id);
     setLoggedMeals(updated);
     localStorage.setItem('nutriMeals', JSON.stringify(updated));
-    if (currentUserId && meal.id) {
-      deleteMeal(currentUserId, meal.id).catch((err) => console.info('Supabase meal deletion skipped:', getFriendlySupabaseError(err)));
+    if (!currentUserId || !meal.id) return { ok: true };
+    try {
+      const result = await deleteMeal(currentUserId, meal.id);
+      if (result.queued) toast('Exclusão salva neste aparelho. Sincronizamos quando a conexão voltar.', 'info');
+      return { ok: true };
+    } catch (err) {
+      console.info('Supabase meal deletion skipped:', getFriendlySupabaseError(err));
+      toast(getFriendlySupabaseError(err), 'error');
+      return { ok: false };
     }
   };
 
@@ -1627,9 +1684,11 @@ export default function App() {
           {currentPage === 'meal-log' && (
             <MealLogPage
               key="meal-log"
-              onSaveMeal={(newMeal) => {
-                saveMeal(newMeal);
-                toast('Refeição registrada com sucesso!', 'success');
+              onSaveMeal={async (newMeal) => {
+                const result = await saveMeal(newMeal);
+                if (result.synced || result.queued || !currentUserId) {
+                  toast('Refeição registrada com sucesso!', 'success');
+                }
                 setCurrentPage('dashboard');
               }}
               onNavigate={setCurrentPage}
@@ -1717,34 +1776,28 @@ export default function App() {
               key="meal-details"
               selectedMeal={selectedMeal}
               onNavigate={setCurrentPage}
-              onUpdate={(meal) => { saveMeal(meal); setSelectedMeal(meal); toast('Refeição atualizada.', 'success'); }}
-              onDelete={() => { if (selectedMeal) removeMeal(selectedMeal); setSelectedMeal(null); setCurrentPage('dashboard'); toast('Refeição excluída.', 'success'); }}
-              toast={toast}
-            />
-          )}
-
-          {currentPage === 'admin-login' && (
-            <AdminLoginPageComponent
-              key="admin-login"
-              onLoginSuccess={() => {
-                setAdminLoggedIn(true);
-                localStorage.setItem('nutriAdminLoggedIn', 'true');
-                toast('Bem-vindo, Administrador!', 'success');
-                setCurrentPage('admin-dashboard');
+              onUpdate={async (meal) => {
+                const result = await saveMeal(meal);
+                setSelectedMeal(meal);
+                if (result.synced || result.queued || !currentUserId) toast('Refeição atualizada.', 'success');
               }}
-              onNavigate={setCurrentPage}
+              onDelete={async () => {
+                if (!selectedMeal) return;
+                const result = await removeMeal(selectedMeal);
+                setSelectedMeal(null);
+                setCurrentPage('dashboard');
+                if (result.ok) toast('Refeição excluída.', 'success');
+              }}
               toast={toast}
             />
           )}
 
-          {currentPage === 'admin-dashboard' && (
-            <AdminDashboardPageComponent
-              key="admin-dashboard"
-              adminUsers={adminUsers}
-              adminArticles={adminArticles}
-              onLogout={() => {
-                setAdminLoggedIn(false);
-                localStorage.removeItem('nutriAdminLoggedIn');
+          {(currentPage === 'admin-dashboard' || currentPage === 'admin-login') && (
+            <AdminPlatform
+              key="admin-platform"
+              toast={toast}
+              onExit={() => {
+                window.history.replaceState({ mindNutritionPage: 'landing' }, '', '/');
                 setCurrentPage('landing');
               }}
             />
@@ -2396,6 +2449,156 @@ function DashboardPage({
   );
 }
 
+type MealAiAnalysis = {
+  dish?: string;
+  summary?: string;
+  nutrients?: {
+    calories?: string;
+    protein?: string;
+    carbs?: string;
+    fat?: string;
+    fiber?: string;
+    sugar?: string;
+  };
+  colors?: string[];
+  balance?: string;
+  attentionPoints?: string[];
+  confidence?: string;
+};
+
+function MealAiAnalysisCard({
+  analysis,
+  loading,
+  error,
+  hasPhoto,
+  onAnalyze,
+  showAction = true,
+}: {
+  analysis: MealAiAnalysis | null;
+  loading: boolean;
+  error: string;
+  hasPhoto: boolean;
+  onAnalyze: () => void;
+  showAction?: boolean;
+}) {
+  const nutrients = analysis?.nutrients || {};
+  const nutrientItems = [
+    { label: 'Calorias', value: nutrients.calories },
+    { label: 'Proteínas', value: nutrients.protein },
+    { label: 'Carboidratos', value: nutrients.carbs },
+    { label: 'Gorduras', value: nutrients.fat },
+    { label: 'Fibras', value: nutrients.fiber },
+    { label: 'Açúcares', value: nutrients.sugar },
+  ].filter(item => item.value);
+
+  return (
+    <div className="rounded-[2rem] border border-accent/25 bg-accent/5 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 text-accent"><ScanLine size={20} /></span>
+          <div>
+            <h3 className="text-sm font-bold">Análise visual com IA</h3>
+            <p className="mt-0.5 text-xs text-ink/55">Estimativas pelo que aparece na foto, não um diagnóstico.</p>
+          </div>
+        </div>
+        {showAction && (
+          <button
+            type="button"
+            onClick={onAnalyze}
+            disabled={loading || !hasPhoto}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent/30 bg-white px-3 py-1.5 text-[11px] font-bold text-accent transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {loading ? 'Analisando' : analysis ? 'Reanalisar' : 'Analisar'}
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-accent/20 bg-white p-4">
+          <div className="flex items-center gap-2 text-xs font-bold text-accent">
+            <Loader2 size={14} className="animate-spin" />
+            A IA está observando cores, porções e variedade do prato...
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-accent/15">
+            <div className="ai-progress h-full w-1/3 rounded-full bg-accent" />
+          </div>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && !analysis && (
+        <p className="mt-3 rounded-2xl border border-dashed border-accent/25 bg-white/70 p-3 text-xs text-ink/55">
+          {hasPhoto
+            ? 'Toque em Analisar para a IA estimar nutrientes e a variedade de cores do prato.'
+            : 'Adicione uma foto da refeição para receber a análise visual.'}
+        </p>
+      )}
+
+      {!loading && analysis && (
+        <div className="mt-4 space-y-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-paper">
+                <Utensils size={12} /> {analysis.dish || 'Prato identificado'}
+              </span>
+              {analysis.confidence && (
+                <span className="rounded-full border border-accent/25 bg-white px-2.5 py-1 text-[10px] font-bold text-accent">
+                  Confiança {analysis.confidence}
+                </span>
+              )}
+            </div>
+            {analysis.summary && <p className="mt-2 text-sm leading-relaxed text-ink/75">{analysis.summary}</p>}
+          </div>
+
+          {nutrientItems.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {nutrientItems.map(item => (
+                <div key={item.label} className="rounded-xl border border-line bg-white p-2.5">
+                  <span className="block text-[10px] font-bold uppercase text-ink/45">{item.label}</span>
+                  <span className="mt-0.5 block text-xs font-bold text-ink">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!!analysis.colors?.length && (
+            <div>
+              <span className="text-[10px] font-bold uppercase text-ink/45">Cores do prato</span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {analysis.colors.map(color => (
+                  <span key={color} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-ink/70 border border-line">{color}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {analysis.balance && (
+            <p className="rounded-2xl bg-white p-3 text-xs leading-relaxed text-ink/70 border border-line">{analysis.balance}</p>
+          )}
+
+          {!!analysis.attentionPoints?.length && (
+            <div>
+              <span className="text-[10px] font-bold uppercase text-ink/45">Pontos de atenção</span>
+              <ul className="mt-1.5 space-y-1.5">
+                {analysis.attentionPoints.map(point => (
+                  <li key={point} className="flex items-start gap-2 text-xs text-ink/65"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />{point}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="text-[10px] leading-relaxed text-ink/45">Estimativas visuais aproximadas. A análise não substitui avaliação nutricional individual.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MealLogPage({
   onSaveMeal,
   onNavigate,
@@ -2408,6 +2611,9 @@ function MealLogPage({
   toast: any;
 }) {
   const [step, setStep] = useState<'pre' | 'meal' | 'post'>('pre');
+  const [aiAnalysis, setAiAnalysis] = useState<MealAiAnalysis | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysisError, setAiAnalysisError] = useState('');
   const [log, setLog] = useState<{
     title: string;
     preHunger: number;
@@ -2430,6 +2636,29 @@ function MealLogPage({
     photos: []
   });
 
+  const analyzeMealPhoto = async (image: string, description = '') => {
+    if (!image) return;
+    setIsAnalyzing(true);
+    setAiAnalysisError('');
+    try {
+      const response = await fetch('/api/ai-meal-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image, description }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.analysis) {
+        throw new Error(result.message || 'Não foi possível analisar a foto agora.');
+      }
+      setAiAnalysis(result.analysis);
+      toast('Análise da refeição concluída.', 'success');
+    } catch (error) {
+      setAiAnalysisError(error instanceof Error ? error.message : 'Não foi possível analisar a foto agora.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleMealPhotos = async (files: FileList | null) => {
     const result = await readValidatedImages(files, log.photos.length);
     if (result.error) {
@@ -2437,8 +2666,10 @@ function MealLogPage({
       return;
     }
     if (result.images.length) {
-      setLog(prev => ({ ...prev, photos: [...prev.photos, ...result.images] }));
+      const nextPhotos = [...log.photos, ...result.images];
+      setLog(prev => ({ ...prev, photos: nextPhotos }));
       toast('Foto adicionada!', 'success');
+      if (nextPhotos[0]) void analyzeMealPhoto(nextPhotos[0], log.notes);
     }
   };
 
@@ -2504,7 +2735,7 @@ function MealLogPage({
                 </button>
               </div>
               <div className="mx-auto mt-3 flex w-full max-w-xs flex-col items-center">
-                <motion.div animate={{ y: [0, -5, 0], rotate: [0, -1.5, 0, 1.5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }} className="h-20 w-20">
+                <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }} className="h-20 w-20">
                   <FlyingMascotSprite alt="Mascote voando" className="h-full w-full object-contain" />
                 </motion.div>
                 <span className="mt-1 text-center text-[10px] font-bold text-ink/45">Pausa breve: como seu corpo e suas emoções estão?</span>
@@ -2609,10 +2840,23 @@ function MealLogPage({
                   {log.photos.map((photo, index) => (
                     <div key={index} className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-line">
                       <img src={photo} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
+                      {isAnalyzing && index === 0 && (
+                        <div className="ai-scan-overlay" aria-hidden="true">
+                          <div className="ai-scan-grid" />
+                          <div className="ai-scan-line" />
+                          <span className="ai-scan-label"><ScanLine size={11} /> Analisando</span>
+                        </div>
+                      )}
                       <button
                         type="button"
-                        onClick={() => setLog(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))}
-                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-ink/80 text-paper flex items-center justify-center"
+                        onClick={() => {
+                          setLog(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }));
+                          if (index === 0) {
+                            setAiAnalysis(null);
+                            setAiAnalysisError('');
+                          }
+                        }}
+                        className="absolute top-1.5 right-1.5 z-20 w-6 h-6 rounded-full bg-ink/80 text-paper flex items-center justify-center"
                       >
                         <X size={12} />
                       </button>
@@ -2621,6 +2865,14 @@ function MealLogPage({
                 </div>
               )}
             </div>
+
+            <MealAiAnalysisCard
+              analysis={aiAnalysis}
+              loading={isAnalyzing}
+              error={aiAnalysisError}
+              hasPhoto={Boolean(log.photos[0])}
+              onAnalyze={() => { if (log.photos[0]) void analyzeMealPhoto(log.photos[0], log.notes); }}
+            />
 
             <div className="bg-white border border-line p-5 rounded-[2rem]">
               <label className="label-sm text-accent mb-2 block">O que você está comendo?</label>
@@ -2695,7 +2947,8 @@ function MealLogPage({
                   inferredType,
                   mood: log.postMood || log.preMood,
                   hungerDelta: log.postHunger === null ? null : log.postHunger - log.preHunger,
-                  image: log.photos[0] || ''
+                  image: log.photos[0] || '',
+                  aiAnalysis: aiAnalysis ? { ...aiAnalysis, analyzedAt: new Date().toISOString() } : undefined,
                 };
                 onSaveMeal(newMeal);
               }}
@@ -2719,6 +2972,33 @@ function ContentPageComponent({
   onNavigate: (page: Page) => void;
   readArticleIds: string[];
 }) {
+  const [articles, setArticles] = useState<any[]>(() => [...DEFAULT_LIBRARY_ARTICLES]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/articles')
+      .then(response => response.ok ? response.json() : null)
+      .then(result => {
+        if (!active || !Array.isArray(result?.articles) || !result.articles.length) return;
+        const remote = result.articles
+          .filter((article: any) => article?.published !== false && article?.title)
+          .map((article: any) => ({
+            ...article,
+            content: Array.isArray(article.content) ? article.content : [],
+            type: article.type || 'Leitura',
+            duration: article.duration || getReadingDuration(article),
+            sourceLabel: article.source_label || article.sourceLabel,
+            sourceUrl: article.source_url || article.sourceUrl,
+          }));
+        if (remote.length) {
+          const remoteIds = new Set(remote.map((article: any) => article.id));
+          setArticles([...remote, ...DEFAULT_LIBRARY_ARTICLES.filter(article => !remoteIds.has(article.id))]);
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-6xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
@@ -2732,7 +3012,7 @@ function ContentPageComponent({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        {DEFAULT_LIBRARY_ARTICLES.map((item) => (
+        {articles.map((item) => (
           <button
             key={item.id}
             onClick={() => onSelectArticle(item)}
@@ -2778,11 +3058,11 @@ function ProgressPageComponent({
 }) {
   const [showMetricsModal, setShowMetricsModal] = useState(false);
   const [newMetrics, setNewMetrics] = useState({
-    weight: userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value || 0,
-    waist: userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value || 0,
-    arm: userProfile.armEvolution?.[userProfile.armEvolution.length - 1]?.value || 0,
-    abdomen: userProfile.abdomenEvolution?.[userProfile.abdomenEvolution.length - 1]?.value || 0,
-    hip: userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value || 0,
+    weight: getLatestMetricValue(userProfile.weightEvolution) || 0,
+    waist: getLatestMetricValue(userProfile.waistEvolution) || 0,
+    arm: getLatestMetricValue(userProfile.armEvolution) || 0,
+    abdomen: getLatestMetricValue(userProfile.abdomenEvolution) || 0,
+    hip: getLatestMetricValue(userProfile.hipEvolution) || 0,
   });
   const [aiSummary, setAiSummary] = useState('');
   const [typedAiSummary, setTypedAiSummary] = useState('');
@@ -2807,16 +3087,25 @@ function ProgressPageComponent({
       toast('Revise as medidas informadas: um dos valores está fora de uma faixa plausível.', 'error');
       return;
     }
-    const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const now = new Date();
+    const date = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const recordedAt = now.toISOString();
     const updatedProfile = { ...userProfile };
 
     const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', val: number) => {
       if (val <= 0) return;
       const arr = (updatedProfile[key] as any[]) || [];
-      const existingForDate = arr.findIndex(item => item.date === date);
+      const existingForDate = arr.findIndex(item => {
+        const itemTime = parseDateForSorting(item.date, item.recordedAt);
+        if (!itemTime) return false;
+        const itemDay = new Date(itemTime);
+        return itemDay.getFullYear() === now.getFullYear()
+          && itemDay.getMonth() === now.getMonth()
+          && itemDay.getDate() === now.getDate();
+      });
       const next = existingForDate >= 0
-        ? arr.map((item, index) => index === existingForDate ? { ...item, value: val } : item)
-        : [...arr, { date, value: val }];
+        ? arr.map((item, index) => index === existingForDate ? { ...item, date, value: val, recordedAt } : item)
+        : [...arr, { date, value: val, recordedAt }];
       (updatedProfile[key] as any) = sortMetricsChronologically(next);
     };
 
@@ -2879,15 +3168,31 @@ function ProgressPageComponent({
   const weightGoal = getWeightGoal(userProfile);
 
   const sortedWeightEvolution = sortMetricsChronologically(userProfile.weightEvolution);
-  const imcData = sortedWeightEvolution.map(w => ({
-    date: w.date,
-    value: userProfile.height ? parseFloat((w.value / Math.pow(userProfile.height / 100, 2)).toFixed(1)) : 0
-  })).filter(item => item.value > 0);
+  const weightValues = sortedWeightEvolution.map(point => point.value);
+  const weightDomain: [number, number] = weightValues.length
+    ? [Math.floor(Math.min(...weightValues) - 1), Math.ceil(Math.max(...weightValues) + 1)]
+    : [0, 100];
+
+  const imcData = userProfile.height > 0
+    ? sortedWeightEvolution.map(point => ({
+        date: point.date,
+        recordedAt: point.recordedAt,
+        value: parseFloat((point.value / Math.pow(userProfile.height / 100, 2)).toFixed(1)),
+      })).filter(item => Number.isFinite(item.value) && item.value > 0 && item.value < 80)
+    : [];
+  const imcValues = imcData.map(point => point.value);
+  const imcDomain: [number, number] = imcValues.length
+    ? [Math.max(10, Math.floor(Math.min(...imcValues) - 0.5)), Math.ceil(Math.max(...imcValues) + 0.5)]
+    : [15, 35];
 
   const hasWeightData = sortedWeightEvolution.length > 0;
   const hasImcData = imcData.length > 0;
   const hasWeightShape = sortedWeightEvolution.length > 1;
   const hasImcShape = imcData.length > 1;
+  const latestImcValue = imcData.length ? imcData[imcData.length - 1].value : null;
+  const currentImc = userProfile.height && latestWeight
+    ? parseFloat((latestWeight / Math.pow(userProfile.height / 100, 2)).toFixed(1))
+    : (userProfile.imc ?? latestImcValue);
 
   // Filter only categories with counts > 0 for clean Pie chart
   const hungerPieData = [
@@ -2939,12 +3244,38 @@ function ProgressPageComponent({
     setAiSummaryError('');
     setAiSummary('');
     try {
+      const insightProfile = {
+        objectives: userProfile.objectives,
+        age: userProfile.age,
+        imc: currentImc,
+        height: userProfile.height,
+        weightEvolution: sortedWeightEvolution.slice(-12),
+        waistEvolution: sortMetricsChronologically(userProfile.waistEvolution).slice(-12),
+        abdomenEvolution: sortMetricsChronologically(userProfile.abdomenEvolution).slice(-12),
+        hipEvolution: sortMetricsChronologically(userProfile.hipEvolution).slice(-12),
+        dailyNotes: (userProfile.dailyNotes || []).slice(0, 10).map(note => ({ date: note.date, mood: note.mood, text: note.text })),
+        sleepLogs: (userProfile.sleepLogs || []).slice(0, 10).map(log => ({ date: log.date, hours: log.hours, quality: log.quality })),
+      };
+      const insightMeals = loggedMeals.slice(0, 40).map((meal: any) => ({
+        date: meal.date,
+        time: meal.time,
+        title: meal.title,
+        hungerType: meal.hungerType || meal.inferredType || meal.type,
+        preHunger: meal.preHunger,
+        postHunger: meal.postHunger,
+        satisfaction: meal.satisfaction,
+        preMood: meal.preMood,
+        postMood: meal.postMood || meal.mood,
+        notes: meal.notes,
+        aiDish: meal.aiAnalysis?.dish,
+      }));
+
       const response = await fetch('/api/ai-insight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          profile: userProfile,
-          meals: loggedMeals,
+          profile: insightProfile,
+          meals: insightMeals,
           signals: {
             awarenessScore,
             coverage: integratedInsight.coverage,
@@ -3054,7 +3385,7 @@ function ProgressPageComponent({
       <motion.section ref={aiSummaryRef} id="resumo-nutre" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.45 }} className="animated-gradient relative overflow-hidden rounded-[2rem] p-1 shadow-lg scroll-mt-28">
         <div className="relative rounded-[1.8rem] bg-paper/95 p-5 sm:p-7">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            <motion.div animate={isAiSummaryLoading ? { y: [0, -6, 0], rotate: [0, -3, 3, 0] } : { y: [0, -3, 0] }} transition={{ duration: isAiSummaryLoading ? 0.8 : 2.8, repeat: Infinity, ease: 'easeInOut' }} className="mx-auto h-24 w-24 shrink-0 sm:mx-0">
+            <motion.div animate={isAiSummaryLoading ? { y: [0, -8, 0] } : { y: [0, -3, 0] }} transition={{ duration: isAiSummaryLoading ? 0.8 : 2.8, repeat: Infinity, ease: 'easeInOut' }} className="mx-auto h-24 w-24 shrink-0 sm:mx-0">
               <img src={mascotAi} alt="Mascote Nutre do Mind Nutrition" className="h-full w-full object-contain drop-shadow-md" />
             </motion.div>
             <div className="min-w-0 flex-1">
@@ -3093,7 +3424,7 @@ function ProgressPageComponent({
         </section>
         <section className="rounded-3xl border border-line bg-white p-5">
           <span className="label-sm text-accent">IMC atual</span>
-          <p className="mt-2 text-lg font-bold">{userProfile.imc ?? imcData.at(-1)?.value ?? '--'}</p>
+          <p className="mt-2 text-lg font-bold">{currentImc ?? '--'}</p>
           <p className="mt-1 text-xs text-ink/55">Indicador calculado com a última altura e pesagem.</p>
         </section>
       </div>
@@ -3157,7 +3488,7 @@ function ProgressPageComponent({
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
-                  <YAxis domain={['dataMin - 1', 'dataMax + 1']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
+                  <YAxis domain={weightDomain} allowDecimals axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val} kg`} />
                   {!hasWeightShape && <ReferenceLine x={sortedWeightEvolution[0]?.date} stroke="var(--accent)" strokeWidth={3} />}
                   {weightGoal && (
@@ -3196,7 +3527,7 @@ function ProgressPageComponent({
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
-                  <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
+                  <YAxis domain={imcDomain} allowDecimals axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val}`} />
                   {!hasImcShape && <ReferenceLine x={imcData[0]?.date} stroke="var(--accent-pink)" strokeWidth={3} />}
                   <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
@@ -3897,6 +4228,17 @@ function MealDetailsPageComponent({
             </div>
           )}
 
+          {selectedMeal.aiAnalysis && (
+            <MealAiAnalysisCard
+              analysis={selectedMeal.aiAnalysis}
+              loading={false}
+              error=""
+              hasPhoto={Boolean(mealPhotos[0])}
+              onAnalyze={() => undefined}
+              showAction={false}
+            />
+          )}
+
           {notes && (
             <div className="p-5 bg-paper rounded-2xl border border-line">
               <span className="label-sm text-accent mb-1 block">Anotações</span>
@@ -3913,83 +4255,6 @@ function MealDetailsPageComponent({
         onConfirm={onDelete}
         onClose={() => setShowDeleteConfirmation(false)}
       />
-    </div>
-  );
-}
-
-function AdminLoginPageComponent({
-  onLoginSuccess,
-  onNavigate,
-  toast
-}: {
-  onLoginSuccess: () => void;
-  onNavigate: (page: Page) => void;
-  toast: any;
-}) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
-  const handleAdminLogin = () => {
-    if (email === 'admin@serenanutre.com' && password === 'admin123') {
-      onLoginSuccess();
-    } else {
-      setError('Credenciais inválidas. Tente novamente.');
-      toast('Credenciais inválidas!', 'error');
-    }
-  };
-
-  return (
-    <div className="w-full min-h-screen px-4 pt-12 pb-28 max-w-md mx-auto space-y-6">
-      <div className="bg-white border border-line p-8 rounded-[2.5rem] shadow-sm space-y-5">
-        <h2 className="display-title text-3xl">Painel Nutricional</h2>
-        {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
-        <div>
-          <label className="label-sm text-accent mb-1 block">E-mail</label>
-          <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }} className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-base outline-none" />
-        </div>
-        <div>
-          <label className="label-sm text-accent mb-1 block">Senha</label>
-          <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }} className="w-full py-2 border-b-2 border-line focus:border-accent bg-transparent text-base outline-none" onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} />
-        </div>
-        <button onClick={handleAdminLogin} className="w-full py-4 bg-accent text-paper font-bold text-sm uppercase rounded-full shadow-md hover:bg-accent/90">
-          Entrar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AdminDashboardPageComponent({
-  adminUsers,
-  adminArticles,
-  onLogout
-}: {
-  adminUsers: any[];
-  adminArticles: any[];
-  onLogout: () => void;
-}) {
-  return (
-    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-8 md:pt-12 pb-28 max-w-6xl mx-auto space-y-8">
-      <header className="flex justify-between items-center">
-        <div>
-          <h2 className="display-title text-4xl">Painel do Nutricionista</h2>
-          <p className="text-xs text-ink/60 mt-1">Gerencie usuários e conteúdos</p>
-        </div>
-        <button onClick={onLogout} className="text-red-500 font-bold text-xs flex items-center gap-1">
-          <LogOut size={16} /> Sair
-        </button>
-      </header>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
-          <h3 className="font-bold text-lg mb-1">Usuários Registrados</h3>
-          <p className="text-2xl font-display text-accent">{adminUsers.length}</p>
-        </div>
-        <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
-          <h3 className="font-bold text-lg mb-1">Artigos na Biblioteca</h3>
-          <p className="text-2xl font-display text-accent-pink">{adminArticles.length}</p>
-        </div>
-      </div>
     </div>
   );
 }

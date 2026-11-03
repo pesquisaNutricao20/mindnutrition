@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "start": "node server.js",
     "ai-server": "node server.js",
+    "admin:hash": "node scripts/generate-admin-hash.mjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },

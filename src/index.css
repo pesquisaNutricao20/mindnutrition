@@ -897,3 +897,80 @@ button:active:not(:disabled),
 .swipe-tab-container {
   touch-action: pan-y pinch-zoom;
 }
+
+/* Meal photo AI scan */
+.ai-scan-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.ai-scan-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 28%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 28%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.ai-scan-line {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  height: 34%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent) 45%,
+    white 50%,
+    color-mix(in srgb, var(--accent) 55%, transparent) 55%,
+    transparent
+  );
+  filter: blur(1px);
+  animation: ai-scan-move 1.5s ease-in-out infinite;
+}
+
+.ai-scan-label {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(30, 34, 33, 0.72);
+  padding: 3px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: white;
+  white-space: nowrap;
+}
+
+.ai-progress {
+  animation: ai-progress-slide 1.25s ease-in-out infinite;
+}
+
+@keyframes ai-scan-move {
+  0% { top: -34%; }
+  100% { top: 100%; }
+}
+
+@keyframes ai-progress-slide {
+  0% { transform: translateX(-110%); }
+  50% { transform: translateX(120%); }
+  100% { transform: translateX(330%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-scan-line,
+  .ai-progress {
+    animation: none;
+  }
+}

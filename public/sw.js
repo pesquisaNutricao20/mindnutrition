@@ -1,4 +1,5 @@
-const CACHE_NAME = 'mind-nutrition-v4';
+const CACHE_NAME = 'mind-nutrition-v5';
+const STATIC_DESTINATIONS = new Set(['script', 'style', 'image', 'font', 'manifest']);
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -28,10 +29,15 @@ self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) return;
 
+  // Dados privados (sessão, usuários, artigos administrativos e IA) nunca entram no cache.
+  if (requestUrl.pathname.startsWith('/api/')) return;
+
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
     return;
   }
+
+  if (!STATIC_DESTINATIONS.has(event.request.destination)) return;
 
   event.respondWith(
     fetch(event.request).then((response) => {

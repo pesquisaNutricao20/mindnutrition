@@ -1,124 +1,98 @@
-import { config as loadEnvironment } from 'dotenv';
+import './api/_lib/env.js';
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applySecurityHeaders } from './api/_lib/http.js';
+import aiInsight from './api/ai-insight.js';
+import aiMealImage from './api/ai-meal-image.js';
+import articles from './api/articles.js';
+import adminLogin from './api/admin/login.js';
+import adminLogout from './api/admin/logout.js';
+import adminSession from './api/admin/session.js';
+import adminUsers from './api/admin/users.js';
+import adminArticles from './api/admin/articles.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
-const requestWindows = new Map();
-
-loadEnvironment({ path: path.join(rootDirectory, '.env.local'), quiet: true });
-loadEnvironment({ path: path.join(rootDirectory, '.env'), quiet: true });
+const isProduction = process.env.NODE_ENV === 'production';
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '96kb' }));
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 
-const cleanText = (value, maxLength = 180) => typeof value === 'string'
-  ? value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
-  : '';
-
-function acceptsRequest(ip) {
-  const now = Date.now();
-  const windowMs = 10 * 60 * 1000;
-  const recent = (requestWindows.get(ip) || []).filter(timestamp => now - timestamp < windowMs);
-  if (recent.length >= 5) return false;
-  recent.push(now);
-  requestWindows.set(ip, recent);
-  return true;
-}
-
-function prepareInsightPrompt(payload) {
-  const profile = payload?.profile && typeof payload.profile === 'object' ? payload.profile : {};
-  const meals = Array.isArray(payload?.meals) ? payload.meals.slice(-30) : [];
-  const diary = Array.isArray(profile.dailyNotes) ? profile.dailyNotes.slice(-5) : [];
-  const sleep = Array.isArray(profile.sleepLogs) ? profile.sleepLogs.slice(-7) : [];
-  const metrics = ['weightEvolution', 'waistEvolution', 'abdomenEvolution', 'hipEvolution']
-    .map(key => ({ key, entries: Array.isArray(profile[key]) ? profile[key].slice(-4) : [] }))
-    .filter(group => group.entries.length);
-
-  const safeMeals = meals.map(meal => ({
-    date: cleanText(meal?.date, 24),
-    category: cleanText(meal?.hungerType || meal?.type || meal?.mealType, 24),
-    hunger: Number.isFinite(Number(meal?.hunger)) ? Number(meal.hunger) : undefined,
-    satiety: Number.isFinite(Number(meal?.satiety)) ? Number(meal.satiety) : undefined,
-    mood: cleanText(meal?.mood, 32),
-    note: cleanText(meal?.notes || meal?.description, 140),
-  }));
-
-  const safeDiary = diary.map(entry => ({
-    date: cleanText(entry?.date, 24),
-    mood: cleanText(entry?.mood, 32),
-    note: cleanText(entry?.text, 220),
-  }));
-
-  const safeSleep = sleep.map(entry => ({
-    date: cleanText(entry?.date, 24),
-    hours: Number.isFinite(Number(entry?.hours)) ? Number(entry.hours) : undefined,
-    quality: cleanText(entry?.quality, 32),
-  }));
-
-  const context = {
-    objective: Array.isArray(profile.objectives) ? profile.objectives.map(item => cleanText(item, 40)).filter(Boolean).slice(0, 4) : [],
-    ageRange: Number.isFinite(Number(profile.age)) ? `${Math.floor(Number(profile.age) / 10) * 10}-${Math.floor(Number(profile.age) / 10) * 10 + 9}` : undefined,
-    imc: Number.isFinite(Number(profile.imc)) ? Number(profile.imc) : undefined,
-    deterministicSignals: payload?.signals && typeof payload.signals === 'object' ? payload.signals : {},
-    meals: safeMeals,
-    diary: safeDiary,
-    sleep: safeSleep,
-    metrics,
-  };
-
-  return `Você é o Mascote Nutre do Mind Nutrition. Analise somente o resumo anonimizado abaixo e escreva em português do Brasil.
-
-Objetivo: ajudar a pessoa a observar padrões entre rotina alimentar, fome física/emocional, saciedade, humor, diário, sono e evolução corporal. Não diagnostique, não prescreva dieta, não calcule metas calóricas e não use tom de culpa. Se a base estiver pequena, diga isso com clareza e sugira um próximo registro simples. Não invente dados.
-
-Formato: uma abertura acolhedora de até 2 frases e, em seguida, 3 observações acionáveis curtas. Termine com uma sugestão gentil e indique que isso não substitui acompanhamento profissional quando houver sinais insuficientes ou assunto de saúde.
-
-Resumo de dados:
-${JSON.stringify(context)}`;
-}
-
-app.post('/api/ai-insight', async (request, response) => {
-  if (!process.env.OPEN_ROUTER_KEY) {
-    return response.status(503).json({ message: 'O resumo de IA ainda não foi configurado no servidor.' });
+app.use((_request, response, next) => {
+  applySecurityHeaders(response);
+  if (isProduction) {
+    response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    response.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com data:",
+        "img-src 'self' data: blob: https:",
+        "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "object-src 'none'",
+        'upgrade-insecure-requests',
+      ].join('; '),
+    );
   }
-  if (!acceptsRequest(request.ip || 'unknown')) {
-    return response.status(429).json({ message: 'Aguarde alguns minutos antes de gerar outro resumo.' });
-  }
-
-  try {
-    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPEN_ROUTER_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-        'X-OpenRouter-Title': 'Mind Nutrition',
-      },
-      body: JSON.stringify({
-        model: 'minimax/minimax-m3:free',
-        messages: [
-          { role: 'system', content: 'Você oferece educação e reflexão em alimentação consciente; não presta atendimento médico.' },
-          { role: 'user', content: prepareInsightPrompt(request.body) },
-        ],
-        temperature: 0.45,
-        max_tokens: 420,
-      }),
-    });
-    const result = await upstream.json().catch(() => ({}));
-    const summary = cleanText(result?.choices?.[0]?.message?.content, 2200);
-    if (!upstream.ok || !summary) {
-      return response.status(502).json({ message: 'Não foi possível gerar o resumo agora. Tente novamente mais tarde.' });
-    }
-    return response.json({ summary });
-  } catch {
-    return response.status(502).json({ message: 'Não foi possível conectar ao serviço de resumo agora.' });
-  }
+  next();
 });
 
-app.use(express.static(path.join(rootDirectory, 'dist')));
-app.get('*', (_request, response) => response.sendFile(path.join(rootDirectory, 'dist', 'index.html')));
+// Corpo maior apenas para a análise de imagem; o handler valida tipo e tamanho.
+app.use('/api/ai-meal-image', express.json({ limit: '8mb' }));
+app.use('/api', express.json({ limit: '1mb' }));
+
+const route = (handler) => (request, response, next) => {
+  Promise.resolve(handler(request, response)).catch(next);
+};
+
+app.get('/api/health', (_request, response) => {
+  response.json({
+    ok: true,
+    ai: Boolean(process.env.GROQ_API_KEY),
+    admin: Boolean(process.env.ADMIN_KEY_HASH || process.env.ADMIN_KEY),
+    supabaseAdmin: Boolean((process.env.SUPABASE_URL || process.env.VITE_PUBLICSUPABASE_URL) && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY)),
+  });
+});
+
+app.post('/api/ai-insight', route(aiInsight));
+app.post('/api/ai-meal-image', route(aiMealImage));
+app.get('/api/articles', route(articles));
+
+app.post('/api/admin/login', route(adminLogin));
+app.post('/api/admin/logout', route(adminLogout));
+app.get('/api/admin/session', route(adminSession));
+app.get('/api/admin/users', route(adminUsers));
+app.all('/api/admin/articles', route(adminArticles));
+
+app.use('/api', (_request, response) => response.status(404).json({ message: 'Endpoint não encontrado.' }));
+
+app.use(express.static(path.join(rootDirectory, 'dist'), {
+  setHeaders: (response, filePath) => {
+    if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+      response.setHeader('Cache-Control', 'no-cache');
+    } else if (/assets[\/]/.test(filePath)) {
+      response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
+
+app.get('*', (_request, response) => {
+  response.setHeader('Cache-Control', 'no-cache');
+  response.sendFile(path.join(rootDirectory, 'dist', 'index.html'));
+});
+
+app.use((error, _request, response, _next) => {
+  console.error('[server]', error);
+  if (response.headersSent) return;
+  response.status(500).json({ message: 'Erro interno no servidor.' });
+});
 
 app.listen(port, () => {
   console.log(`Mind Nutrition disponível em http://localhost:${port}`);
