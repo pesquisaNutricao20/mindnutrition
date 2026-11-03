@@ -7,10 +7,23 @@ import {
   readJsonBody,
   sendJson,
 } from './_lib/http.js';
-import { TEXT_MODEL, callGroq, cleanText } from './_lib/groq.js';
+import { TEXT_MODEL, callGroq } from './_lib/groq.js';
 import { prepareInsightPrompt } from './_lib/insightPrompt.js';
 
 const limiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 6 });
+
+// Diferente de cleanText: mantém as quebras de linha para o cliente conseguir
+// separar abertura, observações e sugestão em blocos formatados.
+function normalizeSummary(value) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 2600);
+}
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
@@ -44,7 +57,7 @@ export default async function handler(request, response) {
       ],
     });
 
-    const summary = cleanText(content, 2600);
+    const summary = normalizeSummary(content);
     if (!summary) {
       return sendJson(response, 502, { message: 'A IA não retornou um resumo válido. Tente novamente.' });
     }

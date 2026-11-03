@@ -103,10 +103,12 @@ REGRAS
 - Quando fizer sentido, cite números do resumo (ex.: satisfação média, dias, horas de sono).
 - Termine com uma sugestão gentil e lembre que o conteúdo é educativo e não substitui acompanhamento profissional.
 
-FORMATO (texto puro, sem markdown)
-Uma abertura de até 2 frases.
-Depois, três linhas começando com "• " (uma observação acionável por linha, até 2 frases cada).
-Por fim, uma linha começando com "Sugestão: ".
+FORMATO (markdown simples, obrigatório)
+- Primeira parte: uma abertura de até 2 frases, sem título.
+- Depois, exatamente três linhas de observação, cada uma começando com "- " e com até 2 frases.
+- Encerre com uma linha começando exatamente por "Sugestão: ".
+- Use **negrito** apenas para destacar números ou palavras-chave (máximo 4 destaques). Não use títulos com "#", tabelas, links ou blocos de código.
+- Separe a abertura das observações com uma linha em branco.
 
 RESUMO DE DADOS
 ${JSON.stringify(context)}`;

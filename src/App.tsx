@@ -755,9 +755,9 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-shell fixed inset-0 z-50 flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 border border-line">
               <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Pausa de Observação & Orientação</span>
@@ -817,9 +817,9 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-shell fixed inset-0 z-50 flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line">
+          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 border border-line">
               <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Boas-vindas</span>
@@ -873,9 +873,9 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
   if (!isOpen) return null;
 
   return (
-    <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-shell fixed inset-0 z-50 flex">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
+      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 border border-line z-10 w-full">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Diário Livre</span>
@@ -942,9 +942,9 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-shell fixed inset-0 z-50 flex">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 rounded-[2rem] border border-line z-10 w-full">
+      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 border border-line z-10 w-full">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Módulo de Sono</span>
@@ -1032,9 +1032,10 @@ function ConfirmationModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="modal-shell fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="modal-shell fixed inset-0 z-[60] flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.section initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative z-10 max-w-full md:max-w-md rounded-[2rem] border border-red-100 bg-paper p-6 shadow-2xl sm:p-8">
+          <motion.section initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative z-10 max-w-full md:max-w-md border border-red-100 bg-paper p-6 shadow-2xl sm:p-8">
+            <span className="modal-grip modal-grip-top" aria-hidden="true" />
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><Trash2 size={21} /></div>
             <h3 className="display-title mt-4 text-2xl">{title}</h3>
             <p className="mt-2 text-sm leading-relaxed text-ink/65">{description}</p>
@@ -1053,23 +1054,93 @@ function ConfirmationModal({
 // AI SUMMARY MODAL
 // =========================================================================
 
-const SUMMARY_BULLET = /^([•▪*-])\s+/;
+const SUMMARY_BULLET = /^(?:[-*•▪–]|\d+[.)])\s+/;
 const SUMMARY_SUGGESTION = /^sugest[ãa]o\s*:\s*/i;
+const SUMMARY_MARK = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_|`[^`\n]+`)/;
 
-function splitSummaryBlocks(text: string) {
-  const opening: string[] = [];
-  const observations: string[] = [];
-  let suggestion = '';
-  text.split('\n').map(line => line.trim()).filter(Boolean).forEach((rawLine) => {
-    const isBullet = SUMMARY_BULLET.test(rawLine);
-    const line = rawLine.replace(SUMMARY_BULLET, '');
-    if (SUMMARY_SUGGESTION.test(line)) suggestion = line.replace(SUMMARY_SUGGESTION, '');
-    else if (isBullet) observations.push(line);
-    else opening.push(line);
+type SummaryBlock =
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'heading'; text: string }
+  | { kind: 'bullets'; items: string[] }
+  | { kind: 'suggestion'; text: string };
+
+function splitSummaryBlocks(text: string): SummaryBlock[] {
+  const blocks: SummaryBlock[] = [];
+  let paragraph: string[] = [];
+  let bullets: string[] = [];
+
+  const flushBullets = () => {
+    if (bullets.length) blocks.push({ kind: 'bullets', items: bullets });
+    bullets = [];
+  };
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push({ kind: 'paragraph', text: paragraph.join(' ') });
+    paragraph = [];
+  };
+  const flushAll = () => {
+    flushBullets();
+    flushParagraph();
+  };
+
+  text.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.replace(/[ \t]+/g, ' ').trim();
+    if (!line) {
+      flushAll();
+      return;
+    }
+    const cleanLine = line.replace(SUMMARY_BULLET, '');
+    if (SUMMARY_SUGGESTION.test(cleanLine)) {
+      flushAll();
+      const body = cleanLine.replace(SUMMARY_SUGGESTION, '').trim();
+      blocks.push({ kind: 'suggestion', text: body.charAt(0).toUpperCase() + body.slice(1) });
+      return;
+    }
+    if (/^#{1,6}\s+/.test(line)) {
+      flushAll();
+      blocks.push({ kind: 'heading', text: line.replace(/^#{1,6}\s+/, '') });
+      return;
+    }
+    const boldHeading = line.match(/^\*\*([^*]{2,60})\*\*:?$/);
+    if (boldHeading) {
+      flushAll();
+      blocks.push({ kind: 'heading', text: boldHeading[1] });
+      return;
+    }
+    if (SUMMARY_BULLET.test(line)) {
+      flushParagraph();
+      bullets.push(cleanLine);
+      return;
+    }
+    flushBullets();
+    paragraph.push(line);
   });
-  const capitalizedSuggestion = suggestion ? suggestion.charAt(0).toUpperCase() + suggestion.slice(1) : '';
-  return { opening: opening.join(' '), observations, suggestion: capitalizedSuggestion };
+  flushAll();
+  return blocks;
 }
+
+const SummaryRichText = ({ text }: { text: string }) => {
+  const parts = text.split(SUMMARY_MARK);
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+          return <strong key={index} className="font-bold text-accent">{part.slice(2, -2)}</strong>;
+        }
+        if (/^[*_][^*_]+[*_]$/.test(part)) {
+          return <em key={index} className="italic text-ink/75">{part.slice(1, -1)}</em>;
+        }
+        if (/^`[^`]+`$/.test(part)) {
+          return (
+            <code key={index} className="rounded-lg bg-accent/10 px-1.5 py-0.5 font-mono text-[0.85em] font-semibold text-accent">
+              {part.slice(1, -1)}
+            </code>
+          );
+        }
+        return <React.Fragment key={index}>{part}</React.Fragment>;
+      })}
+    </>
+  );
+};
 
 type AiSummaryModalProps = {
   isOpen: boolean;
@@ -1080,8 +1151,29 @@ type AiSummaryModalProps = {
   signals: { score: number; coverage: number; components: { label: string; value: number }[] };
 };
 
+function closeDanglingMarkdown(text: string) {
+  const boldMarkers = (text.match(/\*\*/g) || []).length;
+  return boldMarkers % 2 === 1 ? `${text}**` : text;
+}
+
+function plainSummaryText(text: string) {
+  return text
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/^(?:[-*•▪–]|\d+[.)])\s+/gm, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComplete, signals }: AiSummaryModalProps) => {
-  const { opening, observations, suggestion } = splitSummaryBlocks(summary);
+  const blocks = splitSummaryBlocks(closeDanglingMarkdown(summary));
+  const [expanded, setExpanded] = useState(false);
+  const firstBulletsIndex = blocks.findIndex(block => block.kind === 'bullets');
+  const labelsComeFromModel = blocks.some(block => block.kind === 'heading');
+  useEffect(() => {
+    if (!isOpen) setExpanded(false);
+  }, [isOpen]);
   const tiles = [
     { label: 'Consciência', value: `${signals.score}%` },
     { label: 'Cobertura dos sinais', value: `${signals.coverage}%` },
@@ -1089,26 +1181,34 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-shell fixed inset-0 z-50 flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
           <motion.section
             initial={{ opacity: 0, y: '100%' }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 34, stiffness: 320 }}
-            className="modal-panel relative max-w-full md:max-w-2xl overflow-hidden rounded-[2rem] border border-line bg-paper shadow-2xl"
+            style={{ maxHeight: expanded ? '92dvh' : '70dvh' }}
+            className="modal-panel relative max-w-full md:max-w-2xl overflow-hidden border border-line bg-paper shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Resumo do Mascote Nutre"
           >
-            <div className="animated-gradient relative overflow-hidden p-5 text-paper sm:p-7">
-              <Sparkles size={96} className="absolute -right-5 -top-7 text-paper/20" />
+            <div className="animated-gradient sticky top-0 z-10 overflow-hidden px-5 pb-5 pt-1 text-paper sm:px-7 sm:pb-6 sm:pt-2">
+              <button
+                type="button"
+                onClick={() => setExpanded(value => !value)}
+                aria-expanded={expanded}
+                aria-label={expanded ? 'Reduzir o painel do resumo' : 'Ampliar o painel do resumo'}
+                className="modal-grip modal-grip-light"
+              />
+              <Sparkles size={96} className="pointer-events-none absolute -right-5 -top-6 text-paper/20" />
               <div className="relative flex items-start justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-3.5">
                   <img src={mascotAi} alt="Mascote Nutre do Mind Nutrition" className="h-14 w-14 shrink-0 rounded-2xl bg-paper/15 object-contain p-1 drop-shadow-md" />
                   <div className="min-w-0">
                     <span className="label-sm text-paper">Mascote Nutre</span>
-                    <h3 className="display-title mt-1 text-xl sm:text-3xl">Sua leitura conectada</h3>
+                    <h3 className="font-display mt-1 text-xl leading-[1.08] sm:text-2xl">Sua leitura conectada</h3>
                   </div>
                 </div>
                 <button type="button" onClick={onClose} aria-label="Fechar resumo" className="shrink-0 rounded-full bg-paper/15 p-2.5 text-paper transition hover:bg-paper/25">
@@ -1127,19 +1227,54 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
                 ))}
               </div>
 
-              {opening && <p className="serif-body text-lg leading-relaxed text-ink/85">{opening}</p>}
-
-              {observations.length > 0 && (
-                <div className="space-y-3">
-                  <span className="label-sm text-accent">O que seus registros mostram</span>
-                  {observations.map((observation, index) => (
-                    <div key={`${index}-${observation.slice(0, 12)}`} className="flex gap-3 rounded-2xl border border-line bg-white p-4">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">{index + 1}</span>
-                      <p className="text-sm leading-relaxed text-ink/75">{observation}</p>
+              {blocks.map((block, index) => {
+                if (block.kind === 'heading') {
+                  return (
+                    <p key={`${index}-heading`} className="label-sm text-accent">
+                      <SummaryRichText text={block.text} />
+                    </p>
+                  );
+                }
+                if (block.kind === 'paragraph') {
+                  const isOpening = index === 0;
+                  return (
+                    <p
+                      key={`${index}-paragraph`}
+                      className={isOpening ? 'serif-body text-lg leading-relaxed text-ink/85' : 'text-[15px] leading-relaxed text-ink/75'}
+                    >
+                      <SummaryRichText text={block.text} />
+                    </p>
+                  );
+                }
+                if (block.kind === 'suggestion') {
+                  return (
+                    <div key={`${index}-suggestion`} className="flex gap-3 rounded-2xl border border-accent/25 bg-accent/5 p-4">
+                      <Leaf size={19} className="mt-0.5 shrink-0 text-accent" />
+                      <p className="text-sm leading-relaxed text-ink/80">
+                        <span className="font-bold text-accent">Sugestão · </span>
+                        <SummaryRichText text={block.text} />
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                }
+                return (
+                  <div key={`${index}-bullets`} className="space-y-3">
+                    {index === firstBulletsIndex && !labelsComeFromModel && (
+                      <span className="label-sm text-accent">O que seus registros mostram</span>
+                    )}
+                    {block.items.map((item, itemIndex) => (
+                      <div key={`${index}-${itemIndex}`} className="flex gap-3 rounded-2xl border border-line bg-white p-4">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">
+                          {itemIndex + 1}
+                        </span>
+                        <p className="text-sm leading-relaxed text-ink/75">
+                          <SummaryRichText text={item} />
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
 
               {signals.components.length > 0 && (
                 <div className="rounded-2xl border border-line bg-paper/60 p-4">
@@ -1155,15 +1290,10 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
                 </div>
               )}
 
-              {suggestion && (
-                <div className="flex gap-3 rounded-2xl border border-accent/25 bg-accent/5 p-4">
-                  <Leaf size={19} className="mt-0.5 shrink-0 text-accent" />
-                  <p className="text-sm leading-relaxed text-ink/80">{suggestion}</p>
-                </div>
-              )}
-
               {!isTypingComplete && <span className="inline-block h-4 w-0.5 animate-pulse bg-accent align-[-2px]" />}
+            </div>
 
+            <div className="space-y-4 px-5 pb-5 sm:px-8 sm:pb-8">
               <p className="text-[10px] leading-relaxed text-ink/50">
                 Este resumo é educativo, usa apenas dados resumidos e não substitui acompanhamento profissional.
               </p>
@@ -1959,7 +2089,7 @@ export default function App() {
       {/* Article Reader Modal */}
       <AnimatePresence>
         {selectedArticle && (
-          <div className="modal-shell fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="modal-shell fixed inset-0 z-50 flex">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={closeArticle} />
             <motion.div
               initial={{ y: '100%', scale: 0.95 }}
@@ -1971,9 +2101,8 @@ export default function App() {
               dragElastic={0.2}
               onDragEnd={handleArticleDragEnd}
               style={{ y: articleY }}
-              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl flex flex-col overflow-hidden max-h-[70dvh] "
             >
-              <div className="w-12 h-1.5 bg-line rounded-full mx-auto mt-4 mb-2 md:hidden" />
               <div className="overflow-y-auto flex-1 p-6 sm:p-10 pb-28">
                 <div className="article-reader-header -mx-6 -mt-6 mb-4 flex items-center justify-between px-6 pt-6 pb-3 sm:-mx-10 sm:-mt-10 sm:px-10 sm:pt-10">
                   <span className="label-sm text-accent">{selectedArticle.type}</span>
@@ -3544,7 +3673,7 @@ function ProgressPageComponent({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-accent">Leitura pronta</p>
-                      <p className="mt-1 line-clamp-2 text-ink/70">{aiSummary}</p>
+                      <p className="mt-1 line-clamp-2 text-ink/70">{plainSummaryText(aiSummary)}</p>
                     </div>
                     <button type="button" onClick={() => setShowAiSummaryModal(true)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-accent px-4 py-2.5 text-xs font-bold text-accent transition hover:bg-accent hover:text-paper">
                       <BookOpen size={15} /> Ver resumo
@@ -3768,9 +3897,9 @@ function ProgressPageComponent({
 
       {/* Modal de Métricas Corporais */}
       {showMetricsModal && (
-        <div className="modal-shell fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-shell fixed inset-0 z-50 flex">
           <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
-          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl rounded-[2.5rem] border border-line z-10">
+          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl border border-line z-10">
             <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Métricas Corporais</span>

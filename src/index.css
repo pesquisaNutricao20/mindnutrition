@@ -591,6 +591,7 @@ select {
   flex-shrink: 0;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  transition: max-height 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--accent) 42%, transparent) transparent;
   border-radius: 1.75rem 1.75rem 0 0;
@@ -631,7 +632,7 @@ body:has(.modal-shell) .mobile-nav nav {
   top: -1.5rem;
   z-index: 5;
   margin: -1.5rem -1.5rem 1rem;
-  padding: 1.5rem 1.5rem 1rem;
+  padding: 1.75rem 1.5rem 1rem;
   background: var(--paper);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
   box-shadow: 0 10px 18px color-mix(in srgb, var(--ink) 5%, transparent);
@@ -641,25 +642,93 @@ body:has(.modal-shell) .mobile-nav nav {
   position: sticky;
   top: -1.5rem;
   z-index: 5;
+  padding-top: 1.75rem;
   background: var(--paper);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
   box-shadow: 0 10px 18px color-mix(in srgb, var(--ink) 5%, transparent);
 }
 
-.modal-panel::-webkit-scrollbar { width: 8px; }
-.modal-panel::-webkit-scrollbar-track {
-  background: transparent;
-  margin-block: 1.5rem;
-}
-.modal-panel::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
-  background-clip: padding-box;
-  border: 2.5px solid color-mix(in srgb, var(--paper) 65%, transparent);
+/* "Alça" da bottom sheet: pílula centralizada no topo de todo modal. */
+.modal-header::before,
+.article-reader-header::before,
+.modal-grip::before {
+  content: "";
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2.75rem;
+  height: 0.3rem;
   border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
 }
-.modal-panel::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--accent) 80%, transparent);
+
+.modal-grip {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 1.55rem;
+  flex-shrink: 0;
+}
+
+button.modal-grip {
+  cursor: ns-resize;
+}
+
+.modal-grip::before {
+  top: 0.6rem;
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.modal-grip:hover::before,
+.modal-grip:focus-visible::before {
+  width: 3.75rem;
+  background: color-mix(in srgb, var(--ink) 34%, transparent);
+}
+
+.modal-grip-light::before {
+  background: color-mix(in srgb, var(--paper) 65%, transparent);
+}
+
+.modal-grip-light:hover::before,
+.modal-grip-light:focus-visible::before {
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+}
+
+.modal-grip-top {
+  margin: -1.5rem -1.5rem 0.35rem;
+}
+
+/* Barras de rolagem nunca encostam nas curvas do sheet. */
+.modal-panel::-webkit-scrollbar,
+.modal-panel *::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modal-panel::-webkit-scrollbar-track,
+.modal-panel *::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 2rem 1.5rem;
+}
+
+.modal-panel::-webkit-scrollbar-thumb,
+.modal-panel *::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
   background-clip: padding-box;
+  border: 3.5px solid transparent;
+  border-radius: 999px;
+  min-height: 2.5rem;
+}
+
+.modal-panel::-webkit-scrollbar-thumb:hover,
+.modal-panel *::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 85%, transparent);
+  background-clip: padding-box;
+}
+
+.modal-panel::-webkit-scrollbar-corner,
+.modal-panel *::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .modal-title {
@@ -889,25 +958,24 @@ a {
   }
 }
 
-@media (min-width: 768px) {
-  .modal-shell {
-    align-items: center;
-    padding: 1.5rem;
+@media (min-width: 640px) {
+  .modal-shell .modal-panel {
+    border-radius: 2rem 2rem 0 0;
   }
 
-  .modal-shell .modal-panel {
-    border-radius: 2.5rem;
-    max-height: 70dvh;
+  .modal-grip-top {
+    margin: -2rem -2rem 0.35rem;
   }
 
   .modal-header {
     top: -2rem;
     margin: -2rem -2rem 1.25rem;
-    padding: 2rem 2rem 1.25rem;
+    padding: 2.15rem 2rem 1.25rem;
   }
 
   .article-reader-header {
     top: -2.5rem;
+    padding-top: 2.15rem;
   }
 }
 
