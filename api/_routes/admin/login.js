@@ -1,4 +1,4 @@
-import { createAdminSessionToken, isAdminConfigured, setAdminSessionCookie, verifyAdminPassword } from '../_lib/admin.js';
+import { createAdminSessionToken, isAdminConfigured, setAdminSessionCookie, verifyAdminPassword } from '../../_lib/admin.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -8,7 +8,7 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from '../_lib/http.js';
+} from '../../_lib/http.js';
 
 const loginLimiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 8, blockMs: 10 * 60 * 1000 });
 

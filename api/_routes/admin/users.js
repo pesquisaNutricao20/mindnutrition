@@ -1,6 +1,6 @@
-import { requireAdmin } from '../_lib/admin.js';
-import { handleApiError, methodNotAllowed, sendJson } from '../_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
+import { requireAdmin } from '../../_lib/admin.js';
+import { handleApiError, methodNotAllowed, sendJson } from '../../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../../_lib/supabaseAdmin.js';
 
 const MAX_USERS = 1000;
 

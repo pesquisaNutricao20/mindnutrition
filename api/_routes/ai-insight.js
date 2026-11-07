@@ -6,9 +6,9 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from './_lib/http.js';
-import { TEXT_MODEL, callGroq } from './_lib/groq.js';
-import { prepareInsightPrompt } from './_lib/insightPrompt.js';
+} from '../_lib/http.js';
+import { TEXT_MODEL, callGroq } from '../_lib/groq.js';
+import { prepareInsightPrompt } from '../_lib/insightPrompt.js';
 
 const limiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 6 });
 

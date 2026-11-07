@@ -1,5 +1,5 @@
-import { requireAdmin } from '../_lib/admin.js';
-import { htmlToParagraphs, sanitizeArticleHtml } from '../_lib/articleContent.js';
+import { requireAdmin } from '../../_lib/admin.js';
+import { htmlToParagraphs, sanitizeArticleHtml } from '../../_lib/articleContent.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -7,8 +7,8 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from '../_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
+} from '../../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../../_lib/supabaseAdmin.js';
 
 const clean = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 

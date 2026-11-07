@@ -47,7 +47,7 @@ function resolveHandlerFile(root: string, pathname: string) {
   if (!relative || relative.split('/').some((segment) => !segment || segment.startsWith('_') || segment === '..')) {
     return null;
   }
-  const base = path.join(root, API_DIRECTORY, relative);
+  const base = path.join(root, API_DIRECTORY, '_routes', relative);
   const candidates = [`${base}.js`, path.join(base, 'index.js')];
   return candidates.find((candidate) => {
     const resolved = path.resolve(candidate);

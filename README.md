@@ -75,7 +75,7 @@ Sem `ADMIN_KEY_HASH` (ou `ADMIN_KEY`), o login retorna uma mensagem pedindo a co
 
 ## Deploy na Vercel
 
-O `vercel.json` já configura o fallback de SPA (para abrir `/nutricionista` direto) e os headers de segurança/cache. Cadastre as variáveis em **Settings → Environment Variables** (Production e Preview) e faça um novo deploy:
+O `vercel.json` já configura o fallback de SPA (para abrir `/nutricionista` direto) e os headers de segurança/cache. Todas as rotas `/api/*` são atendidas por uma única Serverless Function (`api/index.js`, com os handlers em `api/_routes/`), porque o plano Hobby limita o deployment a 12 funções. Cadastre as variáveis em **Settings → Environment Variables** (Production e Preview) e faça um novo deploy:
 
 | Variável | Uso |
 |---|---|

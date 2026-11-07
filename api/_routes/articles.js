@@ -1,5 +1,5 @@
-import { handleApiError, methodNotAllowed, sendJson } from './_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from './_lib/supabaseAdmin.js';
+import { handleApiError, methodNotAllowed, sendJson } from '../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
 
 export default async function handler(request, response) {
   if (request.method !== 'GET') return methodNotAllowed(response, 'GET');

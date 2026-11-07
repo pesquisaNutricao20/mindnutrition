@@ -7,13 +7,13 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from './_lib/http.js';
+} from '../_lib/http.js';
 import {
   VISION_MODEL,
   callGroq,
   cleanText,
   parseJsonContent,
-} from './_lib/groq.js';
+} from '../_lib/groq.js';
 
 const limiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 14 });
 const DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/;

@@ -1,5 +1,5 @@
-import { requireUser } from './_lib/auth.js';
-import { mapMessage } from './_lib/appointments.js';
+import { requireUser } from '../_lib/auth.js';
+import { mapMessage } from '../_lib/appointments.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -7,8 +7,8 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from './_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from './_lib/supabaseAdmin.js';
+} from '../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
 
 const MAX_MESSAGE_LENGTH = 2000;
 

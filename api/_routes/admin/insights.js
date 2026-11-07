@@ -1,7 +1,7 @@
-import { requireAdmin } from '../_lib/admin.js';
-import { mapAppointment, mapMessage } from '../_lib/appointments.js';
-import { HttpError, handleApiError, methodNotAllowed, sendJson } from '../_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
+import { requireAdmin } from '../../_lib/admin.js';
+import { mapAppointment, mapMessage } from '../../_lib/appointments.js';
+import { HttpError, handleApiError, methodNotAllowed, sendJson } from '../../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../../_lib/supabaseAdmin.js';
 
 const toNumber = (value) => {
   const parsed = Number(value);

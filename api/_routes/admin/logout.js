@@ -1,5 +1,5 @@
-import { clearAdminSessionCookie } from '../_lib/admin.js';
-import { assertSameOrigin, handleApiError, methodNotAllowed, sendJson } from '../_lib/http.js';
+import { clearAdminSessionCookie } from '../../_lib/admin.js';
+import { assertSameOrigin, handleApiError, methodNotAllowed, sendJson } from '../../_lib/http.js';
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') return methodNotAllowed(response, 'POST');

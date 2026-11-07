@@ -1,4 +1,4 @@
-import { requireAdmin } from '../_lib/admin.js';
+import { requireAdmin } from '../../_lib/admin.js';
 import {
   APPOINTMENT_SLOTS,
   APPOINTMENT_STATUSES,
@@ -6,7 +6,7 @@ import {
   mapAppointment,
   normalizeDay,
   todayInClinicTimeZone,
-} from '../_lib/appointments.js';
+} from '../../_lib/appointments.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -14,8 +14,8 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from '../_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
+} from '../../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../../_lib/supabaseAdmin.js';
 
 async function loadPatients(ids) {
   const unique = Array.from(new Set(ids.filter(Boolean)));

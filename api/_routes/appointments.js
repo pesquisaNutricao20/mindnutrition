@@ -1,4 +1,4 @@
-import { requireUser } from './_lib/auth.js';
+import { requireUser } from '../_lib/auth.js';
 import {
   APPOINTMENT_SLOTS,
   addDays,
@@ -8,7 +8,7 @@ import {
   normalizeSlot,
   toScheduledAt,
   todayInClinicTimeZone,
-} from './_lib/appointments.js';
+} from '../_lib/appointments.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -16,8 +16,8 @@ import {
   methodNotAllowed,
   readJsonBody,
   sendJson,
-} from './_lib/http.js';
-import { isSupabaseAdminConfigured, supabaseAdminRequest } from './_lib/supabaseAdmin.js';
+} from '../_lib/http.js';
+import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
 
 async function loadAvailability() {
   const today = todayInClinicTimeZone();
