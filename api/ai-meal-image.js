@@ -25,20 +25,35 @@ const listOfText = (value, maxItems = 6, maxLength = 120) => (
     : []
 );
 
+const listOfFoods = (value, maxItems = 12) => (
+  Array.isArray(value)
+    ? value
+      .map((item) => {
+        const name = cleanText(typeof item === 'string' ? item : item?.alimento || item?.name, 80);
+        if (!name) return null;
+        const confidence = cleanText(item?.confianca || item?.confidence, 20).toLowerCase();
+        const normalized = confidence === 'alta' ? 'alta' : confidence === 'baixa' ? 'baixa' : 'média';
+        return { name, confidence: normalized };
+      })
+      .filter(Boolean)
+      .slice(0, maxItems)
+    : []
+);
+
 function normalizeAnalysis(raw, fallbackSummary) {
-  const nutrients = raw?.nutrientes && typeof raw.nutrientes === 'object' ? raw.nutrientes : {};
-  const toLabel = (value) => cleanText(value, 60) || 'Não estimado';
+  // Garantia adicional: itens de baixa confiança nunca entram na análise;
+  // eles são movidos para "não identificados" e informados à pessoa.
+  const identifiedRaw = listOfFoods(raw?.identificados || raw?.identified);
+  const identified = identifiedRaw.filter((item) => item.confidence !== 'baixa');
+  const lowConfidence = identifiedRaw
+    .filter((item) => item.confidence === 'baixa')
+    .map((item) => `${item.name} — não incluído por incerteza`);
+
   return {
-    dish: cleanText(raw?.prato || raw?.dish, 80) || 'Refeição identificada',
+    dish: cleanText(raw?.prato || raw?.dish, 80) || 'Refeição observada',
     summary: cleanText(raw?.resumo || raw?.summary, 700) || cleanText(fallbackSummary, 700),
-    nutrients: {
-      calories: toLabel(nutrients.calorias ?? nutrients.calories),
-      protein: toLabel(nutrients.proteinas ?? nutrients.protein),
-      carbs: toLabel(nutrients.carboidratos ?? nutrients.carbs),
-      fat: toLabel(nutrients.gorduras ?? nutrients.fat),
-      fiber: toLabel(nutrients.fibras ?? nutrients.fiber),
-      sugar: toLabel(nutrients.acucares ?? nutrients.sugar),
-    },
+    identified,
+    unrecognized: [...listOfText(raw?.naoIdentificados || raw?.unrecognized, 8, 160), ...lowConfidence].slice(0, 8),
     colors: listOfText(raw?.cores || raw?.colors, 6, 40),
     balance: cleanText(raw?.equilibrio || raw?.balance, 400),
     attentionPoints: listOfText(raw?.pontosDeAtencao || raw?.alerts, 5, 160),
@@ -73,30 +88,30 @@ export default async function handler(request, response) {
       throw new HttpError(400, 'Formato de imagem não aceito. Use JPG, PNG ou WEBP.');
     }
 
-    const prompt = `Você é um assistente de educação nutricional do Mind Nutrition. Analise a foto de uma refeição e devolva SOMENTE um JSON válido, sem markdown e sem texto fora do JSON.
+    const prompt = `Você é um assistente de educação nutricional do Mind Nutrition, com abordagem de nutrição comportamental. Analise a foto de uma refeição e devolva SOMENTE um JSON válido, sem markdown e sem texto fora do JSON.
 
-Regras:
-- Apenas estime com base no que está visível. Não invente ingredientes escondidos.
-- Use faixas aproximadas, com unidade, e sinalize incerteza (ex.: "~ 450-550 kcal").
-- Não prescreva dieta, não diagnostique e não julgue a escolha da pessoa.
-- Descreva as cores predominantes do prato para apoiar a leitura visual.
-- Responda em português do Brasil.
+Regras de nutrição comportamental (obrigatórias):
+- Nunca julgue a escolha, o prato ou a pessoa. Não use palavras como "erro", "falha", "deslize", "excesso", "culpa" ou "deveria".
+- Nunca informe calorias, macronutrientes, gramas, metas calóricas ou qualquer número de composição nutricional.
+- Não prescreva dieta, não diagnostique e não prometa resultados.
+- Fale sobre variedade, cores, texturas, presença de grupos de alimentos, prazer e sinais de fome/saciedade, sempre com acolhimento.
+
+Regras de reconhecimento (obrigatórias):
+- Inclua em "identificados" apenas alimentos que você reconhece com segurança razoável na imagem.
+- Se não tiver certeza de um alimento (por exemplo: molho, recheio, acompanhamento parcialmente escondido), NÃO o inclua em "identificados" nem em qualquer análise.
+- Liste cada item incerto ou omitido em "naoIdentificados" com um texto curto e honesto (ex.: "possível molho — não incluído por incerteza").
+- Se nada puder ser identificado com segurança, deixe "identificados" vazio e explique isso em "resumo" e em "naoIdentificados".
+- O campo "resumo" deve deixar claro que a análise considerou apenas o que foi identificado com segurança e citar brevemente o que ficou de fora.
 
 Formato exato:
 {
-  "prato": "nome provável do prato",
-  "resumo": "2 a 3 frases sobre o que aparece na foto",
-  "nutrientes": {
-    "calorias": "faixa aproximada",
-    "proteinas": "faixa aproximada",
-    "carboidratos": "faixa aproximada",
-    "gorduras": "faixa aproximada",
-    "fibras": "faixa aproximada",
-    "acucares": "faixa aproximada"
-  },
+  "prato": "nome provável do prato ou 'Refeição observada'",
+  "resumo": "2 a 3 frases acolhedoras sobre o que foi identificado e o que ficou fora da análise",
+  "identificados": [{ "alimento": "nome do alimento", "confianca": "alta | média" }],
+  "naoIdentificados": ["item incerto — não incluído por incerteza"],
   "cores": ["cor 1", "cor 2", "cor 3"],
-  "equilibrio": "leitura gentil sobre variedade e equilíbrio do prato",
-  "pontosDeAtencao": ["ponto 1", "ponto 2"],
+  "equilibrio": "leitura gentil sobre variedade e equilíbrio do prato, sem números",
+  "pontosDeAtencao": ["observação gentil 1", "observação gentil 2"],
   "confianca": "alta | média | baixa"
 }${description ? `\n\nA pessoa descreveu a refeição assim: "${description}"` : ''}`;
 
@@ -108,7 +123,7 @@ Formato exato:
       messages: [
         {
           role: 'system',
-          content: 'Você analisa fotos de refeições para educação nutricional, com estimativas visuais honestas e linguagem acolhedora. Nunca dá diagnóstico.',
+          content: 'Você analisa fotos de refeições para educação nutricional com nutrição comportamental. Só menciona alimentos identificados com segurança; o que é incerto fica fora da análise e é informado com honestidade. Nunca cita calorias, macros, números de porção, nunca julga e nunca dá diagnóstico.',
         },
         {
           role: 'user',

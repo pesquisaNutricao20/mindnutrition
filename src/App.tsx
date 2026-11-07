@@ -37,6 +37,8 @@ import {
   Trash2,
   PenTool,
   BedDouble,
+  MessageCircle,
+  CalendarDays,
   Compass,
   ScanLine,
   Utensils,
@@ -54,6 +56,7 @@ import { FlyingMascotSprite } from './components/ui/FlyingMascotSprite';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { MascotBubble } from './components/ui/MascotBubble';
 import { AdminPlatform } from './components/admin/AdminPlatform';
+import { UserCarePage } from './components/UserCarePage';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
 import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL_PHOTOS } from './constants';
 import type { Page, UserProfile, DailyNote, SleepLog } from './types';
@@ -71,6 +74,7 @@ import {
   toIsoTimestamp,
   upsertProfile,
 } from './lib/supabase';
+import { loadUnreadMessageCount } from './lib/portal';
 import iconApp from './assets/logo/icon_app.png';
 import mascotAi from './assets/mascote_ai3.png';
 import {
@@ -1330,6 +1334,8 @@ export default function App() {
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [careInitialTab, setCareInitialTab] = useState<'chat' | 'appointments'>('chat');
   const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
   const [showHungerModal, setShowHungerModal] = useState(false);
   const [showTutorialModal, setShowTutorialModal] = useState(false);
@@ -1496,6 +1502,28 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!currentUserId) {
+      setUnreadMessages(0);
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadUnreadMessageCount()
+        .then((count) => { if (active) setUnreadMessages(count); })
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    refresh();
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const page = event.state?.mindNutritionPage as Page | undefined;
       if (!page) return;
@@ -1644,6 +1672,7 @@ export default function App() {
       'settings-account': 'Conta',
       'settings-privacy': 'Privacidade',
       'settings-help': 'Ajuda',
+      messages: 'Cuidado',
     };
     const pageLabel = activeNavItem?.label || pageLabelMap[currentPage] || 'Jornada';
     const ActiveIcon = activeNavItem?.icon || Sparkles;
@@ -1673,6 +1702,20 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => { setCareInitialTab('chat'); setCurrentPage('messages'); }}
+            className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-white text-ink/60 transition hover:border-accent/40 hover:text-accent"
+            aria-label={unreadMessages > 0 ? `Mensagens: ${unreadMessages} não lidas` : 'Mensagens e consultas'}
+            title="Mensagens e consultas"
+          >
+            <MessageCircle size={17} />
+            {unreadMessages > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-pink px-1 text-[9px] font-bold text-white">
+                {unreadMessages > 9 ? '9+' : unreadMessages}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => setShowHungerModal(true)}
@@ -1943,6 +1986,11 @@ export default function App() {
               }}
               onSelectMeal={(m) => { setSelectedMeal(m); setCurrentPage('meal-details'); }}
               toast={toast}
+              unreadMessages={unreadMessages}
+              onOpenCare={(tab) => {
+                setCareInitialTab(tab);
+                setCurrentPage('messages');
+              }}
             />
           )}
 
@@ -1968,6 +2016,16 @@ export default function App() {
               onSelectArticle={setSelectedArticle}
               onNavigate={setCurrentPage}
               readArticleIds={userProfile.readArticleIds || []}
+            />
+          )}
+
+          {currentPage === 'messages' && (
+            <UserCarePage
+              key="messages"
+              onNavigate={setCurrentPage}
+              toast={toast}
+              onUnreadChange={setUnreadMessages}
+              initialTab={careInitialTab}
             />
           )}
 
@@ -2115,11 +2173,18 @@ export default function App() {
                   <img src={selectedArticle.image} alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="prose prose-lg max-w-none text-ink/90 space-y-4">
-                  {(selectedArticle.content || [selectedArticle.summary]).map((paragraph: string, index: number) => (
-                    <p key={index} className={index === 0 ? 'drop-cap serif-body text-xl sm:text-2xl leading-relaxed mb-6 font-normal' : 'text-base sm:text-lg leading-relaxed font-medium text-ink/85'}>
-                      {paragraph}
-                    </p>
-                  ))}
+                  {selectedArticle.contentHtml || selectedArticle.content_html ? (
+                    <div
+                      className="article-rich"
+                      dangerouslySetInnerHTML={{ __html: selectedArticle.contentHtml || selectedArticle.content_html }}
+                    />
+                  ) : (
+                    (selectedArticle.content || [selectedArticle.summary]).map((paragraph: string, index: number) => (
+                      <p key={index} className={index === 0 ? 'drop-cap serif-body text-xl sm:text-2xl leading-relaxed mb-6 font-normal' : 'text-base sm:text-lg leading-relaxed font-medium text-ink/85'}>
+                        {paragraph}
+                      </p>
+                    ))
+                  )}
                   {selectedArticle.sourceLabel && (
                     <div className="mt-8 rounded-2xl border border-line bg-white p-4 text-xs leading-relaxed text-ink/65">
                       <span className="label-sm text-accent">Fonte & Referência</span>
@@ -2468,7 +2533,9 @@ function DashboardPage({
   onOpenAiSummary,
   onMoodShared,
   onSelectMeal,
-  toast
+  toast,
+  unreadMessages,
+  onOpenCare
 }: {
   userProfile: UserProfile;
   loggedMeals: any[];
@@ -2480,6 +2547,8 @@ function DashboardPage({
   onMoodShared: (mood: string) => void;
   onSelectMeal: (meal: any) => void;
   toast: any;
+  unreadMessages: number;
+  onOpenCare: (tab: 'chat' | 'appointments') => void;
 }) {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [appRating, setAppRating] = useState<number | null>(() => {
@@ -2630,6 +2699,54 @@ function DashboardPage({
         </button>
       </section>
 
+      {/* Acompanhamento: conversa e consultas */}
+      <section className="rounded-[2rem] border border-line bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="label-sm text-accent">Seu acompanhamento</p>
+            <h3 className="font-display text-xl font-semibold text-ink">Converse e agende sua consulta</h3>
+            <p className="mt-1 max-w-lg text-xs leading-relaxed text-ink/55">
+              Fale direto com sua nutricionista e escolha um horário livre na agenda. Cada solicitação é confirmada por ela.
+            </p>
+          </div>
+          {unreadMessages > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[10px] font-bold text-paper">
+              <MessageCircle size={12} /> {unreadMessages} nova{unreadMessages === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onOpenCare('chat')}
+            className="group flex items-center gap-3 rounded-2xl border border-line bg-paper/50 p-4 text-left transition hover:border-accent hover:bg-accent/5"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+              <MessageCircle size={18} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-ink">Abrir conversa</span>
+              <span className="block text-[11px] text-ink/50">Mensagens privadas com sua nutricionista</span>
+            </span>
+            <ChevronRight size={16} className="ml-auto shrink-0 text-ink/30 transition group-hover:translate-x-0.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenCare('appointments')}
+            className="group flex items-center gap-3 rounded-2xl border border-line bg-paper/50 p-4 text-left transition hover:border-accent hover:bg-accent/5"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-pink/15 text-accent-pink">
+              <CalendarDays size={18} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-ink">Marcar consulta</span>
+              <span className="block text-[11px] text-ink/50">Veja os dias e horários livres</span>
+            </span>
+            <ChevronRight size={16} className="ml-auto shrink-0 text-ink/30 transition group-hover:translate-x-0.5" />
+          </button>
+        </div>
+      </section>
+
       {/* Entradas de Hoje */}
       <section>
         <div className="responsive-page-header mb-4">
@@ -2716,14 +2833,8 @@ function DashboardPage({
 type MealAiAnalysis = {
   dish?: string;
   summary?: string;
-  nutrients?: {
-    calories?: string;
-    protein?: string;
-    carbs?: string;
-    fat?: string;
-    fiber?: string;
-    sugar?: string;
-  };
+  identified?: { name: string; confidence: string }[];
+  unrecognized?: string[];
   colors?: string[];
   balance?: string;
   attentionPoints?: string[];
@@ -2745,24 +2856,14 @@ function MealAiAnalysisCard({
   onAnalyze: () => void;
   showAction?: boolean;
 }) {
-  const nutrients = analysis?.nutrients || {};
-  const nutrientItems = [
-    { label: 'Calorias', value: nutrients.calories },
-    { label: 'Proteínas', value: nutrients.protein },
-    { label: 'Carboidratos', value: nutrients.carbs },
-    { label: 'Gorduras', value: nutrients.fat },
-    { label: 'Fibras', value: nutrients.fiber },
-    { label: 'Açúcares', value: nutrients.sugar },
-  ].filter(item => item.value);
-
   return (
     <div className="rounded-[2rem] border border-accent/25 bg-accent/5 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-accent"><ScanLine size={20} /></span>
           <div>
-            <h3 className="text-sm font-bold">Análise visual com IA</h3>
-            <p className="mt-0.5 text-xs text-ink/55">Estimativas pelo que aparece na foto, não um diagnóstico.</p>
+            <h3 className="text-sm font-bold">Olhar gentil sobre o prato</h3>
+            <p className="mt-0.5 text-xs text-ink/55">A IA comenta apenas o que reconhece com segurança. Sem calorias e sem julgamento.</p>
           </div>
         </div>
         {showAction && (
@@ -2799,8 +2900,8 @@ function MealAiAnalysisCard({
       {!loading && !error && !analysis && (
         <p className="mt-3 rounded-2xl border border-dashed border-accent/25 bg-white/70 p-3 text-xs text-ink/55">
           {hasPhoto
-            ? 'Toque em Analisar para a IA estimar nutrientes e a variedade de cores do prato.'
-            : 'Adicione uma foto da refeição para receber a análise visual.'}
+            ? 'Toque em Analisar para a IA observar cores, variedade e o que consegue reconhecer com segurança.'
+            : 'Adicione uma foto da refeição para receber a leitura visual.'}
         </p>
       )}
 
@@ -2820,14 +2921,33 @@ function MealAiAnalysisCard({
             {analysis.summary && <p className="mt-2 text-sm leading-relaxed text-ink/75">{analysis.summary}</p>}
           </div>
 
-          {nutrientItems.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {nutrientItems.map(item => (
-                <div key={item.label} className="rounded-xl border border-line bg-white p-2.5">
-                  <span className="block text-[10px] font-bold text-ink/45">{item.label}</span>
-                  <span className="mt-0.5 block text-xs font-bold text-ink">{item.value}</span>
-                </div>
-              ))}
+          {!!analysis.identified?.length && (
+            <div>
+              <span className="text-[10px] font-bold text-ink/45">Reconhecido com segurança</span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {analysis.identified.map((item) => (
+                  <span key={`${item.name}-${item.confidence}`} className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[11px] font-bold text-ink/70">
+                    {item.name}
+                    <span className="text-[9px] font-semibold text-ink/35">{item.confidence}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!!analysis.unrecognized?.length && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+              <span className="text-[10px] font-bold text-amber-700">Não incluído na análise por incerteza</span>
+              <ul className="mt-1.5 space-y-1">
+                {analysis.unrecognized.map((item) => (
+                  <li key={item} className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-800/85">
+                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-500" />{item}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-amber-700/70">
+                Se você quiser, conte na descrição ou nas observações o que era esse item — assim o registro fica completo para você.
+              </p>
             </div>
           )}
 
@@ -2848,7 +2968,7 @@ function MealAiAnalysisCard({
 
           {!!analysis.attentionPoints?.length && (
             <div>
-              <span className="text-[10px] font-bold text-ink/45">Pontos de atenção</span>
+              <span className="text-[10px] font-bold text-ink/45">Observações gentis</span>
               <ul className="mt-1.5 space-y-1.5">
                 {analysis.attentionPoints.map(point => (
                   <li key={point} className="flex items-start gap-2 text-xs text-ink/65"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />{point}</li>
@@ -2856,7 +2976,7 @@ function MealAiAnalysisCard({
               </ul>
             </div>
           )}
-          <p className="text-[10px] leading-relaxed text-ink/45">Estimativas visuais aproximadas. A análise não substitui avaliação nutricional individual.</p>
+          <p className="text-[10px] leading-relaxed text-ink/45">Leitura visual acolhedora e sem números nutricionais. Alimentos em que a IA não teve segurança ficam fora da análise. Isso não substitui avaliação nutricional individual.</p>
         </div>
       )}
     </div>
@@ -3249,6 +3369,7 @@ function ContentPageComponent({
           .map((article: any) => ({
             ...article,
             content: Array.isArray(article.content) ? article.content : [],
+            contentHtml: typeof article.content_html === 'string' ? article.content_html : '',
             type: article.type || 'Leitura',
             duration: article.duration || getReadingDuration(article),
             sourceLabel: article.source_label || article.sourceLabel,

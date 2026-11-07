@@ -6,6 +6,7 @@ export type Page =
   | 'meal-log'
   | 'meal-details'
   | 'content'
+  | 'messages'
   | 'progress'
   | 'profile'
   | 'settings-account'

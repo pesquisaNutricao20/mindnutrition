@@ -18,10 +18,12 @@ import {
   Loader2,
   Lock,
   LogOut,
+  MessageCircle,
   Plus,
   RefreshCw,
   Search,
   ShieldCheck,
+  Sparkles,
   Trash2,
   TrendingUp,
   UserCheck,
@@ -29,12 +31,17 @@ import {
   X,
 } from 'lucide-react';
 import iconApp from '../../assets/logo/icon_app.png';
+import { AdminApiError, adminApi } from '../../lib/adminApi';
+import { RichTextEditor } from './RichTextEditor';
+import { AgendaPanel } from './AgendaPanel';
+import { MessagesPanel } from './MessagesPanel';
+import { UserInsightsPanel } from './UserInsightsPanel';
 
 type ToastKind = 'success' | 'error' | 'info';
 type ToastFn = (message: string, kind?: ToastKind) => void;
 
 type AdminStatus = 'checking' | 'login' | 'ready';
-type AdminTab = 'overview' | 'users' | 'articles';
+type AdminTab = 'overview' | 'users' | 'articles' | 'agenda' | 'messages';
 
 interface AdminUser {
   id: string;
@@ -83,6 +90,7 @@ interface AdminArticle {
   type?: string;
   summary?: string;
   content?: string[] | string;
+  content_html?: string;
   image?: string;
   source_label?: string;
   source_url?: string;
@@ -97,45 +105,12 @@ interface ArticleDraft {
   title: string;
   type: string;
   summary: string;
-  content: string;
+  contentHtml: string;
   image: string;
   sourceLabel: string;
   sourceUrl: string;
   duration: string;
   published: boolean;
-}
-
-class AdminApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-async function adminApi<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    cache: 'no-store',
-    ...init,
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.headers || {}),
-    },
-  });
-
-  let payload: any = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  if (!response.ok) {
-    throw new AdminApiError(response.status, payload?.message || 'Não foi possível concluir a operação.');
-  }
-  return payload as T;
 }
 
 const formatDate = (value?: string | null) => {
@@ -164,12 +139,21 @@ const imcTone = (imc: number | null) => {
   return 'border-red-200 bg-red-50 text-red-700';
 };
 
+const paragraphsToHtml = (paragraphs: string[]) => paragraphs
+  .map((paragraph) => String(paragraph || '').trim())
+  .filter(Boolean)
+  .map((paragraph) => `<p>${paragraph
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')}</p>`)
+  .join('');
+
 const emptyDraft = (): ArticleDraft => ({
   id: null,
   title: '',
   type: 'Leitura',
   summary: '',
-  content: '',
+  contentHtml: '',
   image: '',
   sourceLabel: '',
   sourceUrl: '',
@@ -182,9 +166,10 @@ const draftFromArticle = (article: AdminArticle): ArticleDraft => ({
   title: article.title || '',
   type: article.type || 'Leitura',
   summary: article.summary || '',
-  content: Array.isArray(article.content)
-    ? article.content.join('\n\n')
-    : String(article.content || ''),
+  contentHtml: article.content_html
+    || (Array.isArray(article.content)
+      ? paragraphsToHtml(article.content)
+      : paragraphsToHtml(String(article.content || '').split(/\n{2,}/))),
   image: article.image || '',
   sourceLabel: article.source_label || '',
   sourceUrl: article.source_url || '',
@@ -363,7 +348,17 @@ function AdminLoginScreen({
   );
 }
 
-function UsersTable({ users, loading }: { users: AdminUser[]; loading: boolean }) {
+function UsersTable({
+  users,
+  loading,
+  onSelect,
+  onMessage,
+}: {
+  users: AdminUser[];
+  loading: boolean;
+  onSelect?: (user: AdminUser) => void;
+  onMessage?: (user: AdminUser) => void;
+}) {
   if (loading) {
     return (
       <div className="space-y-2">
@@ -393,7 +388,7 @@ function UsersTable({ users, loading }: { users: AdminUser[]; loading: boolean }
 
   return (
     <div className="overflow-hidden rounded-3xl border border-line bg-white shadow-sm">
-      <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_120px] gap-4 border-b border-line bg-paper/60 px-5 py-3 text-[10px] font-bold text-ink/40 md:grid">
+      <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_190px] gap-4 border-b border-line bg-paper/60 px-5 py-3 text-[10px] font-bold text-ink/40 md:grid">
         <span>Paciente</span>
         <span>Perfil</span>
         <span>IMC</span>
@@ -404,7 +399,7 @@ function UsersTable({ users, loading }: { users: AdminUser[]; loading: boolean }
         {users.map((user) => (
           <div
             key={user.id}
-            className="grid gap-3 px-4 py-4 transition hover:bg-paper/50 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_120px] md:items-center md:gap-4 md:px-5"
+            className="grid gap-3 px-4 py-4 transition hover:bg-paper/50 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_190px] md:items-center md:gap-4 md:px-5"
           >
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold uppercase text-accent">
@@ -448,12 +443,36 @@ function UsersTable({ users, loading }: { users: AdminUser[]; loading: boolean }
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2 md:justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
               <span className="hidden rounded-full border px-2 py-0.5 text-[10px] font-bold md:inline-flex"
                 style={{ borderColor: user.onboardingComplete ? '#a7f3d0' : '#fde68a', color: user.onboardingComplete ? '#047857' : '#b45309', background: user.onboardingComplete ? '#ecfdf5' : '#fffbeb' }}
               >
                 {user.onboardingComplete ? 'Onboarding' : 'Pendente'}
               </span>
+              <div className="flex items-center gap-1">
+                {onMessage && (
+                  <button
+                    type="button"
+                    onClick={() => onMessage(user)}
+                    title={`Enviar mensagem para ${user.name || user.email}`}
+                    aria-label={`Enviar mensagem para ${user.name || user.email}`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-ink/50 transition hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+                  >
+                    <MessageCircle size={12} />
+                  </button>
+                )}
+                {onSelect && (
+                  <button
+                    type="button"
+                    onClick={() => onSelect(user)}
+                    title={`Ver insights de ${user.name || user.email}`}
+                    aria-label={`Ver insights de ${user.name || user.email}`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-ink/50 transition hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+                  >
+                    <Sparkles size={12} />
+                  </button>
+                )}
+              </div>
               <div className="text-right">
                 <p className="text-[11px] font-bold text-ink/65">{formatRelative(user.lastActive)}</p>
                 <p className="text-[10px] text-ink/35">{formatDate(user.lastActive)}</p>
@@ -487,7 +506,7 @@ function ArticleEditorModal({
   return (
     <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center">
       <div className="absolute inset-0 bg-ink/45 backdrop-blur-sm" onClick={() => !saving && onClose()} />
-      <section className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] border border-line bg-paper shadow-2xl sm:rounded-[2rem]">
+      <section className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[2rem] border border-line bg-paper shadow-2xl sm:rounded-[2rem]">
         <header className="flex items-center justify-between gap-3 border-b border-line bg-white px-5 py-4">
           <div>
             <p className="label-sm text-accent">{draft.id ? 'Editar conteúdo' : 'Novo conteúdo'}</p>
@@ -543,15 +562,15 @@ function ArticleEditorModal({
           </div>
 
           <div>
-            <label htmlFor="article-content" className={labelClass}>Conteúdo</label>
-            <textarea
-              id="article-content"
-              value={draft.content}
-              onChange={(event) => onChange({ ...draft, content: event.target.value })}
-              className={`${inputClass} h-44 resize-y leading-relaxed`}
-              placeholder={'Escreva os parágrafos do artigo.\n\nSepare cada parágrafo com uma linha em branco.'}
+            <label className={labelClass}>Conteúdo do artigo</label>
+            <RichTextEditor
+              key={draft.id || 'new-article'}
+              value={draft.contentHtml}
+              onChange={(html) => onChange({ ...draft, contentHtml: html })}
             />
-            <p className="mt-1 text-[10px] text-ink/40">Cada bloco separado por linha em branco vira um parágrafo.</p>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-ink/40">
+              Editor rico: títulos, listas, citações, links e imagens. O texto é publicado na biblioteca exatamente como aparece aqui.
+            </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_110px]">
@@ -688,6 +707,14 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
   const [removingArticle, setRemovingArticle] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [insightsUserId, setInsightsUserId] = useState<string | null>(null);
+  const [messagesFocusUser, setMessagesFocusUser] = useState<{ id: string; name: string; email: string } | null>(null);
+
+  const openConversation = (user: { id: string; name: string; email: string }) => {
+    setInsightsUserId(null);
+    setMessagesFocusUser(user);
+    setTab('messages');
+  };
 
   const latestRequest = useRef(0);
 
@@ -841,7 +868,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
         title: draft.title.trim(),
         type: draft.type.trim() || 'Leitura',
         summary: draft.summary.trim(),
-        content: draft.content.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean),
+        contentHtml: draft.contentHtml,
         image: draft.image.trim(),
         sourceLabel: draft.sourceLabel.trim(),
         sourceUrl: draft.sourceUrl.trim(),
@@ -909,6 +936,8 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
 
   const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Visão geral', icon: <LayoutDashboard size={15} /> },
+    { id: 'agenda', label: 'Agenda', icon: <CalendarDays size={15} /> },
+    { id: 'messages', label: 'Mensagens', icon: <MessageCircle size={15} /> },
     { id: 'users', label: 'Usuários', icon: <Users size={15} /> },
     { id: 'articles', label: 'Artigos', icon: <BookOpen size={15} /> },
   ];
@@ -1062,7 +1091,12 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                       </button>
                     </div>
                     <div className="mt-4">
-                      <UsersTable users={overview?.users || []} loading={overviewLoading} />
+                      <UsersTable
+                        users={overview?.users || []}
+                        loading={overviewLoading}
+                        onSelect={(user) => setInsightsUserId(user.id)}
+                        onMessage={(user) => openConversation({ id: user.id, name: user.name, email: user.email })}
+                      />
                     </div>
                   </section>
 
@@ -1106,6 +1140,23 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
               </>
             )}
           </div>
+        )}
+
+        {tab === 'agenda' && (
+          <AgendaPanel
+            toast={toast}
+            onOpenInsights={(userId) => setInsightsUserId(userId)}
+            onOpenChat={openConversation}
+          />
+        )}
+
+        {tab === 'messages' && (
+          <MessagesPanel
+            toast={toast}
+            focusUser={messagesFocusUser}
+            onFocusHandled={() => setMessagesFocusUser(null)}
+            onOpenInsights={(userId) => setInsightsUserId(userId)}
+          />
         )}
 
         {tab === 'users' && (
@@ -1186,7 +1237,12 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 </button>
               </div>
             ) : (
-              <UsersTable users={users} loading={usersLoading} />
+              <UsersTable
+                users={users}
+                loading={usersLoading}
+                onSelect={(user) => setInsightsUserId(user.id)}
+                onMessage={(user) => openConversation({ id: user.id, name: user.name, email: user.email })}
+              />
             )}
 
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
@@ -1369,6 +1425,14 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
           onSave={handleSaveArticle}
           saving={savingArticle}
           error={articleFormError}
+        />
+      )}
+
+      {insightsUserId && (
+        <UserInsightsPanel
+          userId={insightsUserId}
+          onClose={() => setInsightsUserId(null)}
+          onOpenChat={openConversation}
         />
       )}
 

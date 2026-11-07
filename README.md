@@ -20,8 +20,9 @@ Rode as migrations no SQL Editor do Supabase, nesta ordem:
 1. `supabase/migrations/001_initial_schema.sql`
 2. `supabase/migrations/002_meals_update_policy.sql`
 3. `supabase/migrations/003_articles_storage.sql` — cria a tabela `articles`, colunas de auditoria e o bucket privado `meal-photos` com políticas por usuário.
+4. `supabase/migrations/004_care_messages_appointments.sql` — cria a conversa (`messages`), a agenda (`appointments`), os dias bloqueados (`appointment_blocks`), a coluna `content_html` dos artigos e atualiza a limpeza de dados da conta.
 
-A `003` é obrigatória para o painel de artigos e para o upload de fotos das refeições.
+A `003` é obrigatória para o painel de artigos e para o upload de fotos das refeições. A `004` é obrigatória para a conversa, a agenda de consultas e o editor rico de artigos.
 
 ## IA (Groq)
 
@@ -29,9 +30,26 @@ A `003` é obrigatória para o painel de artigos e para o upload de fotos das re
 - Visão (foto da refeição): `qwen/qwen3.8-27b`, o modelo multimodal disponível na Groq. O GPT-OSS 120B não aceita imagens na API.
 - Configure apenas `GROQ_API_KEY` no servidor. Os modelos podem ser sobrescritos por `GROQ_TEXT_MODEL` e `GROQ_VISION_MODEL`.
 
+### Nutrição comportamental nas respostas da IA
+
+Os prompts de texto e de visão seguem uma mesma diretriz: acolher sem julgar, não citar calorias, macronutrientes ou metas, não classificar alimentos como bons ou ruins e não usar linguagem de culpa, restrição ou cobrança.
+
+Na análise da foto, a IA só inclui alimentos que reconhece com segurança. O que fica incerto é omitido da análise e informado em `naoIdentificados` ("Não incluído na análise por incerteza"), com convite para a pessoa completar o registro se quiser.
+
+## Conversa e agenda
+
+- **Paciente** (`/` → Mensagens ou cartão "Seu acompanhamento"): conversa privada com a nutricionista e marcação de consulta em um calendário que já desconsidera dias bloqueados, domingos e horários ocupados.
+- **Nutricionista** (`/nutricionista` → Mensagens e Agenda): lê e responde cada conversa, aceita ou recusa solicitações, vê o calendário do mês e pode bloquear dias.
+- Toda solicitação nasce como `pending` e só vira `confirmed` com o aceite. Há no máximo uma consulta ativa por pessoa e um horário ativo por slot.
+- As mensagens são atualizadas por polling curto (a conversa aberta atualiza a cada ~9s), sem depender de realtime do Supabase.
+
 ## Painel administrativo
 
 Acesse `http://localhost:3000/nutricionista` (ou `/nutricionista` no domínio de produção). O login usa apenas a senha administrativa.
+
+Abas disponíveis: **Visão geral**, **Agenda**, **Mensagens**, **Usuários** e **Artigos**. Em Usuários, os ícones de cada linha abrem os insights do paciente ou iniciam uma conversa. Os insights reúnem fome física/emocional, satisfação, períodos do dia, humor, diário, sono, medidas e consultas — sempre com leitura acolhedora.
+
+Os artigos usam o editor Tiptap (títulos, negrito, listas, citações, links e imagens). O HTML é saneado no servidor antes de ser salvo; a biblioteca renderiza o conteúdo rico e mantém os parágrafos em texto puro para compatibilidade.
 
 ### Gerar o hash da senha
 

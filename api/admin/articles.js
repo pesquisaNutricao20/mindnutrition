@@ -1,4 +1,5 @@
 import { requireAdmin } from '../_lib/admin.js';
+import { htmlToParagraphs, sanitizeArticleHtml } from '../_lib/articleContent.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -44,12 +45,23 @@ function normalizeArticle(input, { partial = false } = {}) {
   assign('title', clean(input.title, 160));
   assign('type', clean(input.type, 60) || 'Leitura');
   assign('summary', clean(input.summary, 600));
-  assign('content', normalizeContent(input.content));
   assign('image', clean(input.image, 800));
   assign('source_label', clean(input.sourceLabel ?? input.source_label, 160));
   assign('source_url', clean(input.sourceUrl ?? input.source_url, 800));
   assign('duration', clean(input.duration, 24));
   assign('published', input.published === undefined ? true : Boolean(input.published));
+
+  // O editor rico envia HTML; guardamos o HTML saneado e também os parágrafos
+  // em texto puro, que alimentam a busca e a leitura de artigos antigos.
+  const htmlSource = input.contentHtml ?? input.content_html;
+  if (htmlSource !== undefined) {
+    const html = sanitizeArticleHtml(htmlSource);
+    article.content_html = html;
+    article.content = htmlToParagraphs(html);
+  } else if (!partial || input.content !== undefined) {
+    article.content = normalizeContent(input.content);
+    article.content_html = '';
+  }
 
   if (!partial || input.title !== undefined) {
     if (article.title.length < 3) throw new HttpError(400, 'Informe um título com pelo menos 3 caracteres.');
@@ -59,8 +71,8 @@ function normalizeArticle(input, { partial = false } = {}) {
   }
   if (!isHttpUrl(article.image)) throw new HttpError(400, 'A imagem deve ser uma URL http(s) válida.');
   if (!isHttpUrl(article.source_url)) throw new HttpError(400, 'A fonte deve ser uma URL http(s) válida.');
-  if (!article.content?.length && !partial) {
-    throw new HttpError(400, 'Inclua pelo menos um parágrafo de conteúdo.');
+  if ((!partial || htmlSource !== undefined || input.content !== undefined) && !article.content?.length) {
+    throw new HttpError(400, 'Escreva pelo menos um parágrafo de conteúdo.');
   }
   if (!article.duration) article.duration = '4 min';
 

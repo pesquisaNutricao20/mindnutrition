@@ -51,6 +51,9 @@ export async function supabaseAdminRequest(path, { method = 'GET', query, body, 
       if (response.status === 404) {
         throw new HttpError(503, 'A tabela necessária ainda não existe no Supabase. Rode as migrações do projeto.');
       }
+      if (response.status === 409) {
+        throw new HttpError(409, 'Esse registro já existe ou o horário acabou de ser reservado. Tente outra opção.');
+      }
       throw new HttpError(502, 'Não foi possível consultar o Supabase agora.');
     }
 

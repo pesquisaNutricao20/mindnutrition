@@ -11,6 +11,11 @@ import adminLogout from './api/admin/logout.js';
 import adminSession from './api/admin/session.js';
 import adminUsers from './api/admin/users.js';
 import adminArticles from './api/admin/articles.js';
+import adminAppointments from './api/admin/appointments.js';
+import adminMessages from './api/admin/messages.js';
+import adminInsights from './api/admin/insights.js';
+import messages from './api/messages.js';
+import appointments from './api/appointments.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -64,12 +69,17 @@ app.get('/api/health', (_request, response) => {
 app.post('/api/ai-insight', route(aiInsight));
 app.post('/api/ai-meal-image', route(aiMealImage));
 app.get('/api/articles', route(articles));
+app.all('/api/messages', route(messages));
+app.all('/api/appointments', route(appointments));
 
 app.post('/api/admin/login', route(adminLogin));
 app.post('/api/admin/logout', route(adminLogout));
 app.get('/api/admin/session', route(adminSession));
 app.get('/api/admin/users', route(adminUsers));
 app.all('/api/admin/articles', route(adminArticles));
+app.all('/api/admin/appointments', route(adminAppointments));
+app.all('/api/admin/messages', route(adminMessages));
+app.get('/api/admin/insights', route(adminInsights));
 
 app.use('/api', (_request, response) => response.status(404).json({ message: 'Endpoint não encontrado.' }));
 
