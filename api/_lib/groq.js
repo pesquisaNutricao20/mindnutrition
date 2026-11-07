@@ -1,4 +1,5 @@
 import { HttpError } from './http.js';
+import { callNvidia, isNvidiaConfigured } from './nvidia.js';
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -17,7 +18,7 @@ export function cleanText(value, maxLength = 180) {
     : '';
 }
 
-export async function callGroq({
+async function callGroqProvider({
   messages,
   model = TEXT_MODEL,
   temperature = 0.4,
@@ -70,7 +71,8 @@ export async function callGroq({
   }
   if (!response.ok) {
     const detail = cleanText(payload?.error?.message, 160);
-    throw new HttpError(502, detail ? `O provedor de IA retornou um erro: ${detail}` : 'O provedor de IA não conseguiu responder agora.');
+    const status = response.status >= 500 ? 502 : 400;
+    throw new HttpError(status, detail ? `O provedor de IA retornou um erro: ${detail}` : 'O provedor de IA não conseguiu responder agora.');
   }
 
   const message = payload?.choices?.[0]?.message;
@@ -79,7 +81,27 @@ export async function callGroq({
     throw new HttpError(502, 'A inteligência artificial não retornou uma resposta válida.');
   }
 
-  return { content, usage: payload?.usage || null };
+  return { content, usage: payload?.usage || null, model, provider: 'groq' };
+}
+
+const FALLBACK_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+// Fallback de texto para a NVIDIA (MiniMax M3.1). O modelo é somente texto,
+// então análise de fotos permanece exclusivamente na Groq.
+export async function callGroq(options) {
+  const vision = (options?.model || TEXT_MODEL) === VISION_MODEL;
+
+  if (!isGroqConfigured()) {
+    if (!vision && isNvidiaConfigured()) return callNvidia(options);
+    throw new HttpError(503, 'A inteligência artificial ainda não foi configurada no servidor.');
+  }
+
+  try {
+    return await callGroqProvider(options);
+  } catch (error) {
+    if (vision || !isNvidiaConfigured() || !FALLBACK_STATUSES.has(error?.status)) throw error;
+    return callNvidia(options);
+  }
 }
 
 export function parseJsonContent(content) {

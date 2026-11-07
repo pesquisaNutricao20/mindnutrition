@@ -44,7 +44,7 @@ export default async function handler(request, response) {
   try {
     const payload = await readJsonBody(request, 512 * 1024);
     const prompt = prepareInsightPrompt(payload);
-    const { content, usage } = await callGroq({
+    const { content, usage, model, provider } = await callGroq({
       model: TEXT_MODEL,
       temperature: 0.38,
       maxTokens: 900,
@@ -62,7 +62,7 @@ export default async function handler(request, response) {
       return sendJson(response, 502, { message: 'A IA não retornou um resumo válido. Tente novamente.' });
     }
 
-    return sendJson(response, 200, { summary, model: TEXT_MODEL, usage });
+    return sendJson(response, 200, { summary, model: model || TEXT_MODEL, provider: provider || 'groq', usage });
   } catch (error) {
     return handleApiError(response, error, 'Não foi possível gerar a leitura da sua jornada agora.');
   }

@@ -29,6 +29,7 @@ A `003` é obrigatória para o painel de artigos e para o upload de fotos das re
 - Texto (jornada dos Insights): `openai/gpt-oss-120b`.
 - Visão (foto da refeição): `qwen/qwen3.8-27b`, o modelo multimodal disponível na Groq. O GPT-OSS 120B não aceita imagens na API.
 - Configure apenas `GROQ_API_KEY` no servidor. Os modelos podem ser sobrescritos por `GROQ_TEXT_MODEL` e `GROQ_VISION_MODEL`.
+- Fallback de texto: com `NVIDIA_API_KEY` configurada, falhas da Groq (429, 5xx, timeout, chave ausente) passam automaticamente para `minimaxai/minimax-m3.1-flash` na NVIDIA. O modelo é somente texto — fotos continuam exclusivamente na Groq. Opcional: `NVIDIA_TEXT_MODEL`.
 
 ### Nutrição comportamental nas respostas da IA
 
@@ -83,6 +84,7 @@ O `vercel.json` já configura o fallback de SPA (para abrir `/nutricionista` dir
 | `ADMIN_SESSION_SECRET` | Opcional; segredo do cookie de sessão |
 | `ADMIN_SESSION_TTL_HOURS` | Opcional; validade da sessão (padrão 8, máximo 72) |
 | `GROQ_API_KEY` | IA de texto e de imagem |
+| `NVIDIA_API_KEY` | Opcional; fallback de texto (MiniMax M3.1) quando a Groq falha |
 | `SUPABASE_URL` | URL do projeto Supabase (servidor) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Chave service role (somente servidor) |
 | `VITE_PUBLICSUPABASE_URL` | URL pública usada no build do cliente |
