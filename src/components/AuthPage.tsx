@@ -315,7 +315,7 @@ export const AuthPage = ({
             <div className="mb-3 flex items-center gap-2.5">
               <img src={iconApp} alt="Ícone Mind Nutrition" className="h-10 w-10 shrink-0 object-contain" />
               <div>
-                <span className="logo-wordmark text-base font-bold text-ink">Mind Nutrition</span>
+                <span className="logo-wordmark text-base">Mind Nutrition</span>
               </div>
             </div>
             <div className="relative mx-auto mb-3 h-14 md:hidden">
@@ -453,7 +453,7 @@ export const AuthPage = ({
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-ink/10">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-accent to-accent-pink"
+                      className="h-full rounded-full bg-gradient-to-r from-accent to-accent-secondary"
                       initial={false}
                       animate={{ width: `${passwordProgress}%` }}
                       transition={{ type: 'spring', stiffness: 220, damping: 26 }}

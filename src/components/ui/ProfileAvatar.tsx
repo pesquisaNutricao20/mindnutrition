@@ -15,7 +15,7 @@ export const ProfileAvatar = ({ photo, size = 'md', mood = 'Calmo', className = 
   return (
     <div
       aria-label="Foto de perfil padrão"
-      className={`${dimensions} rounded-full overflow-hidden bg-gradient-to-br from-accent/15 via-white to-accent-pink/15 border border-line flex items-center justify-center ${className}`}
+      className={`${dimensions} rounded-full overflow-hidden bg-gradient-to-br from-accent/15 via-white to-accent-secondary/15 border border-line flex items-center justify-center ${className}`}
     >
       <img
         src={mascotAvatar}

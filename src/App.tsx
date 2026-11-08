@@ -125,10 +125,10 @@ export function calculateNutritionalNeeds(
 
 const getImcInterpretation = (imc?: number | null) => {
   if (!imc) return { label: 'Sem dados', tone: 'text-ink/50', description: 'Informe peso e altura.' };
-  if (imc < 18.5) return { label: 'Abaixo da faixa de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; avalie o contexto com um profissional.' };
+  if (imc < 18.5) return { label: 'Abaixo da faixa de referência', tone: 'text-accent-secondary', description: 'Indicador de triagem; avalie o contexto com um profissional.' };
   if (imc < 25) return { label: 'Faixa de referência', tone: 'text-accent', description: 'Indicador de triagem; não substitui avaliação individual.' };
-  if (imc < 30) return { label: 'Acima da faixa de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; avalie o contexto com um profissional.' };
-  return { label: 'Faixa elevada de referência', tone: 'text-accent-pink', description: 'Indicador de triagem; não substitui acompanhamento profissional.' };
+  if (imc < 30) return { label: 'Acima da faixa de referência', tone: 'text-accent-secondary', description: 'Indicador de triagem; avalie o contexto com um profissional.' };
+  return { label: 'Faixa elevada de referência', tone: 'text-accent-secondary', description: 'Indicador de triagem; não substitui acompanhamento profissional.' };
 };
 
 type MetricPoint = { date: string; value: number; recordedAt?: string };
@@ -587,7 +587,7 @@ const getPostLoginPage = (profile: Partial<UserProfile>): Page => (
 );
 
 const MODAL_BACKDROP_CLASS = 'modal-backdrop absolute inset-0';
-const COLORS = ['#6BAF9E', '#C9A3B5', '#5A9485', '#8EBAAA', '#D6EDE6'];
+const COLORS = ['var(--accent)', 'var(--accent-secondary)', 'var(--accent-light)', 'var(--accent-secondary-light)', 'var(--ink)'];
 
 const sanitizeProfileDefaults = (profile: UserProfile): UserProfile => {
   const currentDateLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -761,7 +761,7 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
       {isOpen && (
         <div className="modal-shell fixed inset-0 z-50 flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-2xl bg-paper p-6 shadow-2xl sm:p-8 border border-line">
+          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-2xl bg-paper shadow-2xl border border-line">
               <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Pausa de Observação & Orientação</span>
@@ -769,6 +769,7 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
               </div>
               <button type="button" onClick={onClose} className="icon-button h-10 w-10"><X size={18} /></button>
             </div>
+            <div className="modal-body">
             <p className="mt-3 text-sm leading-relaxed text-ink/70">
               Escute os sinais do seu corpo com carinho. Use estas orientações para identificar sua real necessidade no momento:
             </p>
@@ -787,10 +788,10 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
                   ))}
                 </ul>
               </section>
-              <section className="rounded-3xl border border-accent-pink/30 bg-accent-pink/10 p-5">
+              <section className="rounded-3xl border border-accent-secondary/30 bg-accent-secondary/10 p-5">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="w-3 h-3 rounded-full bg-accent-pink inline-block" />
-                  <h4 className="font-bold text-accent-pink text-base sm:text-lg">{HUNGER_DEFINITIONS.emocional.title}</h4>
+                  <span className="w-3 h-3 rounded-full bg-accent-secondary inline-block" />
+                  <h4 className="font-bold text-accent-secondary text-base sm:text-lg">{HUNGER_DEFINITIONS.emocional.title}</h4>
                 </div>
                 <p className="text-xs sm:text-sm text-ink/80 leading-relaxed italic mb-3">
                   "{HUNGER_DEFINITIONS.emocional.description}"
@@ -805,6 +806,7 @@ export const HungerGuideModal = ({ isOpen, onClose }: HungerGuideModalProps) => 
             <button type="button" onClick={onClose} className="mt-6 w-full rounded-full bg-accent py-4 text-sm font-bold text-paper shadow-md hover:bg-accent/90">
               Entendi, obrigado(a)
             </button>
+            </div>
           </motion.div>
         </div>
       )}
@@ -823,7 +825,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
       {isOpen && (
         <div className="modal-shell fixed inset-0 z-50 flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 border border-line">
+          <motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative max-w-full md:max-w-xl bg-paper shadow-2xl border border-line">
               <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Boas-vindas</span>
@@ -831,6 +833,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
               </div>
               <button type="button" onClick={onClose} className="icon-button h-10 w-10"><X size={18} /></button>
             </div>
+            <div className="modal-body">
             <div className="mt-6 space-y-4">
               <div className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-line">
                 <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0 font-bold">1</div>
@@ -857,6 +860,7 @@ export const TutorialModal = ({ isOpen, onClose }: TutorialModalProps) => {
             <button type="button" onClick={onClose} className="mt-6 w-full rounded-full bg-accent py-4 text-sm font-bold text-paper shadow-md hover:bg-accent/90">
               Começar a Explorar
             </button>
+            </div>
           </motion.div>
         </div>
       )}
@@ -879,7 +883,7 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
   return (
     <div className="modal-shell fixed inset-0 z-50 flex">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 border border-line z-10 w-full">
+      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper shadow-2xl border border-line z-10 w-full">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Diário Livre</span>
@@ -887,6 +891,7 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
           </div>
           <button type="button" onClick={onClose} className="icon-button h-10 w-10"><X size={18} /></button>
         </div>
+        <div className="modal-body">
         <p className="mt-2 text-xs text-ink/60">
           Escreva situações, sentimentos ou acontecimentos que influenciaram suas escolhas e sua alimentação hoje.
         </p>
@@ -927,6 +932,7 @@ export const DailyDiaryModal = ({ isOpen, onClose, onSave }: DailyDiaryModalProp
             Salvar no Diário
           </button>
         </div>
+        </div>
       </div>
     </div>
   );
@@ -948,7 +954,7 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
   return (
     <div className="modal-shell fixed inset-0 z-50 flex">
       <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper p-6 shadow-2xl sm:p-8 border border-line z-10 w-full">
+      <div className="modal-panel modal-panel-sheet relative max-w-full md:max-w-xl bg-paper shadow-2xl border border-line z-10 w-full">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
             <span className="label-sm text-accent">Módulo de Sono</span>
@@ -956,6 +962,7 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
           </div>
           <button type="button" onClick={onClose} className="icon-button h-10 w-10"><X size={18} /></button>
         </div>
+        <div className="modal-body">
         <p className="mt-2 text-xs text-ink/60">
           Uma boa noite de sono regula a grelina e leptina, facilitando escolhas alimentares mais equilibradas.
         </p>
@@ -1013,6 +1020,7 @@ export const SleepModal = ({ isOpen, onClose, onSave }: SleepModalProps) => {
             Registrar Sono
           </button>
         </div>
+        </div>
       </div>
     </div>
   );
@@ -1038,14 +1046,16 @@ function ConfirmationModal({
       {isOpen && (
         <div className="modal-shell fixed inset-0 z-[60] flex">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP_CLASS} onClick={onClose} />
-          <motion.section initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative z-10 max-w-full md:max-w-md border border-red-100 bg-paper p-6 shadow-2xl sm:p-8">
+          <motion.section initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} transition={{ type: 'spring', damping: 34, stiffness: 320 }} className="modal-panel relative z-10 max-w-full md:max-w-md border border-red-100 bg-paper shadow-2xl">
             <span className="modal-grip modal-grip-top" aria-hidden="true" />
+            <div className="modal-body">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><Trash2 size={21} /></div>
             <h3 className="display-title mt-4 text-2xl">{title}</h3>
             <p className="mt-2 text-sm leading-relaxed text-ink/65">{description}</p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button type="button" onClick={onClose} className="rounded-full border border-line px-4 py-3 text-xs font-bold text-ink/65 hover:bg-white">Cancelar</button>
               <button type="button" onClick={() => { onConfirm(); onClose(); }} className="rounded-full bg-red-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-red-700">{confirmLabel}</button>
+            </div>
             </div>
           </motion.section>
         </div>
@@ -1192,13 +1202,12 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 34, stiffness: 320 }}
-            style={{ maxHeight: expanded ? '96dvh' : '90dvh' }}
-            className="modal-panel relative max-w-full md:max-w-2xl overflow-hidden border border-line bg-paper shadow-2xl"
+            className={`modal-panel relative max-w-full md:max-w-2xl border border-line bg-paper shadow-2xl ${expanded ? 'modal-panel-expanded' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-label="Resumo do Mascote Nutre"
           >
-            <div className="animated-gradient sticky top-0 z-10 overflow-hidden px-5 pb-5 pt-1 text-paper sm:px-7 sm:pb-6 sm:pt-2">
+            <div className="animated-gradient relative shrink-0 overflow-hidden px-5 pb-5 pt-1 text-paper sm:px-7 sm:pb-6 sm:pt-2">
               <button
                 type="button"
                 onClick={() => setExpanded(value => !value)}
@@ -1221,7 +1230,7 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
               </div>
             </div>
 
-            <div className="space-y-5 p-5 sm:p-8">
+            <div className="modal-body space-y-5">
               <div className="grid grid-cols-2 gap-3">
                 {tiles.map(tile => (
                   <div key={tile.label} className="rounded-2xl border border-line bg-paper/60 px-4 py-3">
@@ -1297,7 +1306,7 @@ const AiSummaryModal = ({ isOpen, onClose, onRegenerate, summary, isTypingComple
               {!isTypingComplete && <span className="inline-block h-4 w-0.5 animate-pulse bg-accent align-[-2px]" />}
             </div>
 
-            <div className="space-y-4 px-5 pb-5 sm:px-8 sm:pb-8">
+            <div className="shrink-0 space-y-4 border-t border-line bg-paper px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-8">
               <p className="text-[10px] leading-relaxed text-ink/50">
                 Este resumo é educativo, usa apenas dados resumidos e não substitui acompanhamento profissional.
               </p>
@@ -1425,9 +1434,9 @@ export default function App() {
     root.style.setProperty('--ink', theme.colors.ink);
     root.style.setProperty('--paper', theme.colors.paper);
     root.style.setProperty('--accent', theme.colors.accent);
-    root.style.setProperty('--accent-pink', theme.colors.accentPink);
+    root.style.setProperty('--accent-secondary', theme.colors.accentSecondary);
     root.style.setProperty('--accent-light', theme.colors.accentLight);
-    root.style.setProperty('--accent-pink-light', theme.colors.accentPinkLight);
+    root.style.setProperty('--accent-secondary-light', theme.colors.accentSecondaryLight);
     root.style.setProperty('--line', theme.colors.line);
     localStorage.setItem('mindTheme', theme.id);
   }, [themeId]);
@@ -1666,16 +1675,6 @@ export default function App() {
 
   const renderTopNavbar = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
-    const activeNavItem = navItems.find(item => item.id === currentPage);
-    const pageLabelMap: Partial<Record<Page, string>> = {
-      'meal-details': 'Detalhes',
-      'settings-account': 'Conta',
-      'settings-privacy': 'Privacidade',
-      'settings-help': 'Ajuda',
-      messages: 'Cuidado',
-    };
-    const pageLabel = activeNavItem?.label || pageLabelMap[currentPage] || 'Jornada';
-    const ActiveIcon = activeNavItem?.icon || Sparkles;
 
     return (
       <header className="app-topbar">
@@ -1691,16 +1690,6 @@ export default function App() {
           </div>
         </button>
 
-        <div className="topbar-section">
-          <div className="topbar-section-icon">
-            <ActiveIcon size={18} />
-          </div>
-          <div className="min-w-0">
-            <span className="topbar-eyebrow">Você está em</span>
-            <strong className="topbar-page">{pageLabel}</strong>
-          </div>
-        </div>
-
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -1711,7 +1700,7 @@ export default function App() {
           >
             <MessageCircle size={17} />
             {unreadMessages > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-pink px-1 text-[9px] font-bold text-white">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-secondary px-1 text-[9px] font-bold text-white">
                 {unreadMessages > 9 ? '9+' : unreadMessages}
               </span>
             )}
@@ -1934,7 +1923,7 @@ export default function App() {
                 </div>
                 <div className="landing-waves" aria-hidden="true">
                   <svg className="landing-wave landing-wave-back" viewBox="0 0 1440 320" preserveAspectRatio="none">
-                    <path fill="var(--accent-pink)" d="M0,192L48,181.3C96,171,192,149,288,138.7C384,128,480,128,576,149.3C672,171,768,213,864,208C960,203,1056,149,1152,133.3C1248,117,1344,139,1392,149.3L1440,160L1440,320L0,320Z" />
+                    <path fill="var(--accent-secondary)" d="M0,192L48,181.3C96,171,192,149,288,138.7C384,128,480,128,576,149.3C672,171,768,213,864,208C960,203,1056,149,1152,133.3C1248,117,1344,139,1392,149.3L1440,160L1440,320L0,320Z" />
                   </svg>
                   <svg className="landing-wave landing-wave-front" viewBox="0 0 1440 320" preserveAspectRatio="none">
                     <path fill="var(--accent)" d="M0,224L48,208C96,192,192,160,288,154.7C384,149,480,171,576,192C672,213,768,235,864,229.3C960,224,1056,192,1152,181.3C1248,171,1344,181,1392,186.7L1440,192L1440,320L0,320Z" />
@@ -2159,15 +2148,15 @@ export default function App() {
               dragElastic={0.2}
               onDragEnd={handleArticleDragEnd}
               style={{ y: articleY }}
-              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl flex flex-col overflow-hidden max-h-[70dvh] "
+              className="modal-panel relative bg-paper md:max-w-3xl shadow-2xl"
             >
-              <div className="overflow-y-auto flex-1 p-6 sm:p-10 pb-28">
-                <div className="article-reader-header -mx-6 -mt-6 mb-4 flex items-center justify-between px-6 pt-6 pb-3 sm:-mx-10 sm:-mt-10 sm:px-10 sm:pt-10">
-                  <span className="label-sm text-accent">{selectedArticle.type}</span>
-                  <button onClick={closeArticle} className="w-10 h-10 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
-                    <X size={18} />
-                  </button>
-                </div>
+              <div className="article-reader-header flex items-center justify-between gap-4">
+                <span className="label-sm text-accent">{selectedArticle.type}</span>
+                <button onClick={closeArticle} aria-label="Fechar artigo" className="w-10 h-10 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body">
                 <h2 className="display-title text-3xl sm:text-4xl mb-6 leading-tight">{selectedArticle.title}</h2>
                 <div className="mask-image-full mb-6 overflow-hidden rounded-[2rem] shadow-md h-52 sm:h-72">
                   <img src={selectedArticle.image} alt="" className="w-full h-full object-cover" />
@@ -2293,7 +2282,7 @@ function DiagnosisPage({
         </button>
         <div className="flex-1 h-2.5 bg-line rounded-full overflow-hidden">
           <motion.div
-            className="h-full bg-gradient-to-r from-accent to-accent-pink"
+            className="h-full bg-gradient-to-r from-accent to-accent-secondary"
             initial={{ width: 0 }}
             animate={{ width: `${((step + 1) / steps.length) * 100}%` }}
           />
@@ -2634,7 +2623,7 @@ function DashboardPage({
           className="group flex items-center justify-between p-5 rounded-[2rem] bg-white border border-line shadow-sm hover:border-accent active:scale-98 transition-all"
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-accent-pink/15 text-accent-pink flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-accent-secondary/15 text-accent-secondary flex items-center justify-center">
               <PenTool size={24} />
             </div>
             <div className="text-left">
@@ -2693,7 +2682,7 @@ function DashboardPage({
           </p>
         </button>
         <button onClick={() => onNavigate('content')} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-pink/15 text-accent-pink"><BookOpen size={20} /></span>
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-secondary/15 text-accent-secondary"><BookOpen size={20} /></span>
           <h3 className="mt-4 font-bold text-base">Biblioteca Científica</h3>
           <p className="mt-1 text-xs leading-relaxed text-ink/55">Artigos acolhedores sobre nutrição gentil e autocompaixão.</p>
         </button>
@@ -2735,7 +2724,7 @@ function DashboardPage({
             onClick={() => onOpenCare('appointments')}
             className="group flex items-center gap-3 rounded-2xl border border-line bg-paper/50 p-4 text-left transition hover:border-accent hover:bg-accent/5"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-pink/15 text-accent-pink">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-secondary/15 text-accent-secondary">
               <CalendarDays size={18} />
             </span>
             <span className="min-w-0">
@@ -2782,14 +2771,14 @@ function DashboardPage({
                     {meal.photos?.[0] || meal.image ? (
                       <img src={meal.photos?.[0] || meal.image} alt="" className="w-12 h-12 rounded-2xl object-cover border border-line shrink-0" />
                     ) : (
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${mealType === 'Emocional' ? 'bg-accent-pink/20 text-accent-pink' : 'bg-accent/10 text-accent'}`}>
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${mealType === 'Emocional' ? 'bg-accent-secondary/20 text-accent-secondary' : 'bg-accent/10 text-accent'}`}>
                         <MealIcon size={22} />
                       </div>
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="truncate font-bold text-base">{meal.title || 'Refeição'}</h4>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${mealType === 'Emocional' ? 'bg-accent-pink/15 text-accent-pink' : 'bg-accent/15 text-accent'}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${mealType === 'Emocional' ? 'bg-accent-secondary/15 text-accent-secondary' : 'bg-accent/15 text-accent'}`}>
                           {mealType}
                         </span>
                       </div>
@@ -3583,7 +3572,7 @@ function ProgressPageComponent({
   // Filter only categories with counts > 0 for clean Pie chart
   const hungerPieData = [
     { name: 'Fome Física', value: physicalMeals, color: 'var(--accent)' },
-    { name: 'Fome Emocional', value: emotionalMeals, color: 'var(--accent-pink)' },
+    { name: 'Fome Emocional', value: emotionalMeals, color: 'var(--accent-secondary)' },
     { name: 'Não classificada', value: unclassifiedMeals, color: 'var(--accent-light)' },
   ].filter(item => item.value > 0);
 
@@ -3839,13 +3828,13 @@ function ProgressPageComponent({
           <ChartFrame className="h-56" minHeight={170}>
             {({ width, height }) => (
               <AreaChart width={width} height={height} data={sleepTrendData}>
-                <defs><linearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.38} /><stop offset="95%" stopColor="#6366f1" stopOpacity={0} /></linearGradient></defs>
+                <defs><linearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--accent-secondary)" stopOpacity={0.38} /><stop offset="95%" stopColor="var(--accent-secondary)" stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.55} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                 <YAxis domain={[0, 12]} ticks={[0, 4, 8, 12]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
                 <Tooltip formatter={(value: number | undefined, _name, item) => [`${value ?? 0}h · ${item?.payload?.quality || 'sem qualidade'}`, 'Sono']} contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} />
                 <ReferenceLine y={8} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="hours" stroke="#6366f1" strokeWidth={3.5} fill="url(#sleepGrad)" dot={{ r: 4, fill: 'var(--paper)', stroke: '#6366f1', strokeWidth: 2 }} />
+                <Area type="monotone" dataKey="hours" stroke="var(--accent-secondary)" strokeWidth={3.5} fill="url(#sleepGrad)" dot={{ r: 4, fill: 'var(--paper)', stroke: 'var(--accent-secondary)', strokeWidth: 2 }} />
               </AreaChart>
             )}
           </ChartFrame>
@@ -3865,8 +3854,8 @@ function ProgressPageComponent({
                 <div className="w-2.5 h-2.5 rounded-full bg-accent" /> Histórico
               </span>
               {weightGoal && (
-                <span className="flex items-center gap-1.5 text-[10px] font-bold text-accent-pink">
-                  <div className="w-2.5 h-2.5 rounded-full bg-accent-pink" /> Meta ({weightGoal}kg)
+                <span className="flex items-center gap-1.5 text-[10px] font-bold text-accent-secondary">
+                  <div className="w-2.5 h-2.5 rounded-full bg-accent-secondary" /> Meta ({weightGoal}kg)
                 </span>
               )}
             </div>
@@ -3890,7 +3879,7 @@ function ProgressPageComponent({
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val} kg`} />
                   {!hasWeightShape && <ReferenceLine x={sortedWeightEvolution[0]?.date} stroke="var(--accent)" strokeWidth={3} />}
                   {weightGoal && (
-                    <ReferenceLine y={weightGoal} stroke="var(--accent-pink)" strokeDasharray="4 4" strokeWidth={2} />
+                    <ReferenceLine y={weightGoal} stroke="var(--accent-secondary)" strokeDasharray="4 4" strokeWidth={2} />
                   )}
                   <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={4} fill={hasWeightShape ? 'url(#weightGrad)' : 'transparent'} dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent)', strokeWidth: 2.5 }} />
                 </AreaChart>
@@ -3906,7 +3895,7 @@ function ProgressPageComponent({
         <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
           <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
-              <span className="text-accent-pink"><Activity size={22} /></span> Evolução do IMC
+              <span className="text-accent-secondary"><Activity size={22} /></span> Evolução do IMC
             </h3>
             <span className="text-[10px] font-bold text-ink/40">Triagem indicativa</span>
           </div>
@@ -3919,17 +3908,17 @@ function ProgressPageComponent({
                 <AreaChart width={width} height={height} data={imcData}>
                   <defs>
                     <linearGradient id="imcGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-pink)" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="var(--accent-pink)" stopOpacity={0} />
+                      <stop offset="5%" stopColor="var(--accent-secondary)" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="var(--accent-secondary)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" opacity={0.5} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                   <YAxis domain={imcDomain} allowDecimals axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dx={-6} />
                   <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)' }} formatter={(val: number | undefined) => `${val}`} />
-                  {!hasImcShape && <ReferenceLine x={imcData[0]?.date} stroke="var(--accent-pink)" strokeWidth={3} />}
+                  {!hasImcShape && <ReferenceLine x={imcData[0]?.date} stroke="var(--accent-secondary)" strokeWidth={3} />}
                   <ReferenceLine y={24.9} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} />
-                  <Area type="monotone" dataKey="value" stroke="var(--accent-pink)" strokeWidth={4} fill={hasImcShape ? 'url(#imcGrad)' : 'transparent'} dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent-pink)', strokeWidth: 2.5 }} />
+                  <Area type="monotone" dataKey="value" stroke="var(--accent-secondary)" strokeWidth={4} fill={hasImcShape ? 'url(#imcGrad)' : 'transparent'} dot={{ r: 5, fill: 'var(--paper)', stroke: 'var(--accent-secondary)', strokeWidth: 2.5 }} />
                 </AreaChart>
               )}
             </ChartFrame>
@@ -3983,7 +3972,7 @@ function ProgressPageComponent({
 
         <div className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
           <h3 className="font-bold text-base sm:text-lg mb-1 flex items-center gap-2">
-            <span className="text-accent-pink"><PiHeartbeat size={20} /></span> Oscilação Semanal
+            <span className="text-accent-secondary"><PiHeartbeat size={20} /></span> Oscilação Semanal
           </h3>
           <p className="mb-4 text-xs text-ink/50">Acumulado de todas as refeições registradas em cada dia da semana.</p>
           {hasMealData ? (
@@ -3995,7 +3984,7 @@ function ProgressPageComponent({
                     <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--ink)' }} dy={6} />
                     <Tooltip cursor={{ fill: 'var(--line)', opacity: 0.3 }} />
                     <Bar dataKey="fisico" stackId="a" fill="var(--accent)" radius={[0, 0, 4, 4]} barSize={16} name="Fome Física" />
-                    <Bar dataKey="emocional" stackId="a" fill="var(--accent-pink)" radius={[4, 4, 0, 0]} barSize={16} name="Fome Emocional" />
+                    <Bar dataKey="emocional" stackId="a" fill="var(--accent-secondary)" radius={[4, 4, 0, 0]} barSize={16} name="Fome Emocional" />
                   </BarChart>
                 )}
               </ChartFrame>
@@ -4004,7 +3993,7 @@ function ProgressPageComponent({
                   <div className="w-3 h-3 rounded-full bg-accent" /> Física
                 </span>
                 <span className="flex items-center gap-1.5 text-xs font-bold text-ink/70">
-                  <div className="w-3 h-3 rounded-full bg-accent-pink" /> Emocional
+                  <div className="w-3 h-3 rounded-full bg-accent-secondary" /> Emocional
                 </span>
               </div>
             </>
@@ -4020,7 +4009,7 @@ function ProgressPageComponent({
       {showMetricsModal && (
         <div className="modal-shell fixed inset-0 z-50 flex">
           <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
-          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper p-6 sm:p-8 shadow-2xl border border-line z-10">
+          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper shadow-2xl border border-line z-10">
             <div className="modal-header flex items-start justify-between gap-4">
               <div>
                 <span className="label-sm text-accent">Métricas Corporais</span>
@@ -4029,6 +4018,7 @@ function ProgressPageComponent({
               </div>
               <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button h-10 w-10 shrink-0"><X size={18} /></button>
             </div>
+            <div className="modal-body">
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {metricFields.map((field) => (
                 <label key={field.key} className="block p-4 rounded-2xl bg-white border border-line">
@@ -4065,6 +4055,7 @@ function ProgressPageComponent({
               <button type="button" onClick={handleSaveMetrics} className="flex-1 py-4 rounded-full bg-accent text-paper text-sm font-bold shadow-md hover:bg-accent/90">
                 Salvar Medidas
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -4139,7 +4130,7 @@ function ProfilePageComponent({
               <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-bold">Gênero: {userProfile.gender || 'Não informado'}</span>
               <span className="px-3 py-1 rounded-full bg-paper border border-line text-ink/70 text-xs font-bold">Idade: {userProfile.age ? `${userProfile.age} anos` : 'Não informada'}</span>
               {(userProfile.objectives || []).slice(0, 2).map((item) => (
-                <span key={item} className="px-3 py-1 rounded-full bg-accent-pink/15 text-accent-pink text-xs font-bold">{item}</span>
+                <span key={item} className="px-3 py-1 rounded-full bg-accent-secondary/15 text-accent-secondary text-xs font-bold">{item}</span>
               ))}
             </div>
           </div>
@@ -4157,7 +4148,7 @@ function ProfilePageComponent({
           <p className="mt-2 text-[10px] leading-relaxed text-ink/50">{imcInterpretation.description}</p>
         </div>
         <div className="col-span-2 bg-white p-4 rounded-2xl border border-line sm:col-span-1">
-          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold text-accent-pink">TMB estimada</span><button type="button" onClick={() => toast('TMB é a energia mínima que seu corpo usa em repouso para funções vitais. É uma estimativa, não uma meta alimentar isolada.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent-pink text-xs font-bold text-accent-pink" aria-label="Entender TMB">?</button></div>
+          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold text-accent-secondary">TMB estimada</span><button type="button" onClick={() => toast('TMB é a energia mínima que seu corpo usa em repouso para funções vitais. É uma estimativa, não uma meta alimentar isolada.', 'info')} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent-secondary text-xs font-bold text-accent-secondary" aria-label="Entender TMB">?</button></div>
           <div className="mt-2 text-3xl font-display">{currentTmb ?? '--'}<span className="ml-1 text-sm font-sans font-bold text-ink/55">kcal/dia</span></div>
           <p className="mt-2 text-[10px] leading-relaxed text-ink/50">Energia estimada em repouso, antes da atividade do dia.</p>
         </div>
@@ -4411,7 +4402,7 @@ function ThemeSettingsPage({
                 {active && <CheckCircle size={22} className="text-accent shrink-0" />}
               </div>
               <div className="flex gap-2 mt-4">
-                {[theme.colors.ink, theme.colors.paper, theme.colors.accent, theme.colors.accentPink, theme.colors.accentLight].map((c, idx) => (
+                {[theme.colors.ink, theme.colors.paper, theme.colors.accent, theme.colors.accentSecondary, theme.colors.accentLight].map((c, idx) => (
                   <span key={idx} className="w-8 h-8 rounded-full border border-line shadow-xs" style={{ backgroundColor: c }} />
                 ))}
               </div>
@@ -4501,7 +4492,7 @@ function SettingsHelpPage({
           </div>
         </a>
         <a href="mailto:contato@mindnutrition.app" className="flex items-center gap-3 bg-paper p-3.5 rounded-2xl border border-line hover:border-accent transition-colors">
-          <div className="w-9 h-9 bg-accent-pink/20 text-accent-pink rounded-full flex items-center justify-center"><Mail size={16} /></div>
+          <div className="w-9 h-9 bg-accent-secondary/20 text-accent-secondary rounded-full flex items-center justify-center"><Mail size={16} /></div>
           <div className="min-w-0">
             <span className="block font-bold text-xs">E-mail de Suporte</span>
             <span className="block text-[10px] text-ink/60">contato@mindnutrition.app</span>

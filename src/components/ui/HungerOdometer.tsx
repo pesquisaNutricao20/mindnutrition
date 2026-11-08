@@ -22,7 +22,7 @@ export const HungerOdometer = ({ value, onChange }: HungerOdometerProps) => {
     <div className="space-y-4">
       <div className="flex justify-between label-sm">
         <span className="text-accent font-bold">Física</span>
-        <span className="text-accent-pink font-bold">Emocional</span>
+        <span className="text-accent-secondary font-bold">Emocional</span>
       </div>
       <div
         ref={containerRef}

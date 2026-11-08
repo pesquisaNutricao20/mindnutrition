@@ -31,10 +31,10 @@ const ICONS: Record<ToastType, React.ReactNode> = {
 };
 
 const COLORS: Record<ToastType, string> = {
-  success: 'bg-[#6BAF9E] text-white',
+  success: 'bg-accent text-white',
   error: 'bg-red-500 text-white',
-  info: 'bg-[#3B3A3A] text-white',
-  heart: 'bg-[#C9A3B5] text-white',
+  info: 'bg-ink text-white',
+  heart: 'bg-accent-secondary text-white',
 };
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) => void }) {

@@ -268,7 +268,7 @@ function AdminLoginScreen({
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-paper px-4 py-12">
       <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-accent-pink/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-accent-secondary/10 blur-3xl" />
 
       <div className="relative w-full max-w-md">
         <button
@@ -1354,7 +1354,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {articles.map((article) => (
                   <article key={article.id} className="flex flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-sm">
-                    <div className="relative aspect-[16/10] bg-gradient-to-br from-accent/15 to-accent-pink/15">
+                    <div className="relative aspect-[16/10] bg-gradient-to-br from-accent/15 to-accent-secondary/15">
                       {article.image ? (
                         <img src={article.image} alt="" className="h-full w-full object-cover" />
                       ) : (

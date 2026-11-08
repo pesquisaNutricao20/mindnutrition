@@ -15,8 +15,8 @@ export const LoadingScreen = () => (
         transition={{ duration: 2, repeat: Infinity }}
         className="mt-5 text-center"
       >
-        <span className="display-title text-5xl text-accent tracking-widest block">Mind Nutrition</span>
-        <p className="label-sm text-accent-pink mt-3 text-sm">Cultivando sua consciência...</p>
+        <span className="logo-wordmark text-4xl sm:text-5xl text-accent block">Mind Nutrition</span>
+        <p className="label-sm text-accent-secondary mt-3 text-sm">Cultivando sua consciência...</p>
       </motion.div>
     </motion.div>
   </div>

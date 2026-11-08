@@ -6,9 +6,9 @@ export type AppTheme = {
     ink: string;
     paper: string;
     accent: string;
-    accentPink: string;
+    accentSecondary: string;
     accentLight: string;
-    accentPinkLight: string;
+    accentSecondaryLight: string;
     line: string;
   };
 };
@@ -22,9 +22,9 @@ export const APP_THEMES: AppTheme[] = [
       ink: '#273238',
       paper: '#F5FAFB',
       accent: '#31889B',
-      accentPink: '#7B91C8',
+      accentSecondary: '#7B91C8',
       accentLight: '#D6EEF2',
-      accentPinkLight: '#E4E8F7',
+      accentSecondaryLight: '#E4E8F7',
       line: 'rgba(39, 50, 56, 0.14)',
     },
   },

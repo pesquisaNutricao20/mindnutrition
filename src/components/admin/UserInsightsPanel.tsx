@@ -166,7 +166,7 @@ function DistributionBar({ physical, emotional, unclassified }: { physical: numb
   const total = Math.max(physical + emotional + unclassified, 1);
   const parts = [
     { label: 'Física', value: physical, tone: 'bg-accent' },
-    { label: 'Emocional', value: emotional, tone: 'bg-accent-pink' },
+    { label: 'Emocional', value: emotional, tone: 'bg-accent-secondary' },
     { label: 'Não classificada', value: unclassified, tone: 'bg-line' },
   ];
   return (
@@ -324,7 +324,7 @@ export function UserInsightsPanel({
                       <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">Emoções mais citadas</p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {insights.meals.topEmotions.map((emotion) => (
-                          <span key={emotion.label} className="rounded-full bg-accent-pink/15 px-2.5 py-1 text-[11px] font-semibold text-ink/65">
+                          <span key={emotion.label} className="rounded-full bg-accent-secondary/15 px-2.5 py-1 text-[11px] font-semibold text-ink/65">
                             {emotion.label} · {emotion.count}
                           </span>
                         ))}

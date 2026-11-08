@@ -20,7 +20,7 @@ export const Avatar = ({ size = 'lg', mood = 'normal' }: AvatarProps) => {
           <path d="M 35 65 Q 50 68 65 65" fill="none" stroke="var(--ink)" strokeWidth="4" strokeLinecap="round" />
         )}
         <path d="M 15 25 Q 25 15 35 25" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" />
-        <path d="M 85 25 Q 75 15 65 25" fill="none" stroke="var(--accent-pink)" strokeWidth="3" strokeLinecap="round" />
+        <path d="M 85 25 Q 75 15 65 25" fill="none" stroke="var(--accent-secondary)" strokeWidth="3" strokeLinecap="round" />
       </svg>
     </div>
   );

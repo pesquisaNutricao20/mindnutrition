@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
+  BadgeCheck,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -10,13 +11,13 @@ import {
   Info,
   Loader2,
   MapPin,
-  MessageCircle,
+  MessageCircleHeart,
   RefreshCw,
   Send,
-  Sparkles,
   Video,
   X,
 } from 'lucide-react';
+import iconApp from '../assets/logo/icon_app.png';
 import type { Page } from '../types';
 import {
   PortalApiError,
@@ -236,7 +237,7 @@ export function UserCarePage({
             tab === 'chat' ? 'bg-accent text-paper shadow-sm' : 'border border-line bg-white text-ink/60 hover:bg-paper'
           }`}
         >
-          <MessageCircle size={15} /> Conversa
+          <MessageCircleHeart size={15} /> Conversa
           {unreadFromNutritionist > 0 && (
             <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold text-accent">
               {unreadFromNutritionist}
@@ -252,7 +253,7 @@ export function UserCarePage({
           }`}
         >
           <CalendarDays size={15} /> Consultas
-          {activeAppointment && <span className="h-1.5 w-1.5 rounded-full bg-accent-pink" />}
+          {activeAppointment && <span className="h-1.5 w-1.5 rounded-full bg-accent-secondary" />}
         </button>
       </div>
 
@@ -260,12 +261,17 @@ export function UserCarePage({
         <section className="flex min-h-[62vh] flex-col overflow-hidden rounded-[2rem] border border-line bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-line bg-paper/50 px-5 py-3.5">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
-                <Sparkles size={18} />
-              </span>
+              <img
+                src={iconApp}
+                alt="Logo Mind Nutrition"
+                className="h-10 w-10 shrink-0 rounded-full border border-line bg-white object-contain p-1.5"
+              />
               <div>
-                <p className="text-sm font-bold text-ink">Sua nutricionista</p>
-                <p className="text-[11px] text-ink/45">Mensagens privadas, respondidas com calma</p>
+                <p className="flex items-center gap-1.5">
+                  <span className="logo-wordmark text-sm">Mind Nutrition</span>
+                  <BadgeCheck size={16} className="shrink-0 fill-accent text-white" aria-label="Perfil verificado" />
+                </p>
+                <p className="text-[11px] text-ink/45">Sua nutricionista · mensagens privadas</p>
               </div>
             </div>
             <button
@@ -296,7 +302,7 @@ export function UserCarePage({
 
             {!messagesLoading && !messagesError && !messages.length && (
               <div className="mx-auto max-w-md rounded-3xl border border-dashed border-line bg-white/80 p-6 text-center">
-                <MessageCircle size={26} className="mx-auto text-accent/50" />
+                <MessageCircleHeart size={26} className="mx-auto text-accent/50" />
                 <p className="mt-2 text-sm font-bold text-ink">A conversa começa por aqui</p>
                 <p className="mt-1 text-xs leading-relaxed text-ink/50">
                   Escreva o que quiser compartilhar sobre sua rotina, suas dúvidas ou como está se sentindo. Não existe pergunta boba.
@@ -462,7 +468,7 @@ export function UserCarePage({
                         <span className={`flex h-7 w-7 items-center justify-center rounded-full ${isToday ? 'bg-accent text-paper' : ''}`}>
                           {cell.dayNumber}
                         </span>
-                        {own && <span className="h-1.5 w-1.5 rounded-full bg-accent-pink" />}
+                        {own && <span className="h-1.5 w-1.5 rounded-full bg-accent-secondary" />}
                         {!info.available && !own && <span className="h-1 w-1 rounded-full bg-ink/15" />}
                       </button>
                     );
@@ -475,7 +481,7 @@ export function UserCarePage({
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] font-semibold text-ink/40">
                   <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent" /> Disponível</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-pink" /> Sua consulta</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-secondary" /> Sua consulta</span>
                   <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-ink/15" /> Indisponível</span>
                 </div>
               </div>
