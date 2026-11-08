@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AdminApiError, adminApi } from '../../lib/adminApi';
 import { formatDateTime } from '../../lib/schedule';
+import { Skeleton } from './Skeleton';
 
 type Conversation = {
   userId: string;
@@ -172,11 +173,19 @@ export function MessagesPanel({
         </p>
 
         <div className="chat-scroll mt-3 max-h-[62vh] space-y-1.5 overflow-y-auto pr-0.5">
-          {listLoading && (
-            <div className="flex items-center gap-2 p-3 text-xs font-semibold text-ink/45">
-              <Loader2 size={14} className="animate-spin text-accent" /> Carregando conversas...
+          {listLoading && Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="rounded-2xl border border-line bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3 w-1/2" />
+                  <Skeleton className="h-2.5 w-2/3" />
+                </div>
+                <Skeleton className="h-4 w-6 rounded-full" />
+              </div>
+              <Skeleton className="mt-2 h-2.5 w-full" />
+              <Skeleton className="mt-1.5 h-2 w-24" />
             </div>
-          )}
+          ))}
 
           {!listLoading && listError && (
             <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-[11px] font-semibold text-red-600">
@@ -286,11 +295,11 @@ export function MessagesPanel({
             </header>
 
             <div ref={scrollRef} className="chat-scroll flex-1 space-y-2.5 overflow-y-auto bg-paper/30 px-4 py-4" style={{ maxHeight: '56vh', minHeight: 280 }}>
-              {threadLoading && !messages.length && (
-                <p className="flex items-center gap-2 text-xs font-semibold text-ink/45">
-                  <Loader2 size={14} className="animate-spin text-accent" /> Abrindo a conversa...
-                </p>
-              )}
+              {threadLoading && !messages.length && [0, 1, 2, 3].map((index) => (
+                <div key={index} className={`flex ${index % 2 ? 'justify-end' : 'justify-start'}`}>
+                  <Skeleton className={`h-16 max-w-[85%] rounded-2xl ${index % 2 ? 'w-2/3 rounded-br-md' : 'w-3/4 rounded-bl-md'}`} />
+                </div>
+              ))}
               {threadError && (
                 <p className="rounded-xl border border-red-100 bg-red-50 p-2.5 text-[11px] font-semibold text-red-600">{threadError}</p>
               )}

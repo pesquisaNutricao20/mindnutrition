@@ -5,7 +5,6 @@ import {
   BookOpen,
   CalendarDays,
   HeartPulse,
-  Loader2,
   MessageCircle,
   Moon,
   RefreshCw,
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react';
 import { AdminApiError, adminApi } from '../../lib/adminApi';
 import { STATUS_LABELS, STATUS_TONES, formatDayLong, formatSlot } from '../../lib/schedule';
+import { Skeleton } from './Skeleton';
 
 type Metric = { points: { date: string; value: number }[]; first: number | null; last: number | null; delta: number | null };
 
@@ -256,9 +256,25 @@ export function UserInsightsPanel({
 
         <div className="flex-1 space-y-4 px-4 py-4 sm:px-5">
           {loading && (
-            <div className="flex items-center gap-2 rounded-3xl border border-line bg-white p-6 text-sm font-semibold text-ink/50">
-              <Loader2 size={16} className="animate-spin text-accent" /> Reunindo os insights do paciente...
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="rounded-3xl border border-line bg-white p-4">
+                    <Skeleton className="h-2.5 w-16" />
+                    <Skeleton className="mt-3 h-6 w-12" />
+                    <Skeleton className="mt-2 h-2 w-20" />
+                  </div>
+                ))}
+              </div>
+              {Array.from({ length: 2 }).map((_, index) => (
+                <div key={index} className="rounded-3xl border border-line bg-white p-5">
+                  <Skeleton className="h-3 w-36" />
+                  <Skeleton className="mt-4 h-2.5 w-full" />
+                  <Skeleton className="mt-2 h-2.5 w-4/5" />
+                  <Skeleton className="mt-2 h-2.5 w-3/5" />
+                </div>
+              ))}
+            </>
           )}
 
           {!loading && error && (

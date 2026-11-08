@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { AdminApiError, adminApi } from '../../lib/adminApi';
+import { Skeleton } from './Skeleton';
 import {
   STATUS_LABELS,
   STATUS_TONES,
@@ -302,7 +303,11 @@ export function AgendaPanel({
             {WEEKDAY_LABELS.map((label) => (
               <span key={label} className="pb-1 text-[10px] font-bold uppercase tracking-wide text-ink/35">{label}</span>
             ))}
-            {cells.map((cell) => {
+            {loading ? (
+              Array.from({ length: 35 }).map((_, index) => (
+                <Skeleton key={index} className="min-h-[62px] rounded-xl" />
+              ))
+            ) : cells.map((cell) => {
               const list = appointmentsByDay.get(cell.key) || [];
               const blocked = blockedByDay.has(cell.key);
               const isToday = cell.key === (data?.today || todayKey());
@@ -345,7 +350,6 @@ export function AgendaPanel({
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Confirmada</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-400" /> Realizada</span>
             <span className="inline-flex items-center gap-1.5"><Lock size={10} className="text-red-400" /> Dia bloqueado</span>
-            {loading && <span className="inline-flex items-center gap-1.5 text-accent"><Loader2 size={11} className="animate-spin" /> Carregando</span>}
           </div>
         </section>
 
@@ -355,13 +359,27 @@ export function AgendaPanel({
               <p className="label-sm text-accent">Dia selecionado</p>
               <h3 className="font-display text-lg font-semibold capitalize text-ink">{formatDayLong(selectedDay)}</h3>
             </div>
-            <span className="rounded-full bg-paper px-2.5 py-1 text-[10px] font-bold text-ink/50">
-              {selectedAppointments.length} consulta{selectedAppointments.length === 1 ? '' : 's'}
-            </span>
+            {loading ? (
+              <Skeleton className="h-6 w-24 rounded-full" />
+            ) : (
+              <span className="rounded-full bg-paper px-2.5 py-1 text-[10px] font-bold text-ink/50">
+                {selectedAppointments.length} consulta{selectedAppointments.length === 1 ? '' : 's'}
+              </span>
+            )}
           </div>
 
           <div className="mt-3 space-y-2">
-            {!selectedAppointments.length && (
+            {loading && Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="rounded-2xl border border-line p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Skeleton className="h-3 w-1/3" />
+                  <Skeleton className="h-4 w-16 rounded-full" />
+                </div>
+                <Skeleton className="mt-2 h-2.5 w-1/2" />
+                <Skeleton className="mt-2 h-8 w-full rounded-lg" />
+              </div>
+            ))}
+            {!loading && !selectedAppointments.length && (
               <div className="rounded-2xl border border-dashed border-line bg-paper/40 p-4 text-center">
                 <CalendarDays size={20} className="mx-auto text-ink/25" />
                 <p className="mt-2 text-[11px] font-semibold text-ink/50">Nenhuma consulta neste dia.</p>

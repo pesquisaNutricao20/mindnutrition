@@ -36,6 +36,7 @@ import { RichTextEditor } from './RichTextEditor';
 import { AgendaPanel } from './AgendaPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { UserInsightsPanel } from './UserInsightsPanel';
+import { Skeleton } from './Skeleton';
 
 type ToastKind = 'success' | 'error' | 'info';
 type ToastFn = (message: string, kind?: ToastKind) => void;
@@ -176,10 +177,6 @@ const draftFromArticle = (article: AdminArticle): ArticleDraft => ({
   duration: article.duration || '4 min',
   published: article.published !== false,
 });
-
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-line/50 ${className}`} />;
-}
 
 function StatCard({
   label,
@@ -1161,7 +1158,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
 
         {tab === 'users' && (
           <div className="space-y-4">
-            {stats && (
+            {stats ? (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
                   { label: 'Total', value: stats.total },
@@ -1175,7 +1172,16 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                   </div>
                 ))}
               </div>
-            )}
+            ) : usersLoading ? (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="rounded-2xl border border-line bg-white px-4 py-3">
+                    <Skeleton className="h-2.5 w-12" />
+                    <Skeleton className="mt-2 h-6 w-10" />
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <div className="rounded-3xl border border-line bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
