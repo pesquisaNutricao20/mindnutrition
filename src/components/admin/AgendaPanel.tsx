@@ -248,7 +248,7 @@ export function AgendaPanel({
           <button
             type="button"
             onClick={() => setReloadToken((value) => value + 1)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3.5 py-1.5 text-[11px] font-bold text-white"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-1.5 text-[11px] font-bold text-red-700 transition hover:bg-red-100"
           >
             <RefreshCw size={12} /> Tentar novamente
           </button>

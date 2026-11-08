@@ -181,7 +181,7 @@ export function MessagesPanel({
           {!listLoading && listError && (
             <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-[11px] font-semibold text-red-600">
               <p className="flex items-center gap-1.5"><AlertTriangle size={13} /> {listError}</p>
-              <button type="button" onClick={() => void loadList()} className="mt-2 rounded-full bg-red-600 px-3 py-1.5 text-[10px] font-bold text-white">
+              <button type="button" onClick={() => void loadList()} className="mt-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100">
                 Tentar novamente
               </button>
             </div>

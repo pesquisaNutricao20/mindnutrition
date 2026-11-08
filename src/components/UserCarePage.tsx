@@ -294,7 +294,7 @@ export function UserCarePage({
             {!messagesLoading && messagesError && (
               <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
                 <p className="flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {messagesError}</p>
-                <button type="button" onClick={() => void loadChat()} className="mt-2 rounded-full bg-red-600 px-3 py-1.5 text-[10px] font-bold text-white">
+                <button type="button" onClick={() => void loadChat()} className="mt-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100">
                   Tentar novamente
                 </button>
               </div>
@@ -432,7 +432,7 @@ export function UserCarePage({
             {appointmentsError && (
               <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
                 <p className="flex items-center gap-1.5"><AlertTriangle size={14} /> {appointmentsError}</p>
-                <button type="button" onClick={() => void loadAgenda()} className="mt-2 rounded-full bg-red-600 px-3 py-1.5 text-[10px] font-bold text-white">
+                <button type="button" onClick={() => void loadAgenda()} className="mt-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100">
                   Tentar novamente
                 </button>
               </div>

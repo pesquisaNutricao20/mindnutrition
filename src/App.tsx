@@ -1054,7 +1054,7 @@ function ConfirmationModal({
             <p className="mt-2 text-sm leading-relaxed text-ink/65">{description}</p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button type="button" onClick={onClose} className="rounded-full border border-line px-4 py-3 text-xs font-bold text-ink/65 hover:bg-white">Cancelar</button>
-              <button type="button" onClick={() => { onConfirm(); onClose(); }} className="rounded-full bg-red-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-red-700">{confirmLabel}</button>
+              <button type="button" onClick={() => { onConfirm(); onClose(); }} className="rounded-full bg-red-50 px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-100">{confirmLabel}</button>
             </div>
             </div>
           </motion.section>
@@ -3800,12 +3800,12 @@ function ProgressPageComponent({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <section className="rounded-3xl border border-line bg-white p-5">
-          <div className="flex items-center justify-between gap-2"><span className="label-sm text-accent">Sono</span>{userProfile.sleepLogs?.[0] && <button type="button" onClick={() => removeSleepRecord(userProfile.sleepLogs![0].id)} className="text-[10px] font-bold text-red-500 hover:underline">Apagar</button>}</div>
+          <div className="flex items-center justify-between gap-2"><span className="label-sm text-accent">Sono</span>{userProfile.sleepLogs?.[0] && <button type="button" onClick={() => removeSleepRecord(userProfile.sleepLogs![0].id)} className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600 transition hover:bg-red-100">Apagar</button>}</div>
           <p className="mt-2 text-lg font-bold">{userProfile.sleepLogs?.[0] ? `${userProfile.sleepLogs[0].hours}h · ${userProfile.sleepLogs[0].quality}` : 'Sem registro'}</p>
           <p className="mt-1 text-xs text-ink/55">O descanso ajuda a interpretar seus sinais de fome.</p>
         </section>
         <section className="rounded-3xl border border-line bg-white p-5">
-          <div className="flex items-center justify-between gap-2"><span className="label-sm text-accent">Diário</span>{userProfile.dailyNotes?.[0] && <button type="button" onClick={() => removeDiaryRecord(userProfile.dailyNotes![0].id)} className="text-[10px] font-bold text-red-500 hover:underline">Apagar</button>}</div>
+          <div className="flex items-center justify-between gap-2"><span className="label-sm text-accent">Diário</span>{userProfile.dailyNotes?.[0] && <button type="button" onClick={() => removeDiaryRecord(userProfile.dailyNotes![0].id)} className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600 transition hover:bg-red-100">Apagar</button>}</div>
           <p className="mt-2 text-lg font-bold">{userProfile.dailyNotes?.length || 0} registros</p>
           <p className="mt-1 line-clamp-2 text-xs text-ink/55">{userProfile.dailyNotes?.[0]?.text || 'Registre acontecimentos e emoções para enriquecer seus insights.'}</p>
         </section>
@@ -4134,7 +4134,7 @@ function ProfilePageComponent({
               ))}
             </div>
           </div>
-          <button onClick={() => onNavigate('settings-account')} className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-ink text-paper text-xs font-bold inline-flex items-center justify-center gap-2 shadow-sm">
+          <button onClick={() => onNavigate('settings-account')} className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-ink/10 text-ink text-xs font-bold inline-flex items-center justify-center gap-2 hover:bg-ink/15">
             <Edit2 size={14} /> Editar
           </button>
         </div>
@@ -4207,7 +4207,7 @@ function ProfilePageComponent({
         </button>
         <button
           onClick={() => setShowExitConfirmation(true)}
-          className="w-full py-4 text-red-500 font-bold border-2 border-red-500/10 rounded-full hover:bg-red-50 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+          className="w-full py-4 text-red-600 font-bold border-2 border-red-100 bg-red-50 rounded-full hover:bg-red-100 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2"
         >
           <LogOut size={16} /> Sair
         </button>
@@ -4443,7 +4443,7 @@ function PrivacySettingsPage({
         </div>
         <button
           onClick={() => setShowDeleteConfirmation(true)}
-          className="w-full py-4 text-red-500 font-bold border-2 border-red-500/20 rounded-full hover:bg-red-50 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2 mt-4"
+          className="w-full py-4 text-red-600 font-bold border-2 border-red-100 bg-red-50 rounded-full hover:bg-red-100 transition-colors text-xs uppercase tracking-wider flex items-center justify-center gap-2 mt-4"
         >
           <Trash2 size={16} /> Apagar dados
         </button>
@@ -4548,10 +4548,10 @@ function MealDetailsPageComponent({
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
-          <button type="button" onClick={() => setIsEditing(editing => !editing)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-line px-3 py-2.5 text-xs font-bold text-accent hover:bg-accent/5">
+          <button type="button" onClick={() => setIsEditing(editing => !editing)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-accent/20 bg-accent/10 px-3 py-2.5 text-xs font-bold text-accent hover:bg-accent/20">
             <Edit2 size={14} /> {isEditing ? 'Cancelar' : 'Editar'}
           </button>
-          <button type="button" onClick={() => setShowDeleteConfirmation(true)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-red-200 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50">
+          <button type="button" onClick={() => setShowDeleteConfirmation(true)} className="inline-flex min-w-0 items-center justify-center gap-1 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100">
             <Trash2 size={14} /> Excluir
           </button>
         </div>

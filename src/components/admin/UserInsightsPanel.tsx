@@ -267,7 +267,7 @@ export function UserInsightsPanel({
               <button
                 type="button"
                 onClick={() => setReloadToken((value) => value + 1)}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
               >
                 <RefreshCw size={13} /> Tentar novamente
               </button>

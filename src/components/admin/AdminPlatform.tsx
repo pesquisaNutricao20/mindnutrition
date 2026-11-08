@@ -969,7 +969,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 type="button"
                 onClick={handleLogout}
                 aria-label="Sair do painel"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-red-500 transition hover:bg-red-50"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100"
               >
                 <LogOut size={16} />
               </button>
@@ -1010,7 +1010,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 rounded-full border border-red-100 px-3.5 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-3.5 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
             >
               <LogOut size={13} /> Sair
             </button>
@@ -1029,7 +1029,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 <button
                   type="button"
                   onClick={loadOverview}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
                 >
                   <RefreshCw size={13} /> Tentar novamente
                 </button>
@@ -1231,7 +1231,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 <button
                   type="button"
                   onClick={() => setReloadToken((current) => current + 1)}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
                 >
                   <RefreshCw size={13} /> Recarregar
                 </button>
@@ -1316,7 +1316,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 <button
                   type="button"
                   onClick={loadArticles}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
                 >
                   <RefreshCw size={13} /> Tentar novamente
                 </button>
@@ -1391,14 +1391,14 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                             setArticleFormError('');
                             setDraft(draftFromArticle(article));
                           }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[11px] font-bold text-accent transition hover:bg-accent/5"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-accent/20 bg-accent/10 py-2 text-[11px] font-bold text-accent transition hover:bg-accent/20"
                         >
                           <Edit2 size={12} /> Editar
                         </button>
                         <button
                           type="button"
                           onClick={() => setDeletingArticle(article)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-100 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-50"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-100 bg-red-50 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
                         >
                           <Trash2 size={12} /> Excluir
                         </button>
@@ -1460,7 +1460,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 type="button"
                 onClick={handleDeleteArticle}
                 disabled={removingArticle}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-red-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-red-50 px-4 py-2.5 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-60"
               >
                 {removingArticle ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 Excluir
