@@ -505,7 +505,7 @@ function ArticleEditorModal({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center">
-      <div className="absolute inset-0 bg-ink/45 backdrop-blur-sm" onClick={() => !saving && onClose()} />
+      <div className="absolute inset-0 bg-ink/55" onClick={() => !saving && onClose()} />
       <section className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[2rem] border border-line bg-paper shadow-2xl sm:rounded-[2rem]">
         <header className="flex items-center justify-between gap-3 border-b border-line bg-white px-5 py-4">
           <div>
@@ -944,8 +944,8 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
 
   return (
     <div className="min-h-screen bg-paper pb-16">
-      <header className="border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-8 md:flex-row md:items-center md:justify-between">
+      <header className="border-b border-line bg-white">
+        <div className="flex w-full flex-col gap-4 px-4 py-4 sm:px-8 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10">
@@ -1018,7 +1018,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 pt-6 sm:px-8">
+      <main className="w-full px-4 pt-6 sm:px-8">
         {tab === 'overview' && (
           <div className="space-y-6">
             {overviewError ? (
@@ -1363,11 +1363,11 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                         </div>
                       )}
                       <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-                        <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold text-accent backdrop-blur">
+                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-accent">
                           {article.type || 'Leitura'}
                         </span>
-                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold backdrop-blur ${
-                          article.published === false ? 'bg-amber-100/95 text-amber-700' : 'bg-emerald-100/95 text-emerald-700'
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                          article.published === false ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
                         }`}>
                           {article.published === false ? 'Rascunho' : 'Publicado'}
                         </span>
@@ -1438,7 +1438,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
 
       {deletingArticle && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-ink/45 backdrop-blur-sm" onClick={() => !removingArticle && setDeletingArticle(null)} />
+          <div className="absolute inset-0 bg-ink/55" onClick={() => !removingArticle && setDeletingArticle(null)} />
           <div className="relative z-10 w-full max-w-md rounded-[2rem] border border-red-100 bg-paper p-6 shadow-2xl">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-600">
               <Trash2 size={19} />

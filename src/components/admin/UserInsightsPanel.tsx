@@ -227,9 +227,9 @@ export function UserInsightsPanel({
 
   return (
     <div className="fixed inset-0 z-[95] flex justify-end">
-      <div className="absolute inset-0 bg-ink/45 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-ink/55" onClick={onClose} />
       <aside className="chat-scroll relative z-10 flex h-full w-full max-w-3xl flex-col overflow-y-auto border-l border-line bg-paper shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line bg-white/95 px-5 py-4 backdrop-blur">
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line bg-white px-5 py-4">
           <div className="min-w-0">
             <p className="label-sm text-accent">Insights do paciente</p>
             <h2 className="truncate font-display text-xl font-semibold text-ink">{user?.name || 'Paciente'}</h2>

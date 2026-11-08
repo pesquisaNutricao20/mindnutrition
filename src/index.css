@@ -300,9 +300,11 @@ select {
     background: var(--paper);
   }
   .app-main {
+    flex: 1;
+  }
+  .app-shell:has(.app-sidebar) .app-main {
     margin-left: 84px;
     width: calc(100vw - 84px);
-    flex: 1;
   }
   .app-topbar {
     left: calc(84px + 1rem);
