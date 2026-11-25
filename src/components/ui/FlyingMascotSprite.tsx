@@ -12,11 +12,11 @@ const ROWS: Record<MascotAnimation, number> = {
 };
 
 const DURATIONS: Record<MascotAnimation, string> = {
-  idle: '1.2s',
-  flying: '0.8s',
-  maneuver: '0.7s',
-  thinking: '1.4s',
-  talking: '1s',
+  idle: '2.4s',
+  flying: '1.6s',
+  maneuver: '1.4s',
+  thinking: '2.8s',
+  talking: '2s',
 };
 
 interface FlyingMascotSpriteProps {

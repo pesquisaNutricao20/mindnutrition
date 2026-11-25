@@ -392,6 +392,7 @@ select {
   background-size: 800% 500%;
   animation-name: mascotSpriteFrames;
   animation-timing-function: steps(8, jump-none);
+  animation-direction: normal;
   animation-iteration-count: infinite;
 }
 @keyframes mascotSpriteFrames {

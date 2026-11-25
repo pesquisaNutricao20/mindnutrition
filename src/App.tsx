@@ -1744,21 +1744,6 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => { setCareInitialTab('chat'); setCurrentPage('messages'); }}
-            className="relative hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-white text-ink/60 transition hover:border-accent/40 hover:text-accent sm:inline-flex"
-            aria-label={unreadMessages > 0 ? `Mensagens: ${unreadMessages} não lidas` : 'Mensagens e consultas'}
-            aria-current={currentPage === 'messages' ? 'page' : undefined}
-            title="Mensagens e consultas"
-          >
-            <MessageCircle size={17} />
-            {unreadMessages > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-secondary px-1 text-[9px] font-bold text-white">
-                {unreadMessages > 9 ? '9+' : unreadMessages}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
             onClick={() => setShowHungerModal(true)}
             className="hidden min-h-11 sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold hover:bg-accent/20 transition-colors"
             title="Diferenciar Fome Física e Emocional"
@@ -2723,11 +2708,8 @@ function DashboardPage({
         onClick={() => onNavigate('meal-log')}
         className="min-h-16 justify-between rounded-[1.5rem] px-5 text-left"
       >
-        <span className="flex items-center gap-4">
-          <PlusCircle size={26} />
-          <span><span className="block">Registrar refeição</span><span className="block text-xs font-medium text-paper/80">Observe fome, saciedade e humor agora</span></span>
-        </span>
-        <ArrowRight size={20} />
+        <span><span className="block">Registrar refeição</span><span className="block text-xs font-medium text-paper/80">Observe fome, saciedade e humor agora</span></span>
+        <PlusCircle size={26} aria-hidden="true" />
       </Button>
 
       <div><MascotBubble userProfile={userProfile} onMoodShared={onMoodShared} /></div>
@@ -3314,7 +3296,7 @@ function MealLogPage({
         {step === 'meal' && (
           <>
             <div className="bg-white border border-line p-6 rounded-[2rem] shadow-sm">
-              <FormField label="Nome da refeição" htmlFor="meal-title" hint="Use um nome curto para reconhecer este registro depois.">
+              <FormField className="[&>label]:my-3" label="Nome da refeição" htmlFor="meal-title" hint="Use um nome curto para reconhecer este registro depois.">
                 <input
                   id="meal-title"
                   type="text"
@@ -3408,7 +3390,7 @@ function MealLogPage({
             />
 
             <div className="bg-white border border-line p-5 rounded-[2rem]">
-              <FormField label="O que você está comendo?" htmlFor="meal-notes" hint="Descreva o prato, os sabores ou como está seu ritmo ao comer." optional>
+              <FormField className="[&>label]:my-3" label="O que você está comendo?" htmlFor="meal-notes" hint="Descreva o prato, os sabores ou como está seu ritmo ao comer." optional>
                 <textarea
                   id="meal-notes"
                   placeholder="Suas observações..."
