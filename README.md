@@ -24,12 +24,24 @@ Rode as migrations no SQL Editor do Supabase, nesta ordem:
 
 A `003` é obrigatória para o painel de artigos e para o upload de fotos das refeições. A `004` é obrigatória para a conversa, a agenda de consultas e o editor rico de artigos.
 
-## IA (Groq)
+## Manter o Supabase ativo
 
-- Texto (jornada dos Insights): `openai/gpt-oss-120b`.
-- Visão (foto da refeição): `qwen/qwen3.8-27b`, o modelo multimodal disponível na Groq. O GPT-OSS 120B não aceita imagens na API.
-- Configure apenas `GROQ_API_KEY` no servidor. Os modelos podem ser sobrescritos por `GROQ_TEXT_MODEL` e `GROQ_VISION_MODEL`.
-- Fallback de texto: com `NVIDIA_API_KEY` configurada, falhas da Groq (429, 5xx, timeout, chave ausente) passam automaticamente para `minimaxai/minimax-m3.1-flash` na NVIDIA. O modelo é somente texto — fotos continuam exclusivamente na Groq. Opcional: `NVIDIA_TEXT_MODEL`.
+O projeto free do Supabase pausa o banco após cerca de 7 dias sem acesso. O `vercel.json` agenda uma chamada diária às 03:00 UTC para `/api/cron/keep-alive`; a rota só consulta o banco quando o dia UTC é múltiplo de 6, garantindo uma leitura a cada 6 dias mesmo na virada do mês. O cron diário é necessário porque o plano Hobby da Vercel limita cron jobs a uma execução por dia; `*/6` no dia do mês deixaria um intervalo de 7 dias entre o dia 25 e o dia 1.
+
+A consulta é mínima: `SELECT id FROM profiles LIMIT 1`, feita com a service role key. Configure `CRON_SECRET` no ambiente de produção da Vercel e faça deploy — sem essa variável a rota responde `401`. Para testar manualmente:
+
+```bash
+curl -H "Authorization: Bearer <CRON_SECRET>" "https://SEU-DOMINIO/api/cron/keep-alive?force=1"
+```
+
+O parâmetro `force=1` ignora o intervalo de 6 dias e é útil apenas para validar a integração; exige o mesmo segredo.
+
+## IA (Gemini, com fallback Groq)
+
+- **Principal:** Gemini via endpoint compatível com OpenAI (`https://generativelanguage.googleapis.com/v1beta/openai`), modelo `gemini-3.1-flash-lite` para texto e visão. Configure `GEMINI_API_KEY` no servidor; os modelos podem ser sobrescritos por `GEMINI_TEXT_MODEL` e `GEMINI_VISION_MODEL`.
+- **Fallback:** falhas do Gemini (429, 5xx, timeout, chave ausente) passam automaticamente para a Groq — texto `openai/gpt-oss-120b` (`GROQ_TEXT_MODEL`) e fotos `qwen/qwen3.8-27b` (`GROQ_VISION_MODEL`). Configure `GROQ_API_KEY`.
+- **Último fallback (somente texto):** com `NVIDIA_API_KEY`, falhas do Gemini e da Groq passam para `minimaxai/minimax-m3.1-flash` (`NVIDIA_TEXT_MODEL`).
+- A chave do Gemini fica apenas no servidor (nunca use prefixo `VITE_`). `GET /api/health` informa quais provedores estão configurados.
 
 ### Nutrição comportamental nas respostas da IA
 
@@ -80,11 +92,13 @@ O `vercel.json` já configura o fallback de SPA (para abrir `/nutricionista` dir
 
 | Variável | Uso |
 |---|---|
+| `CRON_SECRET` | Protege o endpoint do cron keep-alive (gerar string aleatória) |
 | `ADMIN_KEY_HASH` | Login do painel (hash gerado com `npm run admin:hash`) |
 | `ADMIN_SESSION_SECRET` | Opcional; segredo do cookie de sessão |
 | `ADMIN_SESSION_TTL_HOURS` | Opcional; validade da sessão (padrão 8, máximo 72) |
-| `GROQ_API_KEY` | IA de texto e de imagem |
-| `NVIDIA_API_KEY` | Opcional; fallback de texto (MiniMax M3.1) quando a Groq falha |
+| `GEMINI_API_KEY` | IA principal de texto e imagem (gemini-3.1-flash-lite) |
+| `GROQ_API_KEY` | Fallback de texto e imagem |
+| `NVIDIA_API_KEY` | Opcional; último fallback de texto (MiniMax M3.1) |
 | `SUPABASE_URL` | URL do projeto Supabase (servidor) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Chave service role (somente servidor) |
 | `VITE_PUBLICSUPABASE_URL` | URL pública usada no build do cliente |

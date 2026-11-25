@@ -19,6 +19,7 @@ const SELECT = [
   'notes:data->dailyNotes',
   'sleep:data->sleepLogs',
   'weight:data->weightEvolution',
+  'challenge:data->challenge',
 ].join(',');
 
 const toNumber = (value) => {
@@ -50,6 +51,17 @@ function mapUser(row) {
     : null;
   const imc = computedImc && computedImc >= 10 && computedImc <= 80 ? computedImc : storedImc;
 
+  const rawChallenge = row.challenge && typeof row.challenge === 'object' ? row.challenge : null;
+  const challengeDays = rawChallenge && Array.isArray(rawChallenge.days) ? rawChallenge.days : [];
+  const activityCounts = challengeDays.map((day) => ['meal', 'sleep', 'mood', 'mission'].filter((key) => day?.[key] === true).length);
+  const challenge = rawChallenge ? {
+    startedAt: rawChallenge.startedAt || null,
+    days: challengeDays.length,
+    completed: activityCounts.filter((count) => count >= 3).length,
+    points: activityCounts.reduce((sum, count) => sum + count * 10, 0),
+    lastDate: challengeDays.length ? String(challengeDays[challengeDays.length - 1]?.date || '') : null,
+  } : null;
+
   return {
     id: String(row.id || ''),
     email: String(row.email || '').slice(0, 160),
@@ -65,6 +77,7 @@ function mapUser(row) {
     onboardingComplete: Boolean(row.onboarding) || Boolean(row.completed),
     notesCount: Array.isArray(row.notes) ? row.notes.length : 0,
     sleepCount: Array.isArray(row.sleep) ? row.sleep.length : 0,
+    challenge,
     updatedAt: row.updated_at || null,
     lastActive: row.updated_at || null,
   };

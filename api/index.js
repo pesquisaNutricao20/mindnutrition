@@ -3,6 +3,7 @@ import aiInsight from './_routes/ai-insight.js';
 import aiMealImage from './_routes/ai-meal-image.js';
 import appointments from './_routes/appointments.js';
 import articles from './_routes/articles.js';
+import keepAlive from './_routes/cron/keep-alive.js';
 import health from './_routes/health.js';
 import messages from './_routes/messages.js';
 import adminAppointments from './_routes/admin/appointments.js';
@@ -21,6 +22,7 @@ const routes = new Map([
   ['/api/ai-meal-image', aiMealImage],
   ['/api/appointments', appointments],
   ['/api/articles', articles],
+  ['/api/cron/keep-alive', keepAlive],
   ['/api/health', health],
   ['/api/messages', messages],
   ['/api/admin/appointments', adminAppointments],

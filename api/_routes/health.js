@@ -5,7 +5,9 @@ export default function handler(request, response) {
 
   return sendJson(response, 200, {
     ok: true,
-    ai: Boolean(process.env.GROQ_API_KEY),
+    ai: Boolean(process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY),
+    gemini: Boolean(process.env.GEMINI_API_KEY),
+    groq: Boolean(process.env.GROQ_API_KEY),
     admin: Boolean(process.env.ADMIN_KEY_HASH || process.env.ADMIN_KEY),
     supabaseAdmin: Boolean(
       (process.env.SUPABASE_URL || process.env.VITE_PUBLICSUPABASE_URL)

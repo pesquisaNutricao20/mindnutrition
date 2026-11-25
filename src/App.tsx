@@ -44,6 +44,9 @@ import {
   Utensils,
   RefreshCw,
   Loader2,
+  Sprout,
+  Flower2,
+  Check,
 } from 'lucide-react';
 import { TbHealthRecognition } from 'react-icons/tb';
 import { PiHeartbeat } from 'react-icons/pi';
@@ -59,7 +62,12 @@ import { AdminPlatform } from './components/admin/AdminPlatform';
 import { UserCarePage } from './components/UserCarePage';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
 import { DEFAULT_PROFILE_PHOTO, readValidatedImages, MAX_IMAGE_SIZE_MB, MAX_MEAL_PHOTOS } from './constants';
-import type { Page, UserProfile, DailyNote, SleepLog } from './types';
+import type { Page, UserProfile, DailyNote, SleepLog, ChallengeState } from './types';
+import { DEFAULT_RECIPES, RECIPE_CATEGORIES, recipeToArticle, type Recipe } from './data/recipes';
+import {
+  CHALLENGE_ACTIVITIES, CHALLENGE_MISSIONS, WEEK_BADGES,
+  challengeFeedback, dayPoints, gardenStage, isDayComplete,
+} from './data/challenge';
 import {
   deleteCurrentUserData,
   getFriendlySupabaseError,
@@ -1380,7 +1388,7 @@ export default function App() {
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  const mainTabs: Page[] = ['dashboard', 'progress', 'content', 'profile'];
+  const mainTabs: Page[] = ['dashboard', 'progress', 'challenge', 'content', 'profile'];
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -1668,6 +1676,7 @@ export default function App() {
   const navItems = [
     { id: 'dashboard', icon: Home, label: 'Início' },
     { id: 'progress', icon: Activity, label: 'Insights' },
+    { id: 'challenge', icon: Sprout, label: 'Desafio' },
     { id: 'meal-log', icon: PlusCircle, label: 'Registrar', primary: true },
     { id: 'content', icon: Library, label: 'Biblioteca' },
     { id: 'profile', icon: User, label: 'Perfil' },
@@ -1767,10 +1776,10 @@ export default function App() {
   const renderMobileNav = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'meal-log'].includes(currentPage) || isLoading) return null;
 
-    // Mobile nav contains 5 symmetrical items: Início, Insights, Registrar (Center), Biblioteca, Perfil
+    // Seis itens: Início, Insights, Desafio, Registrar (centro), Biblioteca, Perfil.
     return (
       <div className="mobile-nav fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 pb-safe pointer-events-none">
-        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-md">
+        <nav className="pointer-events-auto grid grid-cols-6 h-16 w-full max-w-[26rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-md">
           {navItems.map((item) => {
             const isActive = currentPage === item.id;
 
@@ -2005,6 +2014,9 @@ export default function App() {
               onSelectArticle={setSelectedArticle}
               onNavigate={setCurrentPage}
               readArticleIds={userProfile.readArticleIds || []}
+              userProfile={userProfile}
+              onSaveProfile={persistUserProfile}
+              toast={toast}
             />
           )}
 
@@ -2030,12 +2042,24 @@ export default function App() {
             />
           )}
 
+          {currentPage === 'challenge' && (
+            <ChallengePage
+              key="challenge"
+              userProfile={userProfile}
+              loggedMeals={loggedMeals}
+              onSaveProfile={persistUserProfile}
+              onNavigate={setCurrentPage}
+              toast={toast}
+            />
+          )}
+
           {currentPage === 'profile' && (
             <ProfilePageComponent
               key="profile"
               userProfile={userProfile}
               onNavigate={setCurrentPage}
               onOpenDiary={() => setShowDailyDiaryModal(true)}
+              onSaveProfile={persistUserProfile}
               toast={toast}
             />
           )}
@@ -2159,7 +2183,7 @@ export default function App() {
               <div className="modal-body">
                 <h2 className="display-title text-3xl sm:text-4xl mb-6 leading-tight">{selectedArticle.title}</h2>
                 <div className="mask-image-full mb-6 overflow-hidden rounded-[2rem] shadow-md h-52 sm:h-72">
-                  <img src={selectedArticle.image} alt="" className="w-full h-full object-cover" />
+                  <img src={selectedArticle.image || DEFAULT_RECIPES[0].image} alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="prose prose-lg max-w-none text-ink/90 space-y-4">
                   {selectedArticle.contentHtml || selectedArticle.content_html ? (
@@ -2184,7 +2208,7 @@ export default function App() {
                   )}
                 </div>
                 <button onClick={closeArticle} className="mt-10 w-full py-5 bg-accent text-paper rounded-full font-bold uppercase tracking-widest text-sm shadow-xl hover:bg-accent/90">
-                  Concluir Leitura Consciente
+                  {selectedArticle.type === 'Receita' ? 'Concluir Receita' : 'Concluir Leitura Consciente'}
                 </button>
               </div>
             </motion.div>
@@ -2540,6 +2564,9 @@ function DashboardPage({
   onOpenCare: (tab: 'chat' | 'appointments') => void;
 }) {
   const [quoteIndex, setQuoteIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<{
+    id: string; title: string; description: string; action: () => void;
+  } | null>(null);
   const [appRating, setAppRating] = useState<number | null>(() => {
     const saved = localStorage.getItem('nutriAppFeedback');
     return saved ? Number(saved) : null;
@@ -2668,23 +2695,64 @@ function DashboardPage({
       </section>
 
       {/* Quick Hub Grid */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <button onClick={() => onNavigate('progress')} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <button
+          onClick={() => setSelectedOption({
+            id: 'signals',
+            title: 'Sinais da Jornada',
+            description: 'Veja gráficos de evolução, fontes de fome e seu radar de consciência. Um espaço para observar padrões com curiosidade, sem notas ou julgamentos.',
+            action: () => onNavigate('progress'),
+          })}
+          aria-pressed={selectedOption?.id === 'signals'}
+          className={`group rounded-[1.75rem] border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${selectedOption?.id === 'signals' ? 'border-accent ring-2 ring-accent/20' : 'border-line'}`}
+        >
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent"><TrendingUp size={20} /></span>
           <h3 className="mt-4 font-bold text-base">Sinais da Jornada</h3>
           <p className="mt-1 text-xs leading-relaxed text-ink/55">Gráficos de evolução, fontes de fome e radar de consciência.</p>
         </button>
-        <button onClick={onOpenSleep} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
+        <button
+          onClick={() => setSelectedOption({
+            id: 'sleep',
+            title: 'Cuidar do Sono',
+            description: 'Registre uma noite de sono e observe, com gentileza, como o descanso se relaciona com seu apetite e sua disposição.',
+            action: onOpenSleep,
+          })}
+          aria-pressed={selectedOption?.id === 'sleep'}
+          className={`group rounded-[1.75rem] border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${selectedOption?.id === 'sleep' ? 'border-accent ring-2 ring-accent/20' : 'border-line'}`}
+        >
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600"><Moon size={20} /></span>
           <h3 className="mt-4 font-bold text-base">Cuidar do Sono</h3>
           <p className="mt-1 text-xs leading-relaxed text-ink/55">
             {latestSleep ? `${latestSleep.hours}h de sono (${latestSleep.quality}) registrado.` : 'Registre seu descanso e veja o impacto no apetite.'}
           </p>
         </button>
-        <button onClick={() => onNavigate('content')} className="group rounded-[1.75rem] border border-line bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md">
+        <button
+          onClick={() => setSelectedOption({
+            id: 'library',
+            title: 'Biblioteca Científica',
+            description: 'Leituras e receitas acolhedoras sobre nutrição gentil, autocompaixão e aproveitamento integral dos alimentos.',
+            action: () => onNavigate('content'),
+          })}
+          aria-pressed={selectedOption?.id === 'library'}
+          className={`group rounded-[1.75rem] border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${selectedOption?.id === 'library' ? 'border-accent ring-2 ring-accent/20' : 'border-line'}`}
+        >
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-secondary/15 text-accent-secondary"><BookOpen size={20} /></span>
           <h3 className="mt-4 font-bold text-base">Biblioteca Científica</h3>
-          <p className="mt-1 text-xs leading-relaxed text-ink/55">Artigos acolhedores sobre nutrição gentil e autocompaixão.</p>
+          <p className="mt-1 text-xs leading-relaxed text-ink/55">Artigos e receitas sobre nutrição gentil e autocompaixão.</p>
+        </button>
+        <button
+          onClick={() => setSelectedOption({
+            id: 'challenge',
+            title: 'Desafio de 21 Dias',
+            description: 'Uma jornada leve de observação: refeição, sono, emoções e uma missão por dia. Sem metas de peso, sem punição e com recompensas simbólicas.',
+            action: () => onNavigate('challenge'),
+          })}
+          aria-pressed={selectedOption?.id === 'challenge'}
+          className={`group rounded-[1.75rem] border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${selectedOption?.id === 'challenge' ? 'border-accent ring-2 ring-accent/20' : 'border-line'}`}
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Sprout size={20} /></span>
+          <h3 className="mt-4 font-bold text-base">Desafio de 21 Dias</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink/55">Observar, compreender e cultivar em pequenos registros diários.</p>
         </button>
       </section>
 
@@ -2815,6 +2883,34 @@ function DashboardPage({
           </div>
         </div>
       </section>
+
+      {selectedOption && (
+        <div className="modal-shell fixed inset-0 z-50 flex">
+          <div className={MODAL_BACKDROP_CLASS} onClick={() => setSelectedOption(null)} />
+          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-lg bg-paper shadow-2xl border border-line z-10">
+            <div className="modal-header flex items-start justify-between gap-4">
+              <div>
+                <span className="label-sm text-accent">Espaço selecionado</span>
+                <h3 className="display-title text-3xl mt-1">{selectedOption.title}</h3>
+              </div>
+              <button type="button" onClick={() => setSelectedOption(null)} className="icon-button h-10 w-10 shrink-0" aria-label="Fechar"><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <p className="text-sm leading-relaxed text-ink/70">{selectedOption.description}</p>
+              <div className="mt-6 flex gap-3">
+                <button type="button" onClick={() => setSelectedOption(null)} className="flex-1 py-4 rounded-full border border-line text-sm font-bold text-ink/60 hover:bg-white">Cancelar</button>
+                <button
+                  type="button"
+                  onClick={() => { const action = selectedOption.action; setSelectedOption(null); action(); }}
+                  className="flex-1 py-4 rounded-full bg-accent text-paper text-sm font-bold shadow-md hover:bg-accent/90"
+                >
+                  Abrir espaço
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3340,12 +3436,21 @@ function ContentPageComponent({
   onSelectArticle,
   onNavigate,
   readArticleIds,
+  userProfile,
+  onSaveProfile,
+  toast,
 }: {
   onSelectArticle: (article: any) => void;
   onNavigate: (page: Page) => void;
   readArticleIds: string[];
+  userProfile: UserProfile;
+  onSaveProfile: (profile: UserProfile) => void;
+  toast: any;
 }) {
   const [articles, setArticles] = useState<any[]>(() => [...DEFAULT_LIBRARY_ARTICLES]);
+  const [filter, setFilter] = useState<'all' | 'articles' | 'recipes'>('all');
+  const [showRecipeForm, setShowRecipeForm] = useState(false);
+  const [recipeDraft, setRecipeDraft] = useState({ title: '', category: RECIPE_CATEGORIES[0] as string, ingredients: '', steps: '' });
 
   useEffect(() => {
     let active = true;
@@ -3373,27 +3478,84 @@ function ContentPageComponent({
     return () => { active = false; };
   }, []);
 
+  const customRecipes = userProfile.customRecipes || [];
+  const articleItems = articles.filter(item => item.type !== 'Receita');
+  const recipeItems = [
+    ...[...customRecipes, ...DEFAULT_RECIPES].map(recipeToArticle),
+    ...articles.filter(item => item.type === 'Receita'),
+  ];
+  const visibleItems = filter === 'recipes' ? recipeItems : filter === 'articles' ? articleItems : [...articleItems, ...recipeItems];
+
+  const saveRecipe = () => {
+    const title = recipeDraft.title.trim();
+    const ingredients = recipeDraft.ingredients.split('\n').map(line => line.trim()).filter(Boolean);
+    const steps = recipeDraft.steps.split('\n').map(line => line.trim()).filter(Boolean);
+    if (!title || !ingredients.length || !steps.length) {
+      toast('Preencha título, ingredientes e modo de preparo.', 'error');
+      return;
+    }
+    const recipe: Recipe = {
+      id: `custom-${Date.now()}`,
+      title,
+      category: recipeDraft.category,
+      time: '—',
+      servings: '—',
+      profile: 'Adicionada por você',
+      ingredients,
+      steps,
+      sourceLabel: 'Receita adicionada por você',
+      sourceUrl: '',
+      image: DEFAULT_RECIPES[0].image,
+    };
+    onSaveProfile({ ...userProfile, customRecipes: [recipe, ...customRecipes] });
+    setRecipeDraft({ title: '', category: RECIPE_CATEGORIES[0], ingredients: '', steps: '' });
+    setShowRecipeForm(false);
+    setFilter('recipes');
+    toast('Receita salva na sua biblioteca.', 'success');
+  };
+
   return (
     <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-6xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
-        <button onClick={() => onNavigate('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors">
+        <button onClick={() => onNavigate('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors" aria-label="Voltar ao início">
           <ArrowLeft size={20} />
         </button>
         <div>
           <h2 className="display-title text-4xl sm:text-5xl">Biblioteca.</h2>
-          <p className="serif-body text-lg text-ink/60 mt-0.5">Conhecimento científico e acolhedor.</p>
+          <p className="serif-body text-lg text-ink/60 mt-0.5">Leituras e receitas para o dia a dia.</p>
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        {([['all', 'Tudo'], ['articles', 'Artigos'], ['recipes', 'Receitas']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setFilter(id)}
+            aria-pressed={filter === id}
+            className={`rounded-full px-4 py-2 text-xs font-bold transition ${filter === id ? 'bg-accent text-paper' : 'border border-line bg-white text-ink/60 hover:border-accent'}`}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setShowRecipeForm(true)}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-accent px-4 py-2 text-xs font-bold text-accent hover:bg-accent/10"
+        >
+          <PlusCircle size={14} /> Minha receita
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        {articles.map((item) => (
+        {visibleItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onSelectArticle(item)}
             className="group text-left bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
           >
             <div className="h-44 w-full relative overflow-hidden bg-line">
-              <img src={item.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+              <img src={item.image || DEFAULT_RECIPES[0].image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
               <div className="absolute top-3 left-3 bg-paper/95 backdrop-blur-md px-3.5 py-1 rounded-full label-sm text-accent">
                 {item.type}
               </div>
@@ -3404,12 +3566,451 @@ function ContentPageComponent({
                 <p className="text-xs text-ink/60 line-clamp-2 mb-3 leading-relaxed">{item.summary}</p>
               </div>
               <div className="flex items-center gap-1.5 text-accent text-xs font-bold mt-2">
-                <Library size={14} /> {getReadingDuration(item)} de leitura
+                <Library size={14} /> {item.duration || getReadingDuration(item)}
               </div>
               {readArticleIds.includes(item.id) && <span className="mt-3 inline-flex w-fit items-center gap-1 rounded-full bg-accent/10 px-2 py-1 text-[10px] font-bold text-accent"><CheckCircle2 size={12} /> Lido</span>}
             </div>
           </button>
         ))}
+      </div>
+
+      {showRecipeForm && (
+        <div className="modal-shell fixed inset-0 z-50 flex">
+          <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowRecipeForm(false)} />
+          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-xl bg-paper shadow-2xl border border-line z-10">
+            <div className="modal-header flex items-start justify-between gap-4">
+              <div>
+                <span className="label-sm text-accent">Sua biblioteca</span>
+                <h3 className="display-title text-3xl mt-1">Adicionar receita</h3>
+              </div>
+              <button type="button" onClick={() => setShowRecipeForm(false)} className="icon-button h-10 w-10 shrink-0" aria-label="Fechar"><X size={18} /></button>
+            </div>
+            <div className="modal-body space-y-4">
+              <label className="block">
+                <span className="label-sm text-accent">Título</span>
+                <input value={recipeDraft.title} maxLength={120} onChange={e => setRecipeDraft({ ...recipeDraft, title: e.target.value })} placeholder="Ex.: Sopa de legumes da vovó" className="w-full border-b-2 border-line bg-transparent py-3 text-base outline-none focus:border-accent" />
+              </label>
+              <label className="block">
+                <span className="label-sm text-accent">Categoria</span>
+                <select value={recipeDraft.category} onChange={e => setRecipeDraft({ ...recipeDraft, category: e.target.value })} className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-accent">
+                  {RECIPE_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="label-sm text-accent">Ingredientes (um por linha)</span>
+                <textarea value={recipeDraft.ingredients} onChange={e => setRecipeDraft({ ...recipeDraft, ingredients: e.target.value })} rows={4} className="w-full rounded-xl border border-line bg-white p-3 text-sm outline-none focus:border-accent" placeholder={'2 cenouras\n1 cebola\nAzeite a gosto'} />
+              </label>
+              <label className="block">
+                <span className="label-sm text-accent">Modo de preparo (um passo por linha)</span>
+                <textarea value={recipeDraft.steps} onChange={e => setRecipeDraft({ ...recipeDraft, steps: e.target.value })} rows={4} className="w-full rounded-xl border border-line bg-white p-3 text-sm outline-none focus:border-accent" placeholder={'Lave e corte os legumes.\nRefogue e cozinhe até amaciar.'} />
+              </label>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowRecipeForm(false)} className="flex-1 py-4 rounded-full border border-line text-sm font-bold text-ink/60">Cancelar</button>
+                <button type="button" onClick={saveRecipe} className="flex-1 py-4 rounded-full bg-accent text-paper text-sm font-bold hover:bg-accent/90">Salvar receita</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChallengePage({
+  userProfile,
+  loggedMeals,
+  onSaveProfile,
+  onNavigate,
+  toast,
+}: {
+  userProfile: UserProfile;
+  loggedMeals: any[];
+  onSaveProfile: (profile: UserProfile) => void;
+  onNavigate: (page: Page) => void;
+  toast: any;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const challenge = userProfile.challenge;
+  type DayRecord = ChallengeState['days'][number];
+  const days = challenge?.days || [];
+  const [reflection, setReflection] = useState('');
+  const [showReport, setShowReport] = useState(false);
+
+  const elapsed = Math.max(1, Math.floor((new Date(today).getTime() - new Date(challenge?.startedAt || today).getTime()) / 86_400_000) + 1);
+  const dayNumber = Math.min(21, elapsed);
+  const finished = elapsed > 21;
+  const currentDay: DayRecord = days.find(item => item.date === today) || { day: dayNumber, date: today };
+  const mission = CHALLENGE_MISSIONS[dayNumber - 1];
+  const week = mission.week;
+  const completedDays = days.filter(isDayComplete).length;
+  const totalPoints = days.reduce((sum, item) => sum + dayPoints(item), 0);
+  const weekCompleted = days.filter(item => Math.ceil(item.day / 7) === week && isDayComplete(item)).length;
+
+  useEffect(() => {
+    setReflection(currentDay.reflection || '');
+  }, [currentDay.date, currentDay.reflection]);
+
+  const saveDay = (patch: Partial<DayRecord>) => {
+    if (!challenge) return;
+    const nextDay: DayRecord = { ...currentDay, ...patch, createdAt: currentDay.createdAt || new Date().toISOString() };
+    const nextDays = days.some(item => item.date === today)
+      ? days.map(item => item.date === today ? nextDay : item)
+      : [...days, nextDay];
+    const reachedFlower = nextDays.filter(isDayComplete).length >= 15;
+    onSaveProfile({
+      ...userProfile,
+      challenge: {
+        ...challenge,
+        days: nextDays,
+        completedAt: reachedFlower ? (challenge.completedAt || new Date().toISOString()) : challenge.completedAt,
+      },
+    });
+  };
+
+  if (!challenge) {
+    return (
+      <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-4xl mx-auto space-y-8">
+        <button onClick={() => onNavigate('dashboard')} className="inline-flex items-center gap-2 text-xs font-bold text-accent" aria-label="Voltar ao início"><ArrowLeft size={18} /> Início</button>
+        <section className="rounded-[2rem] border border-line bg-white p-8 text-center shadow-sm">
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-accent/10 text-accent"><Sprout size={30} /></span>
+          <p className="label-sm mt-5 text-accent">Mind Nutrition · NutConsciente</p>
+          <h2 className="display-title mt-2 text-4xl">Desafio de 21 Dias</h2>
+          <p className="serif-body mx-auto mt-3 max-w-xl text-lg text-ink/65">
+            Observar, compreender e cultivar. Uma jornada para conhecer melhor a relação entre alimentação, sono e emoções — sem metas de peso, calorias ou desempenho.
+          </p>
+          <div className="mx-auto mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
+            {['01 · Observar · dias 1 a 7', '02 · Compreender · dias 8 a 14', '03 · Cultivar · dias 15 a 21'].map(step => (
+              <div key={step} className="rounded-2xl border border-line bg-paper p-4 text-xs font-bold text-ink/70">{step}</div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => { onSaveProfile({ ...userProfile, challenge: { startedAt: today, days: [] } }); toast('Jornada iniciada. Bem-vinda à sua observação!', 'success'); }}
+            className="mt-8 rounded-full bg-accent px-8 py-4 text-sm font-bold text-paper shadow-md hover:bg-accent/90"
+          >
+            Começar minha jornada
+          </button>
+          <p className="mx-auto mt-4 max-w-lg text-[11px] leading-relaxed text-ink/50">
+            Você pode pausar, registros parciais não são punidos e os 21 dias delimitam uma prática inicial — não uma promessa de formação de hábito.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-h-screen px-4 sm:px-8 md:px-12 pt-24 md:pt-28 pb-28 max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center gap-4">
+        <button onClick={() => onNavigate('dashboard')} className="w-12 h-12 rounded-full border border-line flex items-center justify-center hover:bg-line transition-colors" aria-label="Voltar ao início"><ArrowLeft size={20} /></button>
+        <div>
+          <h2 className="display-title text-4xl sm:text-5xl">Minha Jornada Consciente</h2>
+          <p className="serif-body text-lg text-ink/60 mt-0.5">Observar · Compreender · Cultivar</p>
+        </div>
+      </div>
+
+      {finished && (
+        <section className="rounded-[1.75rem] border border-accent/30 bg-accent/10 p-5">
+          <p className="label-sm text-accent">Jornada concluída</p>
+          <h3 className="font-bold text-lg mt-1">Você chegou ao fim destes 21 dias.</h3>
+          <button type="button" onClick={() => setShowReport(true)} className="mt-3 rounded-full bg-accent px-5 py-2.5 text-xs font-bold text-paper">Ver relatório final</button>
+        </section>
+      )}
+
+      <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="label-sm text-accent">Dia {dayNumber} de 21 · Semana {week}</p>
+            <h3 className="font-display text-2xl mt-1">{['', 'Descobrindo meus hábitos', 'Entendendo minhas emoções', 'Cultivando novos hábitos'][week]}</h3>
+          </div>
+          <div className="flex items-center gap-2 rounded-full bg-accent/10 px-4 py-2 text-xs font-bold text-accent"><Sprout size={15} /> {totalPoints} sementes</div>
+        </div>
+        <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-line/50">
+          <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(100, (completedDays / 21) * 100)}%` }} />
+        </div>
+        <div className="mt-2 flex justify-between text-[10px] font-bold text-ink/50">
+          <span>{completedDays} dias concluídos</span><span>{gardenStage(completedDays)}</span>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-accent/30 bg-accent/5 p-6">
+        <p className="label-sm text-accent">Missão do dia · {mission.title}</p>
+        <p className="serif-body mt-2 text-xl leading-relaxed text-ink/85">{mission.activity}</p>
+      </section>
+
+      <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+        <p className="label-sm text-accent">Registros de hoje</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {CHALLENGE_ACTIVITIES.map(activity => {
+            const done = Boolean(currentDay[activity.key]);
+            return (
+              <button
+                key={activity.key}
+                type="button"
+                aria-pressed={done}
+                onClick={() => saveDay({ [activity.key]: !done })}
+                className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${done ? 'border-accent bg-accent/10' : 'border-line bg-paper hover:border-accent'}`}
+              >
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${done ? 'bg-accent text-paper' : 'bg-white text-ink/40'}`}>
+                  {done ? <Check size={17} /> : <span className="text-xs font-bold">+10</span>}
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-ink">{activity.label}</span>
+                  <span className="block text-[11px] text-ink/50">{activity.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-4 rounded-2xl bg-paper p-4 text-xs leading-relaxed text-ink/70">{challengeFeedback(currentDay)}</p>
+        <label className="mt-5 block">
+          <span className="label-sm text-accent">Reflexão curta (opcional)</span>
+          <textarea
+            value={reflection}
+            onChange={event => setReflection(event.target.value)}
+            rows={3}
+            placeholder="O que chamou sua atenção hoje?"
+            className="mt-2 w-full rounded-2xl border border-line bg-paper p-3 text-sm outline-none focus:border-accent"
+          />
+        </label>
+        <button type="button" onClick={() => { saveDay({ reflection: reflection.trim() }); toast('Reflexão salva.', 'success'); }} className="mt-3 rounded-full bg-accent px-6 py-2.5 text-xs font-bold text-paper hover:bg-accent/90">Salvar reflexão</button>
+      </section>
+
+      <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+        <p className="label-sm text-accent">Conquistas da semana</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {WEEK_BADGES.map(badge => {
+            const earned = days.filter(item => Math.ceil(item.day / 7) === badge.week && isDayComplete(item)).length >= 4;
+            return (
+              <div key={badge.week} className={`rounded-2xl border p-4 ${earned ? 'border-accent bg-accent/10' : 'border-line bg-paper opacity-70'}`}>
+                <div className="flex items-center gap-2">
+                  {badge.week === 3 && !earned ? <Flower2 size={18} className="text-accent" /> : <Sprout size={18} className="text-accent" />}
+                  <span className="text-xs font-bold text-ink/60">Semana {badge.week}</span>
+                </div>
+                <h4 className="mt-2 text-sm font-bold">{badge.name}</h4>
+                <p className="mt-1 text-[11px] text-ink/55">{earned ? badge.stage : '4 dias na semana para conquistar'}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div><p className="label-sm text-accent">Semana {week}</p><h3 className="font-bold text-lg">Revisão dos dias</h3></div>
+          <button type="button" onClick={() => setShowReport(true)} className="text-xs font-bold text-accent hover:underline">Ver relatório</button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {Array.from({ length: 7 }, (_, index) => (week - 1) * 7 + index + 1).map(number => {
+            const record = days.find(item => item.day === number);
+            const points = record ? dayPoints(record) : 0;
+            return (
+              <div key={number} className="flex items-center justify-between rounded-xl bg-paper px-4 py-3 text-xs">
+                <span className="font-bold text-ink/70">Dia {number}</span>
+                <span className="text-ink/55">{record ? `${points} sementes` : 'Sem registro'}</span>
+                <span className={`font-bold ${record && isDayComplete(record) ? 'text-accent' : 'text-ink/40'}`}>{record && isDayComplete(record) ? 'Concluído' : 'Parcial'}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-4 text-[11px] text-ink/50">{loggedMeals.length ? `${loggedMeals.length} refeições registradas no aplicativo durante a jornada.` : 'Registre refeições no aplicativo para enriquecer sua observação.'}</p>
+      </section>
+
+      {showReport && (
+        <div className="modal-shell fixed inset-0 z-50 flex">
+          <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowReport(false)} />
+          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-xl bg-paper shadow-2xl border border-line z-10">
+            <div className="modal-header flex items-start justify-between gap-4">
+              <div><span className="label-sm text-accent">Relatório da jornada</span><h3 className="display-title text-3xl mt-1">Minha leitura</h3></div>
+              <button type="button" onClick={() => setShowReport(false)} className="icon-button h-10 w-10 shrink-0" aria-label="Fechar"><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-2xl bg-white border border-line p-4 text-center"><span className="block text-2xl font-display">{completedDays}</span><span className="text-[10px] font-bold text-ink/50">dias concluídos</span></div>
+                <div className="rounded-2xl bg-white border border-line p-4 text-center"><span className="block text-2xl font-display">{totalPoints}</span><span className="text-[10px] font-bold text-ink/50">sementes</span></div>
+                <div className="rounded-2xl bg-white border border-line p-4 text-center"><span className="block text-sm font-bold text-accent">{gardenStage(completedDays)}</span><span className="text-[10px] font-bold text-ink/50">jardim</span></div>
+              </div>
+              <p className="mt-5 text-sm leading-relaxed text-ink/70">
+                Participação, satisfação e usabilidade são resultados próprios desta jornada. Os registros apoiam a reflexão — não provam efeito sobre hábitos e não substituem orientação individualizada.
+              </p>
+              <h4 className="mt-5 label-sm text-accent">Reflexões registradas</h4>
+              <div className="mt-2 space-y-2">
+                {days.filter(item => item.reflection).length
+                  ? days.filter(item => item.reflection).map(item => (
+                      <div key={item.date} className="rounded-2xl border border-line bg-white p-3 text-xs"><b>Dia {item.day}:</b> {item.reflection}</div>
+                    ))
+                  : <p className="text-xs text-ink/50">Nenhuma reflexão registrada até aqui.</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricsModal({
+  isOpen,
+  onClose,
+  userProfile,
+  onSaveProfile,
+  toast,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  userProfile: UserProfile;
+  onSaveProfile: (profile: UserProfile) => void;
+  toast: any;
+}) {
+  const emptyMetrics = () => ({
+    weight: getLatestMetricValue(userProfile.weightEvolution) || 0,
+    height: userProfile.height || 0,
+    waist: getLatestMetricValue(userProfile.waistEvolution) || 0,
+    arm: getLatestMetricValue(userProfile.armEvolution) || 0,
+    abdomen: getLatestMetricValue(userProfile.abdomenEvolution) || 0,
+    hip: getLatestMetricValue(userProfile.hipEvolution) || 0,
+  });
+  const [newMetrics, setNewMetrics] = useState(emptyMetrics);
+
+  useEffect(() => {
+    if (isOpen) setNewMetrics(emptyMetrics());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, userProfile]);
+
+  const metricFields = [
+    { key: 'weight', label: 'Peso', unit: 'kg', max: 350, hint: 'Registre em condições parecidas para comparar a evolução.' },
+    { key: 'height', label: 'Altura', unit: 'cm', max: 250, hint: 'Usada junto com o peso para calcular o IMC.' },
+    { key: 'waist', label: 'Cintura', unit: 'cm', max: 250, hint: 'Use uma fita flexível, sem apertar a pele.' },
+    { key: 'abdomen', label: 'Abdômen', unit: 'cm', max: 250, hint: 'Meça de pé, ao final de uma expiração confortável.' },
+    { key: 'hip', label: 'Quadril', unit: 'cm', max: 250, hint: 'Passe a fita pela região mais larga do quadril.' },
+    { key: 'arm', label: 'Braço', unit: 'cm', max: 100, hint: 'Opcional: meça o braço relaxado, no ponto médio.' },
+  ] as const;
+
+  const metricHistory = metricFields
+    .filter(field => field.key !== 'height')
+    .flatMap(field => {
+      const key = `${field.key}Evolution` as 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution';
+      return (userProfile[key] || []).map(item => ({ ...item, label: field.label, unit: field.unit, key }));
+    })
+    .sort((a, b) => parseDateForSorting(b.date) - parseDateForSorting(a.date))
+    .slice(0, 8);
+
+  const handleSaveMetrics = () => {
+    const values = Object.values(newMetrics).filter(value => value > 0);
+    if (!values.length) {
+      toast('Informe ao menos uma medida para salvar.', 'error');
+      return;
+    }
+    if (metricFields.some(field => newMetrics[field.key] > field.max) || (newMetrics.height > 0 && newMetrics.height < 80)) {
+      toast('Revise as medidas informadas: um dos valores está fora de uma faixa plausível.', 'error');
+      return;
+    }
+
+    const now = new Date();
+    const date = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const recordedAt = now.toISOString();
+    const updatedProfile = { ...userProfile };
+
+    const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', value: number) => {
+      if (value <= 0) return;
+      const arr = (updatedProfile[key] as any[]) || [];
+      const existingForDate = arr.findIndex(item => {
+        const itemTime = parseDateForSorting(item.date, item.recordedAt);
+        if (!itemTime) return false;
+        const itemDay = new Date(itemTime);
+        return itemDay.getFullYear() === now.getFullYear()
+          && itemDay.getMonth() === now.getMonth()
+          && itemDay.getDate() === now.getDate();
+      });
+      const next = existingForDate >= 0
+        ? arr.map((item, index) => index === existingForDate ? { ...item, date, value, recordedAt } : item)
+        : [...arr, { date, value, recordedAt }];
+      (updatedProfile[key] as any) = sortMetricsChronologically(next);
+    };
+
+    updateEvolution('weightEvolution', newMetrics.weight);
+    updateEvolution('waistEvolution', newMetrics.waist);
+    updateEvolution('armEvolution', newMetrics.arm);
+    updateEvolution('abdomenEvolution', newMetrics.abdomen);
+    updateEvolution('hipEvolution', newMetrics.hip);
+    if (newMetrics.height > 0) updatedProfile.height = newMetrics.height;
+
+    const latestWeight = getLatestMetricValue(updatedProfile.weightEvolution);
+    if (updatedProfile.height && latestWeight) {
+      Object.assign(updatedProfile, calculateNutritionalNeeds(
+        latestWeight,
+        updatedProfile.height,
+        updatedProfile.age || 25,
+        updatedProfile.gender || 'Feminino',
+        updatedProfile.activityLevel || 1.2,
+        updatedProfile.objectives || []
+      ));
+    }
+
+    onSaveProfile(updatedProfile);
+    onClose();
+    toast('Métricas corporais atualizadas!', 'success');
+  };
+
+  const removeMetricRecord = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', date: string) => {
+    const next = { ...userProfile, [key]: (userProfile[key] || []).filter(item => item.date !== date) };
+    const latestWeight = getLatestMetricValue(next.weightEvolution);
+    if (next.height && latestWeight) {
+      Object.assign(next, calculateNutritionalNeeds(latestWeight, next.height, next.age || 25, next.gender || 'Feminino', next.activityLevel || 1.2, next.objectives || []));
+    }
+    onSaveProfile(next);
+    toast('Registro removido. Você pode inserir a medida correta.', 'success');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-shell fixed inset-0 z-50 flex">
+      <div className={MODAL_BACKDROP_CLASS} onClick={onClose} />
+      <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper shadow-2xl border border-line z-10">
+        <div className="modal-header flex items-start justify-between gap-4">
+          <div>
+            <span className="label-sm text-accent">Métricas Corporais</span>
+            <h3 className="display-title text-3xl mt-1">Atualizar Medidas</h3>
+            <p className="text-xs text-ink/60 mt-1">Peso, altura e medidas opcionais. Preencha apenas o que desejar.</p>
+          </div>
+          <button type="button" onClick={onClose} className="icon-button h-10 w-10 shrink-0" aria-label="Fechar"><X size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {metricFields.map((field) => (
+              <label key={field.key} className="block p-4 rounded-2xl bg-white border border-line">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="font-bold text-sm">{field.label}</span>
+                  <span className="text-xs font-bold text-ink/40">{field.unit}</span>
+                </div>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max={field.max}
+                  value={newMetrics[field.key] || ''}
+                  onChange={e => setNewMetrics({ ...newMetrics, [field.key]: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="w-full border-b-2 border-line bg-transparent py-1.5 text-xl font-bold outline-none focus:border-accent"
+                />
+                <span className="mt-1 block text-[10px] leading-relaxed text-ink/45">{field.hint}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-5 rounded-2xl border border-line bg-white p-4">
+            <div className="flex items-center justify-between gap-3"><span className="font-bold text-sm">Registros recentes</span><span className="text-[10px] font-bold text-ink/45">Corrija ou apague</span></div>
+            {metricHistory.length ? <div className="mt-3 space-y-2">{metricHistory.map(item => (
+              <div key={`${item.key}-${item.date}`} className="flex items-center justify-between gap-3 rounded-xl bg-paper px-3 py-2">
+                <span className="text-xs font-medium"><b>{item.label}:</b> {item.value} {item.unit} · {item.date}</span>
+                <button type="button" onClick={() => removeMetricRecord(item.key, item.date)} className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Apagar registro" aria-label={`Apagar registro de ${item.label}`}><Trash2 size={14} /></button>
+              </div>
+            ))}</div> : <p className="mt-2 text-xs text-ink/55">Nenhuma medida salva ainda.</p>}
+          </div>
+          <div className="mt-6 flex gap-3">
+            <button type="button" onClick={onClose} className="flex-1 py-4 rounded-full border border-line text-sm font-bold text-ink/60 hover:bg-white">Cancelar</button>
+            <button type="button" onClick={handleSaveMetrics} className="flex-1 py-4 rounded-full bg-accent text-paper text-sm font-bold shadow-md hover:bg-accent/90">Salvar Medidas</button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3431,93 +4032,12 @@ function ProgressPageComponent({
   aiSummaryShortcut: number;
 }) {
   const [showMetricsModal, setShowMetricsModal] = useState(false);
-  const [newMetrics, setNewMetrics] = useState({
-    weight: getLatestMetricValue(userProfile.weightEvolution) || 0,
-    waist: getLatestMetricValue(userProfile.waistEvolution) || 0,
-    arm: getLatestMetricValue(userProfile.armEvolution) || 0,
-    abdomen: getLatestMetricValue(userProfile.abdomenEvolution) || 0,
-    hip: getLatestMetricValue(userProfile.hipEvolution) || 0,
-  });
   const [aiSummary, setAiSummary] = useState('');
   const [typedAiSummary, setTypedAiSummary] = useState('');
   const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState('');
   const [showAiSummaryModal, setShowAiSummaryModal] = useState(false);
   const aiSummaryRef = useRef<HTMLElement | null>(null);
-
-  const metricFields = [
-    { key: 'weight', label: 'Peso', unit: 'kg', icon: TbHealthRecognition, hint: 'Registre em condições parecidas para comparar a evolução.' },
-    { key: 'waist', label: 'Cintura', unit: 'cm', icon: Activity, hint: 'Use uma fita flexível, sem apertar a pele.' },
-    { key: 'abdomen', label: 'Abdômen', unit: 'cm', icon: PiHeartbeat, hint: 'Meça de pé, ao final de uma expiração confortável.' },
-    { key: 'hip', label: 'Quadril', unit: 'cm', icon: TrendingUp, hint: 'Passe a fita pela região mais larga do quadril.' },
-  ] as const;
-
-  const handleSaveMetrics = () => {
-    const providedValues = Object.values(newMetrics).filter(value => value > 0);
-    if (!providedValues.length) {
-      toast('Informe ao menos uma medida para salvar.', 'error');
-      return;
-    }
-    if (newMetrics.weight > 350 || newMetrics.waist > 250 || newMetrics.arm > 100 || newMetrics.abdomen > 250 || newMetrics.hip > 250) {
-      toast('Revise as medidas informadas: um dos valores está fora de uma faixa plausível.', 'error');
-      return;
-    }
-    const now = new Date();
-    const date = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    const recordedAt = now.toISOString();
-    const updatedProfile = { ...userProfile };
-
-    const updateEvolution = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', val: number) => {
-      if (val <= 0) return;
-      const arr = (updatedProfile[key] as any[]) || [];
-      const existingForDate = arr.findIndex(item => {
-        const itemTime = parseDateForSorting(item.date, item.recordedAt);
-        if (!itemTime) return false;
-        const itemDay = new Date(itemTime);
-        return itemDay.getFullYear() === now.getFullYear()
-          && itemDay.getMonth() === now.getMonth()
-          && itemDay.getDate() === now.getDate();
-      });
-      const next = existingForDate >= 0
-        ? arr.map((item, index) => index === existingForDate ? { ...item, date, value: val, recordedAt } : item)
-        : [...arr, { date, value: val, recordedAt }];
-      (updatedProfile[key] as any) = sortMetricsChronologically(next);
-    };
-
-    updateEvolution('weightEvolution', newMetrics.weight);
-    updateEvolution('waistEvolution', newMetrics.waist);
-    updateEvolution('armEvolution', newMetrics.arm);
-    updateEvolution('abdomenEvolution', newMetrics.abdomen);
-    updateEvolution('hipEvolution', newMetrics.hip);
-
-    if (updatedProfile.height && newMetrics.weight) {
-      const recalculated = calculateNutritionalNeeds(
-        newMetrics.weight,
-        updatedProfile.height,
-        updatedProfile.age || 25,
-        updatedProfile.gender || 'Feminino',
-        updatedProfile.activityLevel || 1.2,
-        updatedProfile.objectives || []
-      );
-      updatedProfile.imc = recalculated.imc;
-      updatedProfile.tmb = recalculated.tmb;
-      updatedProfile.net = recalculated.net;
-    }
-
-    onSaveProfile(updatedProfile);
-    setShowMetricsModal(false);
-    toast('Métricas corporais atualizadas!', 'success');
-  };
-
-  const removeMetricRecord = (key: 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution', date: string) => {
-    const next = { ...userProfile, [key]: (userProfile[key] || []).filter(item => item.date !== date) };
-    const latestWeightAfterRemoval = getLatestMetricValue(next.weightEvolution);
-    if (next.height && latestWeightAfterRemoval) {
-      Object.assign(next, calculateNutritionalNeeds(latestWeightAfterRemoval, next.height, next.age || 25, next.gender || 'Feminino', next.activityLevel || 1.2, next.objectives || []));
-    }
-    onSaveProfile(next);
-    toast('Registro removido. Você pode inserir a medida correta.', 'success');
-  };
 
   const removeDiaryRecord = (id: string) => {
     onSaveProfile({ ...userProfile, dailyNotes: (userProfile.dailyNotes || []).filter(note => note.id !== id) });
@@ -3594,11 +4114,6 @@ function ProgressPageComponent({
     quality: log.quality,
   }));
   const hasSleepTrendData = sleepTrendData.length > 0;
-  const metricHistory = metricFields.flatMap(field => {
-    const key = `${field.key}Evolution` as 'weightEvolution' | 'waistEvolution' | 'armEvolution' | 'abdomenEvolution' | 'hipEvolution';
-    return (userProfile[key] || []).map(item => ({ ...item, label: field.label, unit: field.unit, key }));
-  }).sort((a, b) => parseDateForSorting(b.date) - parseDateForSorting(a.date)).slice(0, 8);
-
   useEffect(() => {
     if (!aiSummary) {
       setTypedAiSummary('');
@@ -4005,61 +4520,13 @@ function ProgressPageComponent({
         </div>
       </div>
 
-      {/* Modal de Métricas Corporais */}
-      {showMetricsModal && (
-        <div className="modal-shell fixed inset-0 z-50 flex">
-          <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowMetricsModal(false)} />
-          <div className="modal-panel modal-panel-sheet relative w-full md:max-w-2xl bg-paper shadow-2xl border border-line z-10">
-            <div className="modal-header flex items-start justify-between gap-4">
-              <div>
-                <span className="label-sm text-accent">Métricas Corporais</span>
-                <h3 className="display-title text-3xl mt-1">Atualizar Medidas</h3>
-                <p className="text-xs text-ink/60 mt-1">Insira suas medidas com tranquilidade para acompanhar tendências.</p>
-              </div>
-              <button type="button" onClick={() => setShowMetricsModal(false)} className="icon-button h-10 w-10 shrink-0"><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {metricFields.map((field) => (
-                <label key={field.key} className="block p-4 rounded-2xl bg-white border border-line">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-sm">{field.label}</span>
-                    <span className="text-xs font-bold text-ink/40">{field.unit}</span>
-                  </div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max={field.key === 'weight' ? 350 : 250}
-                    value={newMetrics[field.key] || ''}
-                    onChange={e => setNewMetrics({ ...newMetrics, [field.key]: parseFloat(e.target.value) || 0 })}
-                    placeholder="0"
-                    className="w-full border-b-2 border-line bg-transparent py-1.5 text-xl font-bold outline-none focus:border-accent"
-                  />
-                </label>
-              ))}
-            </div>
-            <div className="mt-5 rounded-2xl border border-line bg-white p-4">
-              <div className="flex items-center justify-between gap-3"><span className="font-bold text-sm">Registros recentes</span><span className="text-[10px] font-bold text-ink/45">Corrija ou apague</span></div>
-              {metricHistory.length ? <div className="mt-3 space-y-2">{metricHistory.map(item => (
-                <div key={`${item.key}-${item.date}`} className="flex items-center justify-between gap-3 rounded-xl bg-paper px-3 py-2">
-                  <span className="text-xs font-medium"><b>{item.label}:</b> {item.value} {item.unit} · {item.date}</span>
-                  <button type="button" onClick={() => removeMetricRecord(item.key, item.date)} className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Apagar registro"><Trash2 size={14} /></button>
-                </div>
-              ))}</div> : <p className="mt-2 text-xs text-ink/55">Nenhuma medida salva ainda.</p>}
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button type="button" onClick={() => setShowMetricsModal(false)} className="flex-1 py-4 rounded-full border border-line text-sm font-bold text-ink/60 hover:bg-white">
-                Cancelar
-              </button>
-              <button type="button" onClick={handleSaveMetrics} className="flex-1 py-4 rounded-full bg-accent text-paper text-sm font-bold shadow-md hover:bg-accent/90">
-                Salvar Medidas
-              </button>
-            </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MetricsModal
+        isOpen={showMetricsModal}
+        onClose={() => setShowMetricsModal(false)}
+        userProfile={userProfile}
+        onSaveProfile={onSaveProfile}
+        toast={toast}
+      />
 
       <AiSummaryModal
         isOpen={showAiSummaryModal}
@@ -4077,14 +4544,17 @@ function ProfilePageComponent({
   userProfile,
   onNavigate,
   onOpenDiary,
+  onSaveProfile,
   toast
 }: {
   userProfile: UserProfile;
   onNavigate: (page: Page) => void;
   onOpenDiary: () => void;
+  onSaveProfile: (profile: UserProfile) => void;
   toast: any;
 }) {
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
   const latestWeight = userProfile.weightEvolution?.[userProfile.weightEvolution.length - 1]?.value;
   const latestWaist = userProfile.waistEvolution?.[userProfile.waistEvolution.length - 1]?.value;
   const latestHip = userProfile.hipEvolution?.[userProfile.hipEvolution.length - 1]?.value;
@@ -4162,6 +4632,14 @@ function ProfilePageComponent({
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={() => setShowMetricsModal(true)}
+        className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-xs font-bold text-paper shadow-sm transition hover:bg-accent/90 active:scale-95"
+      >
+        <Activity size={15} /> Atualizar métricas
+      </button>
+
       {/* Diário do Usuário */}
       {(userProfile.dailyNotes && userProfile.dailyNotes.length > 0) && (
         <div className="bg-white border border-line p-6 rounded-3xl shadow-sm">
@@ -4219,6 +4697,13 @@ function ProfilePageComponent({
         confirmLabel="Sair"
         onConfirm={() => onNavigate('landing')}
         onClose={() => setShowExitConfirmation(false)}
+      />
+      <MetricsModal
+        isOpen={showMetricsModal}
+        onClose={() => setShowMetricsModal(false)}
+        userProfile={userProfile}
+        onSaveProfile={onSaveProfile}
+        toast={toast}
       />
     </div>
   );

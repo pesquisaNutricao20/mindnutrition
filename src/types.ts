@@ -1,3 +1,19 @@
+import type { Recipe } from './data/recipes';
+import type { ChallengeActivityKey } from './data/challenge';
+
+export interface ChallengeDay {
+  day: number;
+  date: string;
+  reflection?: string;
+  createdAt?: string;
+}
+
+export type ChallengeState = {
+  startedAt: string;
+  days: (ChallengeDay & Partial<Record<ChallengeActivityKey, boolean>>)[];
+  completedAt?: string;
+};
+
 export type Page =
   | 'landing'
   | 'auth'
@@ -8,6 +24,7 @@ export type Page =
   | 'content'
   | 'messages'
   | 'progress'
+  | 'challenge'
   | 'profile'
   | 'settings-account'
   | 'settings-notifications'
@@ -49,6 +66,8 @@ export interface UserProfile {
   dailyNotes?: DailyNote[];
   sleepLogs?: SleepLog[];
   readArticleIds?: string[];
+  customRecipes?: Recipe[];
+  challenge?: ChallengeState;
   height: number;
   weightEvolution: { date: string; value: number }[];
   waistEvolution: { date: string; value: number }[];

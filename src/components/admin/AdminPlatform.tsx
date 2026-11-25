@@ -26,6 +26,7 @@ import {
   Sparkles,
   Trash2,
   TrendingUp,
+  Sprout,
   UserCheck,
   Users,
   X,
@@ -42,7 +43,7 @@ type ToastKind = 'success' | 'error' | 'info';
 type ToastFn = (message: string, kind?: ToastKind) => void;
 
 type AdminStatus = 'checking' | 'login' | 'ready';
-type AdminTab = 'overview' | 'users' | 'articles' | 'agenda' | 'messages';
+type AdminTab = 'overview' | 'users' | 'articles' | 'agenda' | 'messages' | 'challenge';
 
 interface AdminUser {
   id: string;
@@ -57,6 +58,13 @@ interface AdminUser {
   onboardingComplete: boolean;
   notesCount: number;
   sleepCount: number;
+  challenge?: {
+    startedAt: string | null;
+    days: number;
+    completed: number;
+    points: number;
+    lastDate: string | null;
+  } | null;
   updatedAt: string | null;
   lastActive: string | null;
 }
@@ -537,12 +545,19 @@ function ArticleEditorModal({
               <label htmlFor="article-type" className={labelClass}>Tipo</label>
               <input
                 id="article-type"
+                list="article-type-options"
                 value={draft.type}
                 maxLength={60}
                 onChange={(event) => onChange({ ...draft, type: event.target.value })}
                 className={inputClass}
-                placeholder="Leitura, Guia, Exercício"
+                placeholder="Leitura, Guia, Receita"
               />
+              <datalist id="article-type-options">
+                <option value="Leitura" />
+                <option value="Guia" />
+                <option value="Exercício" />
+                <option value="Receita" />
+              </datalist>
             </div>
           </div>
 
@@ -773,7 +788,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
   }, [query, filter, sort]);
 
   useEffect(() => {
-    if (status !== 'ready' || tab !== 'users') return;
+    if (status !== 'ready' || (tab !== 'users' && tab !== 'challenge')) return;
     const requestId = ++latestRequest.current;
     let active = true;
     setUsersLoading(true);
@@ -936,6 +951,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
     { id: 'agenda', label: 'Agenda', icon: <CalendarDays size={15} /> },
     { id: 'messages', label: 'Mensagens', icon: <MessageCircle size={15} /> },
     { id: 'users', label: 'Usuários', icon: <Users size={15} /> },
+    { id: 'challenge', label: 'Desafio', icon: <Sprout size={15} /> },
     { id: 'articles', label: 'Artigos', icon: <BookOpen size={15} /> },
   ];
 
@@ -1279,6 +1295,83 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {tab === 'challenge' && (
+          <div className="space-y-4">
+            <section className="rounded-3xl border border-line bg-white p-5 shadow-sm">
+              <p className="label-sm text-accent">Desafio de 21 dias</p>
+              <h2 className="font-display text-xl font-semibold text-ink">Acompanhamento da jornada</h2>
+              <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
+                Registros enviados pelo aplicativo. Um dia é concluído com pelo menos 3 das 4 atividades; pontos e conquistas são simbólicos e não avaliam a pessoa.
+              </p>
+
+              {usersError ? (
+                <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
+                  <AlertTriangle size={14} className="mr-1 inline" /> {usersError}
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-left text-xs">
+                      <thead className="text-[10px] uppercase tracking-wide text-ink/45">
+                        <tr>
+                          <th className="pb-2">Participante</th>
+                          <th className="pb-2">Início</th>
+                          <th className="pb-2">Registrados</th>
+                          <th className="pb-2">Concluídos</th>
+                          <th className="pb-2">Sementes</th>
+                          <th className="pb-2">Último dia</th>
+                          <th className="pb-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usersLoading ? (
+                          <tr><td colSpan={7} className="py-6 text-center text-ink/50">Carregando…</td></tr>
+                        ) : users.filter((user) => user.challenge).length ? (
+                          users.filter((user) => user.challenge).map((user) => (
+                            <tr key={user.id} className="border-t border-line/70">
+                              <td className="py-2.5 font-bold text-ink">
+                                {user.name || user.email || 'Participante'}
+                                <span className="block text-[10px] font-medium text-ink/45">{user.email}</span>
+                              </td>
+                              <td className="py-2.5 text-ink/60">{formatDate(user.challenge?.startedAt)}</td>
+                              <td className="py-2.5 text-ink/60">{user.challenge?.days ?? 0}/21</td>
+                              <td className="py-2.5 font-bold text-accent">{user.challenge?.completed ?? 0}</td>
+                              <td className="py-2.5 text-ink/60">{user.challenge?.points ?? 0}</td>
+                              <td className="py-2.5 text-ink/60">{user.challenge?.lastDate || '—'}</td>
+                              <td className="py-2.5">
+                                <button type="button" onClick={() => setInsightsUserId(user.id)} className="text-[11px] font-bold text-accent hover:underline">Insights</button>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr><td colSpan={7} className="py-8 text-center text-ink/50">Nenhum participante nesta página.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-[11px] font-bold text-ink/50">
+                    <span>Página {pagination.page} de {pagination.totalPages}</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPage((current) => Math.max(1, current - 1))}
+                        disabled={pagination.page <= 1 || usersLoading}
+                        className="rounded-full border border-line px-3 py-1.5 disabled:opacity-40"
+                      >Anterior</button>
+                      <button
+                        type="button"
+                        onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
+                        disabled={pagination.page >= pagination.totalPages || usersLoading}
+                        className="rounded-full border border-line px-3 py-1.5 disabled:opacity-40"
+                      >Próxima</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
           </div>
         )}
 

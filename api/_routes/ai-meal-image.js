@@ -115,7 +115,7 @@ Formato exato:
   "confianca": "alta | média | baixa"
 }${description ? `\n\nA pessoa descreveu a refeição assim: "${description}"` : ''}`;
 
-    const { content } = await callGroq({
+    const { content, model } = await callGroq({
       model: VISION_MODEL,
       temperature: 0.25,
       maxTokens: 900,
@@ -142,7 +142,7 @@ Formato exato:
 
     return sendJson(response, 200, {
       analysis: normalizeAnalysis(parsed, content),
-      model: VISION_MODEL,
+      model: model || VISION_MODEL,
     });
   } catch (error) {
     return handleApiError(response, error, 'Não foi possível analisar a foto agora. Tente novamente.');

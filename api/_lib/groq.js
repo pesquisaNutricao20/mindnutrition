@@ -1,4 +1,5 @@
 import { HttpError } from './http.js';
+import { callGemini, isGeminiConfigured, TEXT_MODEL as GEMINI_TEXT_MODEL, VISION_MODEL as GEMINI_VISION_MODEL } from './gemini.js';
 import { callNvidia, isNvidiaConfigured } from './nvidia.js';
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
@@ -85,11 +86,21 @@ async function callGroqProvider({
 }
 
 const FALLBACK_STATUSES = new Set([429, 500, 502, 503, 504]);
+// Inclui 400: se o modelo Gemini não for aceito, o Groq ainda pode responder.
+const GEMINI_FALLBACK_STATUSES = new Set([...FALLBACK_STATUSES, 400]);
 
-// Fallback de texto para a NVIDIA (MiniMax M3.1). O modelo é somente texto,
-// então análise de fotos permanece exclusivamente na Groq.
+// Gemini é o principal; Groq é o fallback e a NVIDIA cobre texto quando ambos falham.
+// A NVIDIA é somente texto: fotos usam Gemini e, na sequência, o modelo visual da Groq.
 export async function callGroq(options) {
   const vision = (options?.model || TEXT_MODEL) === VISION_MODEL;
+
+  if (isGeminiConfigured()) {
+    try {
+      return await callGemini({ ...options, model: vision ? GEMINI_VISION_MODEL : GEMINI_TEXT_MODEL });
+    } catch (error) {
+      if (!GEMINI_FALLBACK_STATUSES.has(error?.status)) throw error;
+    }
+  }
 
   if (!isGroqConfigured()) {
     if (!vision && isNvidiaConfigured()) return callNvidia(options);
