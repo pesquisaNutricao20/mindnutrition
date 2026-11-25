@@ -1,4 +1,3 @@
-export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/gif', 'image/bmp', 'image/svg+xml'];
 export const MAX_IMAGE_SIZE_MB = 12;
 export const MAX_MEAL_PHOTOS = 6;
 export const DEFAULT_PROFILE_PHOTO = '';

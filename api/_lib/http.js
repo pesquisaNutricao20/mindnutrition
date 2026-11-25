@@ -28,9 +28,14 @@ export function getClientIp(request) {
   const trustProxy = process.env.TRUST_PROXY === 'true' || Boolean(process.env.VERCEL);
   if (trustProxy) {
     const forwarded = request.headers['x-forwarded-for'];
-    const candidate = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-    const first = String(candidate || '').split(',')[0].trim();
-    if (first) return first;
+    const list = String(Array.isArray(forwarded) ? forwarded.join(',') : forwarded || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    // Proxies confiáveis acrescentam o peer real ao final; o primeiro item é
+    // controlado pelo cliente e não pode ser usado como chave de rate limit.
+    const candidate = list[list.length - 1];
+    if (candidate) return candidate;
   }
   return String(request.socket?.remoteAddress || 'unknown');
 }
@@ -155,11 +160,19 @@ export function constantTimeEqual(left, right) {
 
 export function createRateLimiter({ windowMs, max, blockMs = 0 }) {
   const buckets = new Map();
+  const MAX_BUCKETS = 5000;
+  let operations = 0;
 
   const prune = (now) => {
-    if (buckets.size < 500) return;
+    operations += 1;
+    if (operations % 100 !== 0 && buckets.size <= MAX_BUCKETS) return;
     for (const [key, bucket] of buckets) {
       if (now - bucket.lastSeen > windowMs * 2) buckets.delete(key);
+    }
+    while (buckets.size > MAX_BUCKETS) {
+      const oldest = buckets.keys().next().value;
+      if (oldest === undefined) break;
+      buckets.delete(oldest);
     }
   };
 

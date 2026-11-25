@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -25,8 +25,9 @@ import {
   Strikethrough,
   Underline,
   Undo2,
-  X,
 } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { Skeleton } from '../ui/Skeleton';
 
 const isHttpUrl = (value: string) => {
   try {
@@ -39,31 +40,40 @@ const isHttpUrl = (value: string) => {
 
 function ToolbarButton({
   label,
-  active = false,
+  active,
+  expanded,
+  controls,
   disabled = false,
   onClick,
   children,
+  buttonRef,
 }: {
   label: string;
   active?: boolean;
+  expanded?: boolean;
+  controls?: string;
   disabled?: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  buttonRef?: React.Ref<HTMLButtonElement>;
 }) {
   return (
-    <button
+    <Button
+      ref={buttonRef}
       type="button"
       title={label}
       aria-label={label}
       aria-pressed={active}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      variant={active ? 'primary' : 'ghost'}
+      size="sm"
+      className="h-11 w-11 shrink-0 p-0"
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition ${
-        active ? 'bg-accent text-paper shadow-sm' : 'text-ink/60 hover:bg-white hover:text-ink'
-      } disabled:cursor-not-allowed disabled:opacity-35`}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -84,6 +94,9 @@ export function RichTextEditor({
   const [urlValue, setUrlValue] = useState('');
   const [urlError, setUrlError] = useState('');
   const [stats, setStats] = useState({ words: 0, characters: 0 });
+  const linkButtonRef = useRef<HTMLButtonElement>(null);
+  const imageButtonRef = useRef<HTMLButtonElement>(null);
+  const editorId = useId();
 
   const editor = useEditor({
     extensions: [
@@ -103,6 +116,8 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class: 'tiptap-content focus:outline-none',
+        role: 'textbox',
+        'aria-multiline': 'true',
         'aria-label': 'Conteúdo do artigo',
       },
     },
@@ -119,18 +134,33 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (editor) editor.setEditable(!disabled, false);
+    if (disabled) setPopover(null);
   }, [editor, disabled]);
 
   if (!editor) {
     return (
-      <div className="h-64 animate-pulse rounded-2xl border border-line bg-white" aria-hidden="true" />
+      <div role="status" aria-busy="true" className="h-64 overflow-hidden rounded-2xl border border-line bg-white p-4">
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="mt-6 h-4 w-full" />
+        <Skeleton className="mt-3 h-4 w-5/6" />
+        <Skeleton className="mt-3 h-4 w-2/3" />
+        <span className="sr-only">Carregando editor de artigo.</span>
+      </div>
     );
   }
 
   const openPopover = (kind: 'link' | 'image') => {
+    if (disabled) return;
     setUrlError('');
     setUrlValue(kind === 'link' ? String(editor.getAttributes('link')?.href || '') : '');
     setPopover(kind);
+  };
+
+  const dismissPopover = () => {
+    const trigger = popover === 'link' ? linkButtonRef.current : imageButtonRef.current;
+    setPopover(null);
+    setUrlError('');
+    window.requestAnimationFrame(() => trigger?.focus());
   };
 
   const applyUrl = () => {
@@ -157,89 +187,112 @@ export function RichTextEditor({
     setUrlValue('');
   };
 
+  const popoverId = `${editorId}-popover`;
+  const urlInputId = `${editorId}-url`;
+  const urlErrorId = `${editorId}-url-error`;
+
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-white">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-line bg-paper/70 px-2 py-1.5">
-        <ToolbarButton label="Desfazer" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>
-          <Undo2 size={15} />
+      <div
+        role="toolbar"
+        aria-label="Formatação do artigo"
+        className="flex items-center gap-0.5 overflow-x-auto border-b border-line bg-paper/70 px-2 py-1.5"
+      >
+        <ToolbarButton label="Desfazer" onClick={() => editor.chain().focus().undo().run()} disabled={disabled || !editor.can().undo()}>
+          <Undo2 size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Refazer" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}>
-          <Redo2 size={15} />
-        </ToolbarButton>
-
-        <Divider />
-
-        <ToolbarButton label="Título 1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
-          <Heading1 size={15} />
-        </ToolbarButton>
-        <ToolbarButton label="Título 2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
-          <Heading2 size={15} />
-        </ToolbarButton>
-        <ToolbarButton label="Título 3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
-          <Heading3 size={15} />
+        <ToolbarButton label="Refazer" onClick={() => editor.chain().focus().redo().run()} disabled={disabled || !editor.can().redo()}>
+          <Redo2 size={18} />
         </ToolbarButton>
 
         <Divider />
 
-        <ToolbarButton label="Negrito" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
-          <Bold size={15} />
+        <ToolbarButton label="Título 1" active={editor.isActive('heading', { level: 1 })} disabled={disabled} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+          <Heading1 size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Itálico" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}>
-          <Italic size={15} />
+        <ToolbarButton label="Título 2" active={editor.isActive('heading', { level: 2 })} disabled={disabled} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+          <Heading2 size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Sublinhado" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>
-          <Underline size={15} />
-        </ToolbarButton>
-        <ToolbarButton label="Riscado" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}>
-          <Strikethrough size={15} />
-        </ToolbarButton>
-        <ToolbarButton label="Código" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}>
-          <Code2 size={15} />
+        <ToolbarButton label="Título 3" active={editor.isActive('heading', { level: 3 })} disabled={disabled} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+          <Heading3 size={18} />
         </ToolbarButton>
 
         <Divider />
 
-        <ToolbarButton label="Lista com marcadores" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
-          <List size={15} />
+        <ToolbarButton label="Negrito" active={editor.isActive('bold')} disabled={disabled} onClick={() => editor.chain().focus().toggleBold().run()}>
+          <Bold size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Lista numerada" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
-          <ListOrdered size={15} />
+        <ToolbarButton label="Itálico" active={editor.isActive('italic')} disabled={disabled} onClick={() => editor.chain().focus().toggleItalic().run()}>
+          <Italic size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Citação" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
-          <Quote size={15} />
+        <ToolbarButton label="Sublinhado" active={editor.isActive('underline')} disabled={disabled} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+          <Underline size={18} />
         </ToolbarButton>
-
-        <Divider />
-
-        <ToolbarButton label="Alinhar à esquerda" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
-          <AlignLeft size={15} />
+        <ToolbarButton label="Riscado" active={editor.isActive('strike')} disabled={disabled} onClick={() => editor.chain().focus().toggleStrike().run()}>
+          <Strikethrough size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Centralizar" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}>
-          <AlignCenter size={15} />
-        </ToolbarButton>
-        <ToolbarButton label="Alinhar à direita" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}>
-          <AlignRight size={15} />
+        <ToolbarButton label="Código" active={editor.isActive('code')} disabled={disabled} onClick={() => editor.chain().focus().toggleCode().run()}>
+          <Code2 size={18} />
         </ToolbarButton>
 
         <Divider />
 
-        <ToolbarButton label="Inserir link" active={editor.isActive('link')} onClick={() => openPopover('link')}>
-          <Link2 size={15} />
+        <ToolbarButton label="Lista com marcadores" active={editor.isActive('bulletList')} disabled={disabled} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+          <List size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Inserir imagem" active={editor.isActive('image')} onClick={() => openPopover('image')}>
-          <ImagePlus size={15} />
+        <ToolbarButton label="Lista numerada" active={editor.isActive('orderedList')} disabled={disabled} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+          <ListOrdered size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Limpar formatação" onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
-          <RemoveFormatting size={15} />
+        <ToolbarButton label="Citação" active={editor.isActive('blockquote')} disabled={disabled} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+          <Quote size={18} />
+        </ToolbarButton>
+
+        <Divider />
+
+        <ToolbarButton label="Alinhar à esquerda" active={editor.isActive({ textAlign: 'left' })} disabled={disabled} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
+          <AlignLeft size={18} />
+        </ToolbarButton>
+        <ToolbarButton label="Centralizar" active={editor.isActive({ textAlign: 'center' })} disabled={disabled} onClick={() => editor.chain().focus().setTextAlign('center').run()}>
+          <AlignCenter size={18} />
+        </ToolbarButton>
+        <ToolbarButton label="Alinhar à direita" active={editor.isActive({ textAlign: 'right' })} disabled={disabled} onClick={() => editor.chain().focus().setTextAlign('right').run()}>
+          <AlignRight size={18} />
+        </ToolbarButton>
+
+        <Divider />
+
+        <ToolbarButton buttonRef={linkButtonRef} label="Inserir link" expanded={popover === 'link'} controls={popover === 'link' ? popoverId : undefined} disabled={disabled} onClick={() => openPopover('link')}>
+          <Link2 size={18} />
+        </ToolbarButton>
+        <ToolbarButton buttonRef={imageButtonRef} label="Inserir imagem" expanded={popover === 'image'} controls={popover === 'image' ? popoverId : undefined} disabled={disabled} onClick={() => openPopover('image')}>
+          <ImagePlus size={18} />
+        </ToolbarButton>
+        <ToolbarButton label="Limpar formatação" disabled={disabled} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
+          <RemoveFormatting size={18} />
         </ToolbarButton>
       </div>
 
       {popover && (
-        <div className="flex flex-col gap-2 border-b border-line bg-accent/5 px-3 py-2.5 sm:flex-row sm:items-center">
-          <span className="text-[11px] font-bold text-accent">
+        <div
+          id={popoverId}
+          role="group"
+          aria-labelledby={`${urlInputId}-label`}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              dismissPopover();
+            }
+          }}
+          className="flex flex-col gap-2 border-b border-line bg-accent/5 px-3 py-3 sm:flex-row sm:items-center"
+        >
+          <label id={`${urlInputId}-label`} htmlFor={urlInputId} className="text-sm font-bold text-accent">
             {popover === 'link' ? 'Endereço do link' : 'URL da imagem'}
-          </span>
+          </label>
           <input
+            id={urlInputId}
+            type="url"
+            inputMode="url"
             value={urlValue}
             onChange={(event) => {
               setUrlValue(event.target.value);
@@ -250,30 +303,20 @@ export function RichTextEditor({
                 event.preventDefault();
                 applyUrl();
               }
-              if (event.key === 'Escape') setPopover(null);
             }}
+            aria-invalid={Boolean(urlError)}
+            aria-describedby={urlError ? urlErrorId : undefined}
             autoFocus
             placeholder="https://..."
-            className="min-w-0 flex-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
+            className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
           />
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={applyUrl}
-              className="inline-flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1.5 text-[11px] font-bold text-paper transition hover:bg-accent/90"
-            >
-              <Check size={12} /> Aplicar
-            </button>
-            <button
-              type="button"
-              onClick={() => setPopover(null)}
-              aria-label="Cancelar"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink/50 transition hover:bg-white"
-            >
-              <X size={12} />
-            </button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={applyUrl}>
+              <Check size={14} aria-hidden="true" /> Aplicar
+            </Button>
+            <Button size="sm" variant="secondary" onClick={dismissPopover}>Cancelar</Button>
           </div>
-          {urlError && <span className="text-[11px] font-semibold text-red-600">{urlError}</span>}
+          {urlError && <p id={urlErrorId} role="alert" className="text-sm font-semibold text-danger">{urlError}</p>}
         </div>
       )}
 
@@ -281,7 +324,7 @@ export function RichTextEditor({
         <EditorContent editor={editor} />
       </div>
 
-      <div className="flex items-center justify-between border-t border-line bg-paper/50 px-3 py-1.5 text-[10px] font-semibold text-ink/40">
+      <div className="flex items-center justify-between border-t border-line bg-paper/50 px-3 py-2 text-xs font-semibold text-ink/50">
         <span>{stats.words} palavra{stats.words === 1 ? '' : 's'}</span>
         <span>{stats.characters} caracteres</span>
       </div>

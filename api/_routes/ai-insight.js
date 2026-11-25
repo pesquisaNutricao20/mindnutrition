@@ -1,3 +1,4 @@
+import { requireUser } from '../_lib/auth.js';
 import {
   assertSameOrigin,
   createRateLimiter,
@@ -11,6 +12,7 @@ import { TEXT_MODEL, callGroq } from '../_lib/groq.js';
 import { prepareInsightPrompt } from '../_lib/insightPrompt.js';
 
 const limiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 6 });
+const userLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 40, blockMs: 10 * 60 * 1000 });
 
 // Diferente de cleanText: mantém as quebras de linha para o cliente conseguir
 // separar abertura, observações e sugestão em blocos formatados.
@@ -42,6 +44,14 @@ export default async function handler(request, response) {
   }
 
   try {
+    const user = await requireUser(request);
+    const userLimit = userLimiter.consume(`user:${user.id}`);
+    if (!userLimit.allowed) {
+      return sendJson(response, 429, {
+        message: `Aguarde ${userLimit.retryAfter || 600} segundos antes de gerar outro resumo.`,
+      }, { 'Retry-After': String(userLimit.retryAfter || 600) });
+    }
+
     const payload = await readJsonBody(request, 512 * 1024);
     const prompt = prepareInsightPrompt(payload);
     const { content, usage, model, provider } = await callGroq({

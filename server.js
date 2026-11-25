@@ -58,14 +58,7 @@ const route = (handler) => (request, response, next) => {
 };
 
 app.get('/api/health', (_request, response) => {
-  response.json({
-    ok: true,
-    ai: Boolean(process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY),
-    gemini: Boolean(process.env.GEMINI_API_KEY),
-    groq: Boolean(process.env.GROQ_API_KEY),
-    admin: Boolean(process.env.ADMIN_KEY_HASH || process.env.ADMIN_KEY),
-    supabaseAdmin: Boolean((process.env.SUPABASE_URL || process.env.VITE_PUBLICSUPABASE_URL) && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY)),
-  });
+  response.json({ ok: true });
 });
 
 app.post('/api/ai-insight', route(aiInsight));

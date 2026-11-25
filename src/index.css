@@ -13,6 +13,11 @@
   --color-accent: var(--accent);
   --color-accent-secondary: var(--accent-secondary);
   --color-line: var(--line);
+  --color-surface: #ffffff;
+  --color-text-secondary: rgba(39, 50, 56, 0.6);
+  --color-success: var(--accent);
+  --color-success-soft: var(--accent-light);
+  --color-danger: #ef4444;
 }
 
 :root {
@@ -81,6 +86,11 @@ select {
   color: var(--paper);
 }
 
+:where(a, button, input, textarea, select, [tabindex], [contenteditable="true"]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 /* ---------- Typography ---------- */
 .display-title {
   font-family: var(--font-display);
@@ -88,6 +98,23 @@ select {
   line-height: 0.92;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+/* Cabeçalhos de seção/página: escala menor que o hero, sem estourar no mobile. */
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 5vw, 2.5rem);
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.section-subtitle {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(0.875rem, 2.8vw, 1.05rem);
+  line-height: 1.45;
 }
 
 .font-title {
@@ -125,18 +152,24 @@ select {
 
 .label-sm {
   font-family: var(--font-outfit);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.vertical-text {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 10px;
-  font-weight: 600;
+.input-field {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  padding: 0.75rem 1rem;
+  color: var(--ink);
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: var(--accent);
 }
 
 /* ---------- Texture overlay ---------- */
@@ -148,28 +181,6 @@ select {
   pointer-events: none;
   z-index: 9999;
   mix-blend-mode: multiply;
-}
-
-/* ---------- Odometer ---------- */
-.odometer-track {
-  position: relative;
-  height: 14px;
-  background: linear-gradient(to right, var(--accent), var(--accent-secondary));
-  border-radius: 7px;
-  cursor: pointer;
-}
-.odometer-handle {
-  position: absolute;
-  top: 50%;
-  width: 28px;
-  height: 28px;
-  background: var(--paper);
-  border: 3px solid var(--ink);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  cursor: grab;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  touch-action: none;
 }
 
 /* ---------- Desktop layout ---------- */
@@ -400,48 +411,7 @@ select {
   100% { background-position: 0% 50%; }
 }
 
-@keyframes borderPulse {
-  0% { border-color: var(--accent); }
-  50% { border-color: var(--accent-secondary); }
-  100% { border-color: var(--accent); }
-}
-
-.animated-border {
-  animation: borderPulse 3s infinite ease-in-out;
-}
-
-.spinning-border-wrapper {
-  position: relative;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.spinning-border-wrapper::before {
-  content: '';
-  position: absolute;
-  width: 150%;
-  height: 150%;
-  background: conic-gradient(var(--accent), var(--accent-secondary), var(--accent-light), var(--accent-secondary-light), var(--accent));
-  animation: spin 3s linear infinite;
-}
-
-.spinning-border-inner {
-  position: relative;
-  z-index: 1;
-  background-color: var(--paper);
-  border-radius: 50%;
-  width: calc(100% - 8px);
-  height: calc(100% - 8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* ---------- Misc ---------- */
-.snappy { transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1); }
 .drop-cap::first-letter {
   font-family: var(--font-display);
   font-size: 3rem;
@@ -533,6 +503,10 @@ select {
   max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 0.5rem);
 }
 
+.modal-shell .modal-panel.modal-panel-rounded {
+  border-radius: 1.75rem;
+}
+
 .modal-backdrop {
   background: color-mix(in srgb, var(--ink) 55%, transparent);
 }
@@ -571,6 +545,23 @@ body:has(.modal-shell) .mobile-nav nav {
 
 .modal-panel-sheet {
   animation: modalSheetIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes overlayDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.modal-shell .modal-panel.overlay-drawer {
+  border-radius: 1.75rem 1.75rem 0 0;
+  animation: modalSheetIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 768px) {
+  .modal-shell .modal-panel.overlay-drawer {
+    border-radius: 1.75rem 0 0 1.75rem;
+    animation: overlayDrawerIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 .modal-header {
@@ -703,10 +694,6 @@ a {
   gap: 1rem;
 }
 
-.responsive-card {
-  min-width: 0;
-}
-
 .mood-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -717,14 +704,6 @@ a {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
-}
-
-.mobile-scroll-row {
-  scrollbar-width: none;
-}
-
-.mobile-scroll-row::-webkit-scrollbar {
-  display: none;
 }
 
 .recharts-wrapper,
@@ -741,15 +720,6 @@ a {
 
 .chart-frame .recharts-responsive-container {
   min-width: 0 !important;
-}
-
-.theme-animated-bg {
-  background:
-    radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 32%),
-    radial-gradient(circle at 85% 12%, color-mix(in srgb, var(--accent-secondary) 18%, transparent), transparent 30%),
-    linear-gradient(135deg, var(--paper), color-mix(in srgb, var(--accent-light) 44%, white), var(--paper));
-  background-size: 140% 140%;
-  animation: themeFlow 14s ease-in-out infinite alternate;
 }
 
 .landing-gradient {
@@ -803,11 +773,6 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .landing-wave { animation: none; }
-}
-
-@keyframes themeFlow {
-  from { background-position: 0% 50%; }
-  to { background-position: 100% 50%; }
 }
 
 @media (max-width: 640px) {
@@ -891,11 +856,6 @@ a {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .odometer-handle {
-    width: 32px;
-    height: 32px;
-  }
 }
 
 @media (min-width: 640px) {
@@ -936,8 +896,7 @@ a {
 }
 
 /* Button & interactive element tactile feedback */
-button:active:not(:disabled),
-.touch-press:active {
+button:active:not(:disabled) {
   transform: scale(0.97);
   transition: transform 100ms ease;
 }
@@ -1034,7 +993,7 @@ button:active:not(:disabled),
   color: var(--ink);
 }
 
-.tiptap-content:focus {
+.tiptap-content:focus:not(:focus-visible) {
   outline: none;
 }
 
@@ -1208,4 +1167,24 @@ button:active:not(:disabled),
 .chat-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mascot-sprite,
+  .animate-pulse {
+    animation: none !important;
+  }
 }

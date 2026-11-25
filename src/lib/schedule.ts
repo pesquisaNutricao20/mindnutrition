@@ -73,10 +73,6 @@ export function formatSlot(slot: string) {
   return slot?.slice(0, 5) || '';
 }
 
-export function isPastDay(dayKey: string, today = todayKey()) {
-  return dayKey < today;
-}
-
 /** Hora atual no fuso do consultório (America/Sao_Paulo), no formato HH:MM. */
 export function clinicTimeNow() {
   return new Intl.DateTimeFormat('en-GB', {

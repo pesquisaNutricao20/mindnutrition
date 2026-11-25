@@ -15,13 +15,6 @@ export interface Recipe {
   image: string;
 }
 
-export const RECIPE_CATEGORIES = [
-  'Café & lanches',
-  'Refeições principais',
-  'Acompanhamentos',
-  'Aproveitamento integral',
-] as const;
-
 const SOURCES = {
   'safra-frutas': 'https://prefeitura.sp.gov.br/web/saude/w/safra-do-m%C3%AAs-veja-as-frutas-da-%C3%A9poca-e-receitas-pr%C3%A1ticas-e-saud%C3%A1veis',
   'safra-vegetais': 'https://prefeitura.sp.gov.br/web/saude/w/safra-do-m%C3%AAs-confira-os-benef%C3%ADcios-dos-vegetais-da-%C3%A9poca-e-receitas-praticas-e-saudaveis',

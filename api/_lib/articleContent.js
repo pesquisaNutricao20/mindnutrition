@@ -115,15 +115,3 @@ export function htmlToParagraphs(html, maxParagraphs = 80) {
     .map((paragraph) => paragraph.slice(0, 6000));
 }
 
-/** Converte parágrafos antigos em HTML para abrir artigos legados no editor. */
-export function paragraphsToHtml(paragraphs) {
-  if (!Array.isArray(paragraphs)) return '';
-  return paragraphs
-    .map((paragraph) => String(paragraph || '').trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p>${paragraph
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')}</p>`)
-    .join('');
-}

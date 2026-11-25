@@ -7,7 +7,7 @@ const supabaseKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const MEAL_PHOTOS_BUCKET = 'meal-photos';
-const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const SYNC_QUEUE_KEY = 'nutriSyncQueueV1';
 const MAX_PENDING_OPS = 120;
 const MAX_INLINE_PHOTO_CHARS = 600_000;
@@ -147,35 +147,19 @@ function requireClient() {
 // Estado de sincronização (feedback na interface)
 // -------------------------------------------------------------
 
-export type SyncStatus = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
+type SyncStatus = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
 
-export interface SyncSnapshot {
+interface SyncSnapshot {
   status: SyncStatus;
   pending: number;
   message?: string;
 }
 
-type SyncListener = (snapshot: SyncSnapshot) => void;
-
-const syncListeners = new Set<SyncListener>();
 let syncSnapshot: SyncSnapshot = { status: 'idle', pending: 0 };
 let savedResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emitSyncState(next: Partial<SyncSnapshot>) {
   syncSnapshot = { ...syncSnapshot, ...next, pending: pendingOps.length };
-  syncListeners.forEach((listener) => listener(syncSnapshot));
-}
-
-export function getSyncSnapshot() {
-  return syncSnapshot;
-}
-
-export function subscribeSyncState(listener: SyncListener) {
-  syncListeners.add(listener);
-  listener(syncSnapshot);
-  return () => {
-    syncListeners.delete(listener);
-  };
 }
 
 function markSaved() {
@@ -762,6 +746,14 @@ export async function deleteCurrentUserData(userId: string) {
   }
 }
 
-export async function getPendingSyncCount() {
-  return pendingOps.length;
+export function clearSyncQueue() {
+  pendingOps = [];
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(SYNC_QUEUE_KEY);
+    } catch {
+      // sem localStorage disponível
+    }
+  }
+  emitSyncState({ status: 'idle', message: undefined });
 }

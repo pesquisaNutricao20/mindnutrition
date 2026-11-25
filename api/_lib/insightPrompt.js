@@ -118,11 +118,3 @@ FORMATO (markdown simples, obrigatório)
 RESUMO DE DADOS
 ${JSON.stringify(context)}`;
 }
-
-export function splitSummary(summary) {
-  return String(summary || '')
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 40);
-}

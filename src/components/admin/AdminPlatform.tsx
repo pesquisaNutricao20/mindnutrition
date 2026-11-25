@@ -12,16 +12,11 @@ import {
   Edit2,
   Eye,
   EyeOff,
-  FileText,
-  Image as ImageIcon,
   LayoutDashboard,
-  Loader2,
-  Lock,
   LogOut,
   MessageCircle,
   Plus,
   RefreshCw,
-  Search,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -29,21 +24,34 @@ import {
   Sprout,
   UserCheck,
   Users,
-  X,
 } from 'lucide-react';
 import iconApp from '../../assets/logo/icon_app.png';
 import { AdminApiError, adminApi } from '../../lib/adminApi';
+import { STATUS_TONES } from '../../lib/schedule';
+import { Button } from '../ui/Button';
+import { FormField } from '../ui/FormField';
+import { Overlay } from '../ui/Overlay';
+import { StateView } from '../ui/StateView';
 import { RichTextEditor } from './RichTextEditor';
 import { AgendaPanel } from './AgendaPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { UserInsightsPanel } from './UserInsightsPanel';
-import { Skeleton } from './Skeleton';
+import { Skeleton } from '../ui/Skeleton';
 
 type ToastKind = 'success' | 'error' | 'info';
 type ToastFn = (message: string, kind?: ToastKind) => void;
 
 type AdminStatus = 'checking' | 'login' | 'ready';
 type AdminTab = 'overview' | 'users' | 'articles' | 'agenda' | 'messages' | 'challenge';
+
+const ADMIN_TABS: Array<{ id: AdminTab; label: string; icon: React.ReactNode }> = [
+  { id: 'overview', label: 'Visão geral', icon: <LayoutDashboard size={17} /> },
+  { id: 'agenda', label: 'Agenda', icon: <CalendarDays size={17} /> },
+  { id: 'messages', label: 'Mensagens', icon: <MessageCircle size={17} /> },
+  { id: 'users', label: 'Usuários', icon: <Users size={17} /> },
+  { id: 'challenge', label: 'Desafio', icon: <Sprout size={17} /> },
+  { id: 'articles', label: 'Artigos', icon: <BookOpen size={17} /> },
+];
 
 interface AdminUser {
   id: string;
@@ -142,10 +150,18 @@ const formatRelative = (value?: string | null) => {
 
 const imcTone = (imc: number | null) => {
   if (!imc) return 'border-line bg-paper text-ink/60';
-  if (imc < 18.5) return 'border-sky-200 bg-sky-50 text-sky-700';
-  if (imc < 25) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (imc < 30) return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-red-200 bg-red-50 text-red-700';
+  if (imc < 18.5) return STATUS_TONES.completed;
+  if (imc < 25) return STATUS_TONES.confirmed;
+  if (imc < 30) return STATUS_TONES.pending;
+  return STATUS_TONES.declined;
+};
+
+const imcCategory = (imc: number | null) => {
+  if (!imc) return 'IMC não informado';
+  if (imc < 18.5) return 'IMC abaixo de 18,5';
+  if (imc < 25) return 'IMC entre 18,5 e 24,9';
+  if (imc < 30) return 'IMC entre 25 e 29,9';
+  return 'IMC a partir de 30';
 };
 
 const paragraphsToHtml = (paragraphs: string[]) => paragraphs
@@ -200,18 +216,18 @@ function StatCard({
   return (
     <div className="rounded-3xl border border-line bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <span className="label-sm text-ink/45">{label}</span>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">{icon}</span>
+        <span className="font-outfit text-xs font-semibold text-ink/50">{label}</span>
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">{icon}</span>
       </div>
       <p className="mt-3 font-display text-3xl font-semibold text-ink">{value}</p>
-      <p className="mt-1 text-[11px] font-medium text-ink/45">{hint}</p>
+      <p className="mt-1 text-xs font-medium text-ink/50">{hint}</p>
     </div>
   );
 }
 
 function AdminSplash() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-6">
+    <div role="status" aria-live="polite" className="flex min-h-screen items-center justify-center bg-paper px-6">
       <div className="flex flex-col items-center gap-5 text-center">
         <div className="relative flex h-20 w-20 items-center justify-center rounded-[1.75rem] border border-line bg-white shadow-sm">
           <img src={iconApp} alt="" className="h-12 w-12 object-contain" />
@@ -219,7 +235,7 @@ function AdminSplash() {
         </div>
         <div className="space-y-1">
           <p className="font-display text-xl font-semibold text-ink">Painel Nutricional</p>
-          <p className="text-xs font-medium text-ink/50">Verificando acesso seguro...</p>
+          <p className="text-sm font-medium text-ink/55">Verificando acesso seguro...</p>
         </div>
         <div className="h-1 w-36 overflow-hidden rounded-full bg-line">
           <div className="h-full w-1/2 animate-[ai-progress-slide_1.2s_ease-in-out_infinite] rounded-full bg-accent" />
@@ -242,15 +258,17 @@ function AdminLoginScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (isSubmitting) return;
+    if (submittingRef.current) return;
     if (!password.trim()) {
       setError('Informe a senha administrativa.');
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     setError('');
     try {
@@ -266,31 +284,28 @@ function AdminLoginScreen({
       setError(message);
       toast(message, 'error');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-paper px-4 py-12">
-      <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-accent-secondary/10 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-accent/5" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-accent-secondary/5" />
 
       <div className="relative w-full max-w-md">
-        <button
-          type="button"
-          onClick={onBack}
-          className="mb-5 inline-flex items-center gap-2 text-xs font-semibold text-ink/55 transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-        >
-          <ArrowLeft size={15} /> Voltar ao site
-        </button>
+        <Button variant="ghost" size="sm" className="mb-5" onClick={onBack}>
+          <ArrowLeft size={16} aria-hidden="true" /> Voltar ao site
+        </Button>
 
-        <div className="rounded-[2.5rem] border border-line bg-white p-7 shadow-xl shadow-accent/5 sm:p-9">
+        <div className="rounded-[2.5rem] border border-line bg-white p-6 shadow-xl shadow-accent/5 sm:p-8">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10">
               <img src={iconApp} alt="" className="h-8 w-8 object-contain" />
             </span>
             <div>
-              <p className="label-sm text-accent">Área restrita</p>
+              <p className="font-outfit text-xs font-semibold text-accent">Área restrita</p>
               <h1 className="font-display text-2xl font-semibold text-ink">Painel Nutricional</h1>
             </div>
           </div>
@@ -299,53 +314,37 @@ function AdminLoginScreen({
             Entre com a senha administrativa para gerenciar pacientes e conteúdos da biblioteca.
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label htmlFor="admin-password" className="label-sm mb-1.5 block text-accent">
-                Senha administrativa
-              </label>
-              <div className="relative">
-                <Lock size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink/35" />
-                <input
-                  id="admin-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(event) => {
-                    setPassword(event.target.value);
-                    setError('');
-                  }}
-                  autoComplete="current-password"
-                  autoFocus
-                  placeholder="Digite a senha"
-                  maxLength={256}
-                  aria-invalid={Boolean(error)}
-                  aria-describedby={error ? 'admin-login-error' : undefined}
-                  className="w-full rounded-2xl border border-line bg-paper py-3.5 pl-11 pr-12 text-sm font-medium text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((current) => !current)}
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                  className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-ink/40 transition hover:bg-line/60 hover:text-ink/70"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              {error && (
-                <p id="admin-login-error" className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-red-600">
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {error}
-                </p>
-              )}
-            </div>
-
-            <button
-              type="submit"
+          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+            <FormField label="Senha administrativa" htmlFor="admin-password" error={error}>
+              <input
+                id="admin-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setError('');
+                }}
+                autoComplete="current-password"
+                autoFocus
+                placeholder="Digite a senha"
+                maxLength={256}
+                className="min-h-12 w-full rounded-2xl border border-line bg-paper px-4 py-3 text-base font-medium text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10"
+              />
+            </FormField>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-mt-2"
+              onClick={() => setShowPassword((current) => !current)}
               disabled={isSubmitting}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-sm font-bold text-paper shadow-md shadow-accent/20 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? <Loader2 size={17} className="animate-spin" /> : <ShieldCheck size={17} />}
-              {isSubmitting ? 'Validando acesso...' : 'Entrar no painel'}
-            </button>
+              {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+              {showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+            </Button>
+
+            <Button type="submit" fullWidth loading={isSubmitting}>
+              <ShieldCheck size={17} aria-hidden="true" /> {isSubmitting ? 'Validando acesso...' : 'Entrar no painel'}
+            </Button>
           </form>
         </div>
       </div>
@@ -366,15 +365,16 @@ function UsersTable({
 }) {
   if (loading) {
     return (
-      <div className="space-y-2">
+      <div role="status" aria-label="Carregando usuários" className="space-y-2">
+        <span className="sr-only">Carregando usuários.</span>
         {Array.from({ length: 5 }).map((_, index) => (
           <div key={index} className="flex items-center gap-4 rounded-2xl border border-line bg-white p-4">
-            <Skeleton className="h-10 w-10 rounded-full" />
+            <Skeleton className="h-11 w-11 rounded-full" />
             <div className="flex-1 space-y-2">
               <Skeleton className="h-3 w-1/3" />
-              <Skeleton className="h-2.5 w-1/2" />
+              <Skeleton className="h-3 w-1/2" />
             </div>
-            <Skeleton className="h-7 w-16 rounded-full" />
+            <Skeleton className="h-11 w-16 rounded-full" />
           </div>
         ))}
       </div>
@@ -383,17 +383,17 @@ function UsersTable({
 
   if (!users.length) {
     return (
-      <div className="rounded-3xl border border-dashed border-line bg-white p-10 text-center">
-        <Users size={28} className="mx-auto text-ink/25" />
-        <p className="mt-3 text-sm font-semibold text-ink">Nenhum usuário encontrado</p>
-        <p className="mt-1 text-xs text-ink/50">Ajuste a busca ou os filtros aplicados.</p>
-      </div>
+      <StateView
+        status="empty"
+        title="Nenhum usuário encontrado"
+        description="Ajuste a busca ou os filtros aplicados."
+      />
     );
   }
 
   return (
     <div className="overflow-hidden rounded-3xl border border-line bg-white shadow-sm">
-      <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_190px] gap-4 border-b border-line bg-paper/60 px-5 py-3 text-[10px] font-bold text-ink/40 md:grid">
+      <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_210px] gap-4 border-b border-line bg-paper/60 px-5 py-3 text-xs font-bold text-ink/45 md:grid">
         <span>Paciente</span>
         <span>Perfil</span>
         <span>IMC</span>
@@ -402,12 +402,12 @@ function UsersTable({
       </div>
       <div className="divide-y divide-line/70">
         {users.map((user) => (
-          <div
+          <article
             key={user.id}
-            className="grid gap-3 px-4 py-4 transition hover:bg-paper/50 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_190px] md:items-center md:gap-4 md:px-5"
+            className="grid gap-3 px-4 py-4 transition hover:bg-paper/50 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_90px_minmax(0,1.4fr)_210px] md:items-center md:gap-4 md:px-5"
           >
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold uppercase text-accent">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/10 text-sm font-bold uppercase text-accent">
                 {(user.name || user.email || '?').slice(0, 2)}
               </span>
               <div className="min-w-0">
@@ -416,74 +416,80 @@ function UsersTable({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink/60 md:block md:space-y-0.5">
-              <span>{user.gender || 'Gênero não informado'}</span>
-              {user.age ? <span className="md:block">{user.age} anos</span> : null}
-              {user.weight ? <span className="md:block">{user.weight} kg</span> : null}
+            <div className="text-xs text-ink/60 md:space-y-1">
+              <span className="mb-1 block font-semibold text-ink/45 md:hidden">Perfil</span>
+              <span className="block">{user.gender || 'Gênero não informado'}</span>
+              <span className="block">{user.age ? `${user.age} anos` : 'Idade não informada'}</span>
+              <span className="block">{user.weight ? `${user.weight} kg` : 'Peso não informado'}</span>
+              <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-bold ${user.onboardingComplete ? STATUS_TONES.confirmed : STATUS_TONES.pending}`}>
+                {user.onboardingComplete ? 'Onboarding concluído' : 'Onboarding pendente'}
+              </span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex min-w-[52px] justify-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${imcTone(user.imc)}`}>
+            <div>
+              <span className="mb-1 block text-xs font-semibold text-ink/45 md:hidden">IMC</span>
+              <span
+                className={`inline-flex min-w-[60px] justify-center rounded-full border px-3 py-1.5 text-xs font-bold ${imcTone(user.imc)}`}
+                aria-label={user.imc ? `${user.imc.toFixed(1)}. ${imcCategory(user.imc)}` : imcCategory(null)}
+              >
                 {user.imc ? user.imc.toFixed(1) : '—'}
               </span>
-              <span className={`text-[10px] font-bold md:hidden ${user.onboardingComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {user.onboardingComplete ? 'Ativo' : 'Pendente'}
-              </span>
             </div>
 
-            <div className="flex flex-wrap gap-1">
-              {user.objectives.length ? (
-                user.objectives.slice(0, 3).map((objective) => (
-                  <span key={objective} className="w-fit rounded-full bg-line/50 px-2 py-0.5 text-[10px] font-semibold text-ink/60">
-                    {objective}
+            <div>
+              <span className="mb-1 block text-xs font-semibold text-ink/45 md:hidden">Objetivos</span>
+              <div className="flex flex-wrap gap-1.5">
+                {user.objectives.length ? (
+                  user.objectives.slice(0, 3).map((objective) => (
+                    <span key={objective} className="w-fit rounded-full bg-line/50 px-2.5 py-1 text-xs font-semibold text-ink/60">
+                      {objective}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-ink/45">Sem objetivos</span>
+                )}
+                {user.objectives.length > 3 && (
+                  <span className="w-fit rounded-full bg-line/50 px-2.5 py-1 text-xs font-semibold text-ink/60">
+                    +{user.objectives.length - 3}
                   </span>
-                ))
-              ) : (
-                <span className="text-[11px] text-ink/35">Sem objetivos</span>
-              )}
-              {user.objectives.length > 3 && (
-                <span className="w-fit rounded-full bg-line/50 px-2 py-0.5 text-[10px] font-semibold text-ink/60">
-                  +{user.objectives.length - 3}
-                </span>
-              )}
+                )}
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
-              <span className="hidden rounded-full border px-2 py-0.5 text-[10px] font-bold md:inline-flex"
-                style={{ borderColor: user.onboardingComplete ? '#a7f3d0' : '#fde68a', color: user.onboardingComplete ? '#047857' : '#b45309', background: user.onboardingComplete ? '#ecfdf5' : '#fffbeb' }}
-              >
-                {user.onboardingComplete ? 'Onboarding' : 'Pendente'}
-              </span>
-              <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center justify-between gap-3 md:justify-end">
+              <div>
+                <span className="mb-1 block text-xs font-semibold text-ink/45 md:hidden">Última atividade</span>
+                <p className="text-xs font-bold text-ink/65">{formatRelative(user.lastActive)}</p>
+                <p className="text-xs text-ink/45">{formatDate(user.lastActive)}</p>
+              </div>
+              <div className="flex items-center gap-2">
                 {onMessage && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-11 w-11 px-0"
                     onClick={() => onMessage(user)}
-                    title={`Enviar mensagem para ${user.name || user.email}`}
                     aria-label={`Enviar mensagem para ${user.name || user.email}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-ink/50 transition hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+                    title={`Enviar mensagem para ${user.name || user.email}`}
                   >
-                    <MessageCircle size={12} />
-                  </button>
+                    <MessageCircle size={16} aria-hidden="true" />
+                  </Button>
                 )}
                 {onSelect && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-11 w-11 px-0"
                     onClick={() => onSelect(user)}
-                    title={`Ver insights de ${user.name || user.email}`}
                     aria-label={`Ver insights de ${user.name || user.email}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-ink/50 transition hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+                    title={`Ver insights de ${user.name || user.email}`}
                   >
-                    <Sparkles size={12} />
-                  </button>
+                    <Sparkles size={16} aria-hidden="true" />
+                  </Button>
                 )}
               </div>
-              <div className="text-right">
-                <p className="text-[11px] font-bold text-ink/65">{formatRelative(user.lastActive)}</p>
-                <p className="text-[10px] text-ink/35">{formatDate(user.lastActive)}</p>
-              </div>
             </div>
-          </div>
+          </article>
         ))}
       </div>
     </div>
@@ -501,191 +507,209 @@ function ArticleEditorModal({
   draft: ArticleDraft;
   onChange: (draft: ArticleDraft) => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   saving: boolean;
   error: string;
 }) {
-  const inputClass = 'w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10';
-  const labelClass = 'label-sm mb-1.5 block text-accent';
+  const initialDraftRef = useRef(draft);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const discardCancelRef = useRef<HTMLButtonElement>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current);
+  const inputClass = 'min-h-11 w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10';
+
+  const requestClose = () => {
+    if (saving) return;
+    if (isDirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center">
-      <div className="absolute inset-0 bg-ink/55" onClick={() => !saving && onClose()} />
-      <section className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[2rem] border border-line bg-paper shadow-2xl sm:rounded-[2rem]">
-        <header className="flex items-center justify-between gap-3 border-b border-line bg-white px-5 py-4">
-          <div>
-            <p className="label-sm text-accent">{draft.id ? 'Editar conteúdo' : 'Novo conteúdo'}</p>
-            <h2 className="font-display text-xl font-semibold text-ink">{draft.id ? 'Atualizar artigo' : 'Publicar artigo'}</h2>
+    <>
+      <Overlay
+        open
+        onClose={requestClose}
+        title={draft.id ? 'Editar artigo' : 'Publicar artigo'}
+        description="Revise os dados e o conteúdo antes de salvar. Nenhuma alteração é enviada automaticamente."
+        size="xl"
+        panelClassName="md:max-w-3xl"
+        busy={saving}
+        initialFocusRef={titleRef}
+        bodyClassName="space-y-5"
+        footer={(
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={requestClose} disabled={saving}>Cancelar</Button>
+            <Button onClick={() => void onSave()} loading={saving} disabled={!isDirty}>
+              <Check size={15} aria-hidden="true" /> {saving ? 'Salvando...' : draft.id ? 'Salvar alterações' : 'Publicar artigo'}
+            </Button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            aria-label="Fechar"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink/50 transition hover:bg-paper disabled:opacity-50"
-          >
-            <X size={16} />
-          </button>
-        </header>
+        )}
+      >
+        <p role="status" aria-live="polite" className={`text-sm font-semibold ${isDirty ? 'text-amber-700' : 'text-ink/50'}`}>
+          {saving ? 'Salvando alterações...' : isDirty ? 'Há alterações não salvas.' : 'Nenhuma alteração pendente.'}
+        </p>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <div>
-              <label htmlFor="article-title" className={labelClass}>Título</label>
-              <input
-                id="article-title"
-                value={draft.title}
-                maxLength={160}
-                onChange={(event) => onChange({ ...draft, title: event.target.value })}
-                className={inputClass}
-                placeholder="Ex.: Como identificar a fome emocional"
-              />
-            </div>
-            <div>
-              <label htmlFor="article-type" className={labelClass}>Tipo</label>
-              <input
-                id="article-type"
-                list="article-type-options"
-                value={draft.type}
-                maxLength={60}
-                onChange={(event) => onChange({ ...draft, type: event.target.value })}
-                className={inputClass}
-                placeholder="Leitura, Guia, Receita"
-              />
-              <datalist id="article-type-options">
-                <option value="Leitura" />
-                <option value="Guia" />
-                <option value="Exercício" />
-                <option value="Receita" />
-              </datalist>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="article-summary" className={labelClass}>Resumo</label>
-            <textarea
-              id="article-summary"
-              value={draft.summary}
-              maxLength={600}
-              onChange={(event) => onChange({ ...draft, summary: event.target.value })}
-              className={`${inputClass} h-20 resize-none`}
-              placeholder="Um resumo curto que aparece nos cards da biblioteca."
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <FormField label="Título" htmlFor="article-title" required hint="Mínimo de 3 caracteres.">
+            <input
+              ref={titleRef}
+              id="article-title"
+              value={draft.title}
+              maxLength={160}
+              required
+              disabled={saving}
+              onChange={(event) => onChange({ ...draft, title: event.target.value })}
+              className={inputClass}
+              placeholder="Ex.: Como identificar a fome emocional"
             />
-          </div>
-
-          <div>
-            <label className={labelClass}>Conteúdo do artigo</label>
-            <RichTextEditor
-              key={draft.id || 'new-article'}
-              value={draft.contentHtml}
-              onChange={(html) => onChange({ ...draft, contentHtml: html })}
+          </FormField>
+          <FormField label="Tipo" htmlFor="article-type">
+            <input
+              id="article-type"
+              list="article-type-options"
+              value={draft.type}
+              maxLength={60}
+              disabled={saving}
+              onChange={(event) => onChange({ ...draft, type: event.target.value })}
+              className={inputClass}
+              placeholder="Leitura, Guia, Receita"
             />
-            <p className="mt-1.5 text-[10px] leading-relaxed text-ink/40">
-              Editor rico: títulos, listas, citações, links e imagens. O texto é publicado na biblioteca exatamente como aparece aqui.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_110px]">
-            <div>
-              <label htmlFor="article-image" className={labelClass}>Imagem de capa (URL)</label>
-              <div className="relative">
-                <ImageIcon size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/35" />
-                <input
-                  id="article-image"
-                  value={draft.image}
-                  onChange={(event) => onChange({ ...draft, image: event.target.value })}
-                  className={`${inputClass} pl-9`}
-                  placeholder="https://..."
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="article-duration" className={labelClass}>Duração</label>
-              <div className="relative">
-                <Clock size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/35" />
-                <input
-                  id="article-duration"
-                  value={draft.duration}
-                  maxLength={24}
-                  onChange={(event) => onChange({ ...draft, duration: event.target.value })}
-                  className={`${inputClass} pl-9`}
-                  placeholder="4 min"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="article-source-label" className={labelClass}>Fonte</label>
-              <input
-                id="article-source-label"
-                value={draft.sourceLabel}
-                maxLength={160}
-                onChange={(event) => onChange({ ...draft, sourceLabel: event.target.value })}
-                className={inputClass}
-                placeholder="Ex.: Sociedade Brasileira de Nutrição"
-              />
-            </div>
-            <div>
-              <label htmlFor="article-source-url" className={labelClass}>Link da fonte</label>
-              <div className="relative">
-                <FileText size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/35" />
-                <input
-                  id="article-source-url"
-                  value={draft.sourceUrl}
-                  onChange={(event) => onChange({ ...draft, sourceUrl: event.target.value })}
-                  className={`${inputClass} pl-9`}
-                  placeholder="https://..."
-                />
-              </div>
-            </div>
-          </div>
-
-          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-line bg-white px-4 py-3">
-            <span>
-              <span className="block text-sm font-bold text-ink">Publicado na biblioteca</span>
-              <span className="block text-[11px] text-ink/45">Desligue para manter o artigo em rascunho.</span>
-            </span>
-            <span className={`relative h-7 w-12 shrink-0 rounded-full transition ${draft.published ? 'bg-accent' : 'bg-line'}`}>
-              <input
-                type="checkbox"
-                checked={draft.published}
-                onChange={(event) => onChange({ ...draft, published: event.target.checked })}
-                className="sr-only"
-              />
-              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${draft.published ? 'left-6' : 'left-1'}`} />
-            </span>
-          </label>
-
-          {error && (
-            <p className="flex items-start gap-1.5 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {error}
-            </p>
-          )}
+          </FormField>
+          <datalist id="article-type-options">
+            <option value="Leitura" />
+            <option value="Guia" />
+            <option value="Exercício" />
+            <option value="Receita" />
+          </datalist>
         </div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-line bg-white px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
+        <FormField label="Resumo" htmlFor="article-summary" required hint="Mínimo de 10 caracteres. Aparece nos cards da biblioteca.">
+          <textarea
+            id="article-summary"
+            value={draft.summary}
+            maxLength={600}
+            required
             disabled={saving}
-            className="rounded-full border border-line px-5 py-2.5 text-xs font-bold text-ink/65 transition hover:bg-paper disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
+            onChange={(event) => onChange({ ...draft, summary: event.target.value })}
+            className={`${inputClass} min-h-24 resize-none`}
+            placeholder="Um resumo curto que aparece nos cards da biblioteca."
+          />
+        </FormField>
+
+        <fieldset className="min-w-0" disabled={saving}>
+          <legend className="mb-2 text-sm font-semibold text-ink">Conteúdo do artigo</legend>
+          <RichTextEditor
+            key={draft.id || 'new-article'}
+            value={draft.contentHtml}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-xs font-bold text-paper shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-            {saving ? 'Salvando...' : draft.id ? 'Salvar alterações' : 'Publicar artigo'}
-          </button>
-        </footer>
-      </section>
-    </div>
+            onChange={(html) => onChange({ ...draft, contentHtml: html })}
+          />
+          <p className="mt-2 text-xs leading-relaxed text-ink/50">
+            Use títulos, listas, citações, links e imagens por URL. Ao salvar, o servidor remove tags e URLs inseguras; por isso, a publicação pode ficar diferente do editor.
+          </p>
+        </fieldset>
+
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <FormField label="Imagem de capa (URL)" htmlFor="article-image" optional>
+            <input
+              id="article-image"
+              type="url"
+              inputMode="url"
+              value={draft.image}
+              disabled={saving}
+              onChange={(event) => onChange({ ...draft, image: event.target.value })}
+              className={inputClass}
+              placeholder="https://..."
+            />
+          </FormField>
+          <FormField label="Duração" htmlFor="article-duration">
+            <input
+              id="article-duration"
+              value={draft.duration}
+              maxLength={24}
+              disabled={saving}
+              onChange={(event) => onChange({ ...draft, duration: event.target.value })}
+              className={inputClass}
+              placeholder="4 min"
+            />
+          </FormField>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Fonte" htmlFor="article-source-label" optional>
+            <input
+              id="article-source-label"
+              value={draft.sourceLabel}
+              maxLength={160}
+              disabled={saving}
+              onChange={(event) => onChange({ ...draft, sourceLabel: event.target.value })}
+              className={inputClass}
+              placeholder="Ex.: Sociedade Brasileira de Nutrição"
+            />
+          </FormField>
+          <FormField label="Link da fonte" htmlFor="article-source-url" optional>
+            <input
+              id="article-source-url"
+              type="url"
+              inputMode="url"
+              value={draft.sourceUrl}
+              disabled={saving}
+              onChange={(event) => onChange({ ...draft, sourceUrl: event.target.value })}
+              className={inputClass}
+              placeholder="https://..."
+            />
+          </FormField>
+        </div>
+
+        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-2xl border border-line bg-white px-4 py-3">
+          <span>
+            <span className="block text-sm font-bold text-ink">Publicado na biblioteca</span>
+            <span className="block text-xs text-ink/50">Desmarque para manter o artigo em rascunho.</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.published}
+            disabled={saving}
+            onChange={(event) => onChange({ ...draft, published: event.target.checked })}
+            className="h-6 w-6 shrink-0 accent-accent"
+          />
+        </label>
+
+        {error && (
+          <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/5 p-3 text-sm font-semibold text-danger">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" /> {error}
+          </p>
+        )}
+      </Overlay>
+
+      <Overlay
+        open={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        title="Descartar alterações?"
+        description="As mudanças neste artigo não foram salvas e serão perdidas."
+        size="sm"
+        initialFocusRef={discardCancelRef}
+        footer={(
+          <div className="grid grid-cols-2 gap-3">
+            <Button ref={discardCancelRef} variant="secondary" onClick={() => setConfirmDiscard(false)}>Continuar editando</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmDiscard(false);
+                onClose();
+              }}
+            >
+              Descartar
+            </Button>
+          </div>
+        )}
+      >
+        <p className="text-sm leading-relaxed text-ink/60">Salve antes de fechar se quiser manter as alterações.</p>
+      </Overlay>
+    </>
   );
 }
 
@@ -716,6 +740,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
   const [savingArticle, setSavingArticle] = useState(false);
   const [articleFormError, setArticleFormError] = useState('');
   const [deletingArticle, setDeletingArticle] = useState<AdminArticle | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [removingArticle, setRemovingArticle] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -729,6 +754,11 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
   };
 
   const latestRequest = useRef(0);
+  const savingArticleRef = useRef(false);
+  const removingArticleRef = useRef(false);
+  const loggingOutRef = useRef(false);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
 
   const handleSessionExpired = () => {
     setStatus('login');
@@ -850,12 +880,14 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
   }, [status, tab]);
 
   const handleLogout = async () => {
-    if (loggingOut) return;
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
     setLoggingOut(true);
     try {
       await adminApi('/api/admin/logout', { method: 'POST' });
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Não foi possível encerrar a sessão no servidor.', 'error');
+      loggingOutRef.current = false;
       setLoggingOut(false);
       return;
     }
@@ -867,11 +899,13 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
     setArticles([]);
     setTab('overview');
     toast('Sessão encerrada com segurança.', 'success');
+    loggingOutRef.current = false;
     setLoggingOut(false);
   };
 
   const handleSaveArticle = async () => {
-    if (!draft || savingArticle) return;
+    if (!draft || savingArticleRef.current) return;
+    savingArticleRef.current = true;
     setSavingArticle(true);
     setArticleFormError('');
     try {
@@ -901,13 +935,16 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
       }
       setArticleFormError(error instanceof Error ? error.message : 'Não foi possível salvar o artigo.');
     } finally {
+      savingArticleRef.current = false;
       setSavingArticle(false);
     }
   };
 
   const handleDeleteArticle = async () => {
-    if (!deletingArticle || removingArticle) return;
+    if (!deletingArticle || removingArticleRef.current) return;
+    removingArticleRef.current = true;
     setRemovingArticle(true);
+    setDeleteError('');
     try {
       await adminApi(`/api/admin/articles?id=${encodeURIComponent(deletingArticle.id)}`, { method: 'DELETE' });
       toast('Artigo removido.', 'success');
@@ -918,8 +955,11 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
         handleSessionExpired();
         return;
       }
-      toast(error instanceof Error ? error.message : 'Não foi possível remover o artigo.', 'error');
+      const message = error instanceof Error ? error.message : 'Não foi possível remover o artigo.';
+      setDeleteError(message);
+      toast(message, 'error');
     } finally {
+      removingArticleRef.current = false;
       setRemovingArticle(false);
     }
   };
@@ -946,107 +986,116 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
     );
   }
 
-  const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview', label: 'Visão geral', icon: <LayoutDashboard size={15} /> },
-    { id: 'agenda', label: 'Agenda', icon: <CalendarDays size={15} /> },
-    { id: 'messages', label: 'Mensagens', icon: <MessageCircle size={15} /> },
-    { id: 'users', label: 'Usuários', icon: <Users size={15} /> },
-    { id: 'challenge', label: 'Desafio', icon: <Sprout size={15} /> },
-    { id: 'articles', label: 'Artigos', icon: <BookOpen size={15} /> },
-  ];
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex = index;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % ADMIN_TABS.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + ADMIN_TABS.length) % ADMIN_TABS.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = ADMIN_TABS.length - 1;
+    else return;
+    event.preventDefault();
+    setTab(ADMIN_TABS[nextIndex].id);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   return (
-    <div className="min-h-screen bg-paper pb-16">
+    <div className="min-h-screen w-full bg-paper pb-safe">
       <header className="border-b border-line bg-white">
-        <div className="flex w-full flex-col gap-4 px-4 py-4 sm:px-8 md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full flex-col gap-4 px-4 py-4 sm:px-8 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10">
                 <img src={iconApp} alt="" className="h-7 w-7 object-contain" />
               </span>
               <div>
-                <p className="label-sm text-accent">Área administrativa</p>
+                <p className="font-outfit text-xs font-semibold text-accent">Área administrativa</p>
                 <h1 className="font-display text-lg font-semibold leading-tight text-ink">Painel Nutricional</h1>
               </div>
             </div>
-            <div className="flex items-center gap-1 md:hidden">
-              <button
-                type="button"
+            <div className="flex items-center gap-2 md:hidden">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-11 w-11 px-0"
                 onClick={onExit}
                 aria-label="Voltar ao site"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink/55 transition hover:bg-paper"
               >
-                <ArrowLeft size={16} />
-              </button>
-              <button
-                type="button"
+                <ArrowLeft size={17} aria-hidden="true" />
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-11 w-11 px-0"
                 onClick={handleLogout}
+                loading={loggingOut}
                 aria-label="Sair do painel"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100"
               >
-                <LogOut size={16} />
-              </button>
+                {loggingOut ? <span className="sr-only">Saindo</span> : <LogOut size={17} aria-hidden="true" />}
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
-            {tabs.map((item) => (
-              <button
+          <div
+            role="tablist"
+            aria-label="Seções do painel administrativo"
+            aria-orientation="horizontal"
+            className="flex w-full items-center gap-2 overflow-x-auto pb-1 xl:w-auto xl:flex-1 xl:justify-center"
+          >
+            {ADMIN_TABS.map((item, index) => (
+              <Button
                 key={item.id}
-                type="button"
+                ref={(node) => { tabRefs.current[index] = node; }}
+                id={`admin-tab-${item.id}`}
+                role="tab"
+                variant={tab === item.id ? 'primary' : 'secondary'}
+                size="sm"
+                className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                aria-selected={tab === item.id}
+                aria-controls={`admin-panel-${item.id}`}
+                tabIndex={tab === item.id ? 0 : -1}
                 onClick={() => setTab(item.id)}
-                aria-pressed={tab === item.id}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                  tab === item.id
-                    ? 'bg-accent text-paper shadow-sm shadow-accent/20'
-                    : 'border border-line bg-white text-ink/60 hover:bg-paper'
-                }`}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
               >
                 {item.icon} {item.label}
-              </button>
+              </Button>
             ))}
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
             {sessionLabel && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 text-[10px] font-bold text-ink/50">
-                <Clock size={12} /> Sessão até {sessionLabel}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-2 text-xs font-bold text-ink/50">
+                <Clock size={14} aria-hidden="true" /> Sessão até {sessionLabel}
               </span>
             )}
-            <button
-              type="button"
-              onClick={onExit}
-              className="rounded-full border border-line px-3.5 py-2 text-[11px] font-bold text-ink/55 transition hover:bg-paper"
-            >
-              Ver site
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-3.5 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
-            >
-              <LogOut size={13} /> Sair
-            </button>
+            <Button variant="secondary" size="sm" onClick={onExit}>Ver site</Button>
+            <Button variant="secondary" size="sm" onClick={handleLogout} loading={loggingOut}>
+              <LogOut size={14} aria-hidden="true" /> Sair
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="w-full px-4 pt-6 sm:px-8">
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <div
+          id="admin-panel-overview"
+          role="tabpanel"
+          aria-labelledby="admin-tab-overview"
+          hidden={tab !== 'overview'}
+          tabIndex={tab === 'overview' ? 0 : -1}
+        >
         {tab === 'overview' && (
           <div className="space-y-6">
             {overviewError ? (
-              <div className="rounded-3xl border border-red-100 bg-red-50 p-5">
-                <p className="flex items-center gap-2 text-sm font-bold text-red-700">
-                  <AlertTriangle size={17} /> {overviewError}
-                </p>
-                <button
-                  type="button"
-                  onClick={loadOverview}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                >
-                  <RefreshCw size={13} /> Tentar novamente
-                </button>
-              </div>
+              <StateView
+                status="error"
+                title="Não foi possível carregar o painel"
+                description={overviewError}
+                action={(
+                  <Button variant="secondary" size="sm" onClick={() => void loadOverview()}>
+                    <RefreshCw size={15} aria-hidden="true" /> Tentar novamente
+                  </Button>
+                )}
+              />
             ) : (
               <>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1092,16 +1141,12 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                   <section className="rounded-3xl border border-line bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="label-sm text-accent">Últimas atividades</p>
+                        <p className="font-outfit text-xs font-semibold text-accent">Últimas atividades</p>
                         <h2 className="font-display text-xl font-semibold text-ink">Pacientes recentes</h2>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setTab('users')}
-                        className="text-[11px] font-bold text-accent transition hover:opacity-70"
-                      >
-                        Ver todos
-                      </button>
+                      <Button variant="ghost" size="sm" onClick={() => setTab('users')}>
+                        Ver todos <ChevronRight size={15} aria-hidden="true" />
+                      </Button>
                     </div>
                     <div className="mt-4">
                       <UsersTable
@@ -1114,7 +1159,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                   </section>
 
                   <section className="rounded-3xl border border-line bg-white p-5 shadow-sm">
-                    <p className="label-sm text-accent">Resumo clínico</p>
+                    <p className="font-outfit text-xs font-semibold text-accent">Resumo clínico</p>
                     <h2 className="font-display text-xl font-semibold text-ink">Distribuição dos perfis</h2>
                     <div className="mt-4 space-y-3">
                       {[
@@ -1127,7 +1172,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                         const width = Math.min(100, Math.round((item.value / total) * 100));
                         return (
                           <div key={item.label}>
-                            <div className="flex items-center justify-between text-[11px] font-semibold text-ink/60">
+                            <div className="flex items-center justify-between text-xs font-semibold text-ink/60">
                               <span>{item.label}</span>
                               <span>{item.value}</span>
                             </div>
@@ -1144,7 +1189,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                     </div>
                     <div className="mt-5 flex items-center gap-2 rounded-2xl border border-line bg-paper/70 p-3">
                       <ShieldCheck size={15} className="shrink-0 text-accent" />
-                      <p className="text-[10px] leading-relaxed text-ink/45">
+                      <p className="text-xs leading-relaxed text-ink/50">
                         Dados carregados pelo servidor com chave de serviço. Nenhuma credencial fica exposta no navegador.
                       </p>
                     </div>
@@ -1154,7 +1199,15 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             )}
           </div>
         )}
+        </div>
 
+        <div
+          id="admin-panel-agenda"
+          role="tabpanel"
+          aria-labelledby="admin-tab-agenda"
+          hidden={tab !== 'agenda'}
+          tabIndex={tab === 'agenda' ? 0 : -1}
+        >
         {tab === 'agenda' && (
           <AgendaPanel
             toast={toast}
@@ -1162,7 +1215,15 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             onOpenChat={openConversation}
           />
         )}
+        </div>
 
+        <div
+          id="admin-panel-messages"
+          role="tabpanel"
+          aria-labelledby="admin-tab-messages"
+          hidden={tab !== 'messages'}
+          tabIndex={tab === 'messages' ? 0 : -1}
+        >
         {tab === 'messages' && (
           <MessagesPanel
             toast={toast}
@@ -1171,7 +1232,15 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             onOpenInsights={(userId) => setInsightsUserId(userId)}
           />
         )}
+        </div>
 
+        <div
+          id="admin-panel-users"
+          role="tabpanel"
+          aria-labelledby="admin-tab-users"
+          hidden={tab !== 'users'}
+          tabIndex={tab === 'users' ? 0 : -1}
+        >
         {tab === 'users' && (
           <div className="space-y-4">
             {stats ? (
@@ -1183,7 +1252,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                   { label: 'IMC médio', value: stats.averageImc ?? '—' },
                 ].map((item) => (
                   <div key={item.label} className="rounded-2xl border border-line bg-white px-4 py-3">
-                    <p className="text-[10px] font-bold text-ink/40">{item.label}</p>
+                    <p className="text-xs font-bold text-ink/50">{item.label}</p>
                     <p className="mt-0.5 font-display text-xl font-semibold text-ink">{item.value}</p>
                   </div>
                 ))}
@@ -1200,64 +1269,62 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             ) : null}
 
             <div className="rounded-3xl border border-line bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="relative w-full lg:max-w-sm">
-                  <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/35" />
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <FormField label="Buscar pacientes" htmlFor="admin-user-search" className="w-full lg:max-w-sm">
                   <input
+                    id="admin-user-search"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Buscar por nome ou e-mail"
-                    aria-label="Buscar pacientes"
-                    className="w-full rounded-full border border-line bg-paper py-2.5 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10"
+                    placeholder="Nome ou e-mail"
+                    className="min-h-11 w-full rounded-full border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10"
                   />
-                </div>
+                </FormField>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-end gap-2">
                   {[
                     { id: 'all', label: 'Todos' },
                     { id: 'onboarded', label: 'Ativos' },
                     { id: 'pending', label: 'Pendentes' },
                     { id: 'imc', label: 'Com IMC' },
                   ].map((item) => (
-                    <button
+                    <Button
                       key={item.id}
-                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className={filter === item.id ? 'border-accent bg-accent/10 text-accent' : ''}
                       onClick={() => setFilter(item.id as typeof filter)}
                       aria-pressed={filter === item.id}
-                      className={`rounded-full px-3.5 py-2 text-[11px] font-bold transition ${
-                        filter === item.id ? 'bg-accent/10 text-accent' : 'border border-line text-ink/55 hover:bg-paper'
-                      }`}
                     >
                       {item.label}
-                    </button>
+                    </Button>
                   ))}
-                  <select
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value as typeof sort)}
-                    aria-label="Ordenar pacientes"
-                    className="rounded-full border border-line bg-white px-3 py-2 text-[11px] font-bold text-ink/65 outline-none focus:border-accent"
-                  >
-                    <option value="recent">Mais recentes</option>
-                    <option value="name">Nome A-Z</option>
-                    <option value="imc">Maior IMC</option>
-                  </select>
+                  <FormField label="Ordenar" htmlFor="admin-user-sort" className="w-40">
+                    <select
+                      id="admin-user-sort"
+                      value={sort}
+                      onChange={(event) => setSort(event.target.value as typeof sort)}
+                      className="min-h-11 w-full rounded-full border border-line bg-white px-3 text-sm font-bold text-ink/65 outline-none focus:border-accent"
+                    >
+                      <option value="recent">Mais recentes</option>
+                      <option value="name">Nome A-Z</option>
+                      <option value="imc">Maior IMC</option>
+                    </select>
+                  </FormField>
                 </div>
               </div>
             </div>
 
             {usersError ? (
-              <div className="rounded-3xl border border-red-100 bg-red-50 p-5">
-                <p className="flex items-center gap-2 text-sm font-bold text-red-700">
-                  <AlertTriangle size={17} /> {usersError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setReloadToken((current) => current + 1)}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                >
-                  <RefreshCw size={13} /> Recarregar
-                </button>
-              </div>
+              <StateView
+                status="error"
+                title="Não foi possível carregar os usuários"
+                description={usersError}
+                action={(
+                  <Button variant="secondary" size="sm" onClick={() => setReloadToken((current) => current + 1)}>
+                    <RefreshCw size={15} aria-hidden="true" /> Recarregar
+                  </Button>
+                )}
+              />
             ) : (
               <UsersTable
                 users={users}
@@ -1268,54 +1335,71 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             )}
 
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-              <p className="text-[11px] font-medium text-ink/50">
+              <p className="text-xs font-medium text-ink/55">
                 {pagination.total
                   ? `Mostrando ${(pagination.page - 1) * pagination.pageSize + 1}–${Math.min(pagination.page * pagination.pageSize, pagination.total)} de ${pagination.total}`
                   : 'Nenhum resultado'}
               </p>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                   disabled={pagination.page <= 1 || usersLoading}
-                  className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-3.5 py-2 text-[11px] font-bold text-ink/60 transition hover:bg-paper disabled:opacity-40"
                 >
-                  <ChevronLeft size={14} /> Anterior
-                </button>
-                <span className="rounded-full bg-accent/10 px-3 py-1.5 text-[11px] font-bold text-accent">
+                  <ChevronLeft size={15} aria-hidden="true" /> Anterior
+                </Button>
+                <span className="inline-flex min-h-11 items-center rounded-full bg-accent/10 px-3 text-xs font-bold text-accent">
                   {pagination.page} / {pagination.totalPages}
                 </span>
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
                   disabled={pagination.page >= pagination.totalPages || usersLoading}
-                  className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-3.5 py-2 text-[11px] font-bold text-ink/60 transition hover:bg-paper disabled:opacity-40"
                 >
-                  Próxima <ChevronRight size={14} />
-                </button>
+                  Próxima <ChevronRight size={15} aria-hidden="true" />
+                </Button>
               </div>
             </div>
           </div>
         )}
+        </div>
 
+        <div
+          id="admin-panel-challenge"
+          role="tabpanel"
+          aria-labelledby="admin-tab-challenge"
+          hidden={tab !== 'challenge'}
+          tabIndex={tab === 'challenge' ? 0 : -1}
+        >
         {tab === 'challenge' && (
           <div className="space-y-4">
             <section className="rounded-3xl border border-line bg-white p-5 shadow-sm">
-              <p className="label-sm text-accent">Desafio de 21 dias</p>
+              <p className="font-outfit text-xs font-semibold text-accent">Desafio de 21 dias</p>
               <h2 className="font-display text-xl font-semibold text-ink">Acompanhamento da jornada</h2>
-              <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
+              <p className="mt-1 text-sm leading-relaxed text-ink/55">
                 Registros enviados pelo aplicativo. Um dia é concluído com pelo menos 3 das 4 atividades; pontos e conquistas são simbólicos e não avaliam a pessoa.
               </p>
 
               {usersError ? (
-                <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
-                  <AlertTriangle size={14} className="mr-1 inline" /> {usersError}
+                <div className="mt-4">
+                  <StateView
+                    status="error"
+                    title="Não foi possível carregar o desafio"
+                    description={usersError}
+                    action={(
+                      <Button variant="secondary" size="sm" onClick={() => setReloadToken((current) => current + 1)}>
+                        <RefreshCw size={15} aria-hidden="true" /> Tentar novamente
+                      </Button>
+                    )}
+                  />
                 </div>
               ) : (
                 <>
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full min-w-[640px] text-left text-xs">
-                      <thead className="text-[10px] uppercase tracking-wide text-ink/45">
+                      <thead className="text-xs uppercase tracking-wide text-ink/50">
                         <tr>
                           <th className="pb-2">Participante</th>
                           <th className="pb-2">Início</th>
@@ -1328,13 +1412,19 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                       </thead>
                       <tbody>
                         {usersLoading ? (
-                          <tr><td colSpan={7} className="py-6 text-center text-ink/50">Carregando…</td></tr>
+                          Array.from({ length: 5 }).map((_, index) => (
+                            <tr key={index} className="border-t border-line/70">
+                              {Array.from({ length: 7 }).map((__, cell) => (
+                                <td key={cell} className="py-3"><Skeleton className="h-4 w-full" /></td>
+                              ))}
+                            </tr>
+                          ))
                         ) : users.filter((user) => user.challenge).length ? (
                           users.filter((user) => user.challenge).map((user) => (
                             <tr key={user.id} className="border-t border-line/70">
                               <td className="py-2.5 font-bold text-ink">
                                 {user.name || user.email || 'Participante'}
-                                <span className="block text-[10px] font-medium text-ink/45">{user.email}</span>
+                                <span className="block text-xs font-medium text-ink/50">{user.email}</span>
                               </td>
                               <td className="py-2.5 text-ink/60">{formatDate(user.challenge?.startedAt)}</td>
                               <td className="py-2.5 text-ink/60">{user.challenge?.days ?? 0}/21</td>
@@ -1342,31 +1432,35 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                               <td className="py-2.5 text-ink/60">{user.challenge?.points ?? 0}</td>
                               <td className="py-2.5 text-ink/60">{user.challenge?.lastDate || '—'}</td>
                               <td className="py-2.5">
-                                <button type="button" onClick={() => setInsightsUserId(user.id)} className="text-[11px] font-bold text-accent hover:underline">Insights</button>
+                                <Button variant="ghost" size="sm" onClick={() => setInsightsUserId(user.id)}>Insights</Button>
                               </td>
                             </tr>
                           ))
                         ) : (
-                          <tr><td colSpan={7} className="py-8 text-center text-ink/50">Nenhum participante nesta página.</td></tr>
+                          <tr>
+                            <td colSpan={7} className="p-3">
+                              <StateView status="empty" title="Nenhum participante nesta página" description="Ajuste os filtros ou avance para outra página." compact />
+                            </td>
+                          </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
-                  <div className="mt-4 flex items-center justify-between text-[11px] font-bold text-ink/50">
+                  <div className="mt-4 flex flex-col items-start justify-between gap-3 text-xs font-bold text-ink/55 sm:flex-row sm:items-center">
                     <span>Página {pagination.page} de {pagination.totalPages}</span>
                     <div className="flex gap-2">
-                      <button
-                        type="button"
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => setPage((current) => Math.max(1, current - 1))}
                         disabled={pagination.page <= 1 || usersLoading}
-                        className="rounded-full border border-line px-3 py-1.5 disabled:opacity-40"
-                      >Anterior</button>
-                      <button
-                        type="button"
+                      >Anterior</Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
                         disabled={pagination.page >= pagination.totalPages || usersLoading}
-                        className="rounded-full border border-line px-3 py-1.5 disabled:opacity-40"
-                      >Próxima</button>
+                      >Próxima</Button>
                     </div>
                   </div>
                 </>
@@ -1374,52 +1468,52 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             </section>
           </div>
         )}
+        </div>
 
+        <div
+          id="admin-panel-articles"
+          role="tabpanel"
+          aria-labelledby="admin-tab-articles"
+          hidden={tab !== 'articles'}
+          tabIndex={tab === 'articles' ? 0 : -1}
+        >
         {tab === 'articles' && (
           <div className="space-y-4">
             <div className="flex flex-col justify-between gap-3 rounded-3xl border border-line bg-white p-4 sm:flex-row sm:items-center">
               <div>
-                <p className="label-sm text-accent">Biblioteca</p>
+                <p className="font-outfit text-xs font-semibold text-accent">Biblioteca</p>
                 <h2 className="font-display text-xl font-semibold text-ink">Conteúdos publicados</h2>
-                <p className="mt-0.5 text-[11px] text-ink/45">
+                <p className="mt-0.5 text-sm text-ink/50">
                   {articles.length} artigo{articles.length === 1 ? '' : 's'} no servidor
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={loadArticles}
-                  disabled={articlesLoading}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2.5 text-[11px] font-bold text-ink/60 transition hover:bg-paper disabled:opacity-50"
-                >
-                  <RefreshCw size={13} className={articlesLoading ? 'animate-spin' : ''} /> Atualizar
-                </button>
-                <button
-                  type="button"
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => void loadArticles()} loading={articlesLoading}>
+                  <RefreshCw size={15} aria-hidden="true" /> Atualizar
+                </Button>
+                <Button
+                  size="sm"
                   onClick={() => {
                     setArticleFormError('');
                     setDraft(emptyDraft());
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-accent px-5 py-2.5 text-[11px] font-bold text-paper shadow-sm transition hover:bg-accent/90"
                 >
-                  <Plus size={14} /> Novo artigo
-                </button>
+                  <Plus size={15} aria-hidden="true" /> Novo artigo
+                </Button>
               </div>
             </div>
 
             {articlesError ? (
-              <div className="rounded-3xl border border-red-100 bg-red-50 p-5">
-                <p className="flex items-center gap-2 text-sm font-bold text-red-700">
-                  <AlertTriangle size={17} /> {articlesError}
-                </p>
-                <button
-                  type="button"
-                  onClick={loadArticles}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                >
-                  <RefreshCw size={13} /> Tentar novamente
-                </button>
-              </div>
+              <StateView
+                status="error"
+                title="Não foi possível carregar os artigos"
+                description={articlesError}
+                action={(
+                  <Button variant="secondary" size="sm" onClick={() => void loadArticles()}>
+                    <RefreshCw size={15} aria-hidden="true" /> Tentar novamente
+                  </Button>
+                )}
+              />
             ) : articlesLoading ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, index) => (
@@ -1434,21 +1528,22 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                 ))}
               </div>
             ) : articles.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-line bg-white p-12 text-center">
-                <BookOpen size={30} className="mx-auto text-ink/25" />
-                <p className="mt-3 text-sm font-semibold text-ink">Nenhum artigo cadastrado</p>
-                <p className="mt-1 text-xs text-ink/50">Crie o primeiro conteúdo da biblioteca.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setArticleFormError('');
-                    setDraft(emptyDraft());
-                  }}
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-5 py-2.5 text-xs font-bold text-paper"
-                >
-                  <Plus size={14} /> Criar artigo
-                </button>
-              </div>
+              <StateView
+                status="empty"
+                title="Nenhum artigo cadastrado"
+                description="Crie o primeiro conteúdo da biblioteca."
+                action={(
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setArticleFormError('');
+                      setDraft(emptyDraft());
+                    }}
+                  >
+                    <Plus size={15} aria-hidden="true" /> Criar artigo
+                  </Button>
+                )}
+              />
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {articles.map((article) => (
@@ -1462,11 +1557,11 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                         </div>
                       )}
                       <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-accent">
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-accent">
                           {article.type || 'Leitura'}
                         </span>
-                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                          article.published === false ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                          article.published === false ? STATUS_TONES.pending : STATUS_TONES.confirmed
                         }`}>
                           {article.published === false ? 'Rascunho' : 'Publicado'}
                         </span>
@@ -1475,7 +1570,7 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                     <div className="flex flex-1 flex-col p-4">
                       <h3 className="line-clamp-2 font-display text-base font-semibold leading-snug text-ink">{article.title}</h3>
                       <p className="mt-1.5 line-clamp-2 flex-1 text-xs leading-relaxed text-ink/50">{article.summary}</p>
-                      <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-ink/40">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink/50">
                         <span className="inline-flex items-center gap-1">
                           <Clock size={11} /> {article.duration || '4 min'}
                         </span>
@@ -1484,23 +1579,26 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => {
                             setArticleFormError('');
                             setDraft(draftFromArticle(article));
                           }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-accent/20 bg-accent/10 py-2 text-[11px] font-bold text-accent transition hover:bg-accent/20"
                         >
-                          <Edit2 size={12} /> Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingArticle(article)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-100 bg-red-50 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
+                          <Edit2 size={15} aria-hidden="true" /> Editar
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            setDeleteError('');
+                            setDeletingArticle(article);
+                          }}
                         >
-                          <Trash2 size={12} /> Excluir
-                        </button>
+                          <Trash2 size={15} aria-hidden="true" /> Excluir
+                        </Button>
                       </div>
                     </div>
                   </article>
@@ -1509,7 +1607,8 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
             )}
           </div>
         )}
-      </main>
+        </div>
+      </div>
 
       {draft && (
         <ArticleEditorModal
@@ -1536,37 +1635,42 @@ export function AdminPlatform({ onExit, toast }: { onExit: () => void; toast: To
       )}
 
       {deletingArticle && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-ink/55" onClick={() => !removingArticle && setDeletingArticle(null)} />
-          <div className="relative z-10 w-full max-w-md rounded-[2rem] border border-red-100 bg-paper p-6 shadow-2xl">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-              <Trash2 size={19} />
-            </div>
-            <h3 className="mt-4 font-display text-xl font-semibold text-ink">Excluir artigo?</h3>
-            <p className="mt-2 text-sm leading-relaxed text-ink/60">
-              "{deletingArticle.title}" será removido da biblioteca. Essa ação não pode ser desfeita.
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDeletingArticle(null)}
+        <Overlay
+          open
+          onClose={() => {
+            if (!removingArticle) {
+              setDeletingArticle(null);
+              setDeleteError('');
+            }
+          }}
+          title="Excluir artigo?"
+          description={`"${deletingArticle.title}" será removido da biblioteca. Essa ação não pode ser desfeita.`}
+          size="sm"
+          busy={removingArticle}
+          initialFocusRef={deleteCancelRef}
+          footer={(
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                ref={deleteCancelRef}
+                variant="secondary"
+                onClick={() => {
+                  setDeletingArticle(null);
+                  setDeleteError('');
+                }}
                 disabled={removingArticle}
-                className="rounded-full border border-line px-4 py-2.5 text-xs font-bold text-ink/60 transition hover:bg-white disabled:opacity-50"
               >
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteArticle}
-                disabled={removingArticle}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-red-50 px-4 py-2.5 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-60"
-              >
-                {removingArticle ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                Excluir
-              </button>
+              </Button>
+              <Button variant="danger" onClick={() => void handleDeleteArticle()} loading={removingArticle}>
+                <Trash2 size={15} aria-hidden="true" /> {removingArticle ? 'Excluindo...' : 'Excluir'}
+              </Button>
             </div>
-          </div>
-        </div>
+          )}
+        >
+          {deleteError && (
+            <StateView status="error" title="Não foi possível excluir" description={deleteError} compact />
+          )}
+        </Overlay>
       )}
     </div>
   );

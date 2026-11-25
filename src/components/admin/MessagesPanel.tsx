@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle,
   ArrowLeft,
-  Loader2,
   MessageCircle,
   RefreshCw,
   Send,
@@ -11,7 +9,10 @@ import {
 } from 'lucide-react';
 import { AdminApiError, adminApi } from '../../lib/adminApi';
 import { formatDateTime } from '../../lib/schedule';
-import { Skeleton } from './Skeleton';
+import { Button } from '../ui/Button';
+import { FormField } from '../ui/FormField';
+import { Skeleton } from '../ui/Skeleton';
+import { StateView } from '../ui/StateView';
 
 type Conversation = {
   userId: string;
@@ -53,34 +54,48 @@ export function MessagesPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState('');
-  const [text, setText] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [announcement, setAnnouncement] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const listRequestRef = useRef(0);
+  const threadRequestRef = useRef(0);
+  const sendingRef = useRef(false);
+  const selectedIdRef = useRef<string | null>(selected?.id || null);
+  const text = selected?.id ? drafts[selected.id] || '' : '';
 
-  const loadList = async () => {
+  const loadList = async (options: { silent?: boolean } = {}) => {
+    const requestId = ++listRequestRef.current;
+    if (!options.silent) setListLoading(true);
     setListError('');
     try {
       const data = await adminApi<{ conversations: Conversation[] }>('/api/admin/messages');
+      if (requestId !== listRequestRef.current) return;
       setConversations(data.conversations || []);
     } catch (error) {
+      if (requestId !== listRequestRef.current) return;
       if (error instanceof AdminApiError && error.status === 401) {
         setListError('Sua sessão expirou. Entre novamente.');
         return;
       }
       setListError(error instanceof Error ? error.message : 'Não foi possível carregar as conversas.');
     } finally {
-      setListLoading(false);
+      if (requestId === listRequestRef.current) setListLoading(false);
     }
   };
 
   const loadThread = async (userId: string, options: { silent?: boolean } = {}) => {
+    const requestId = ++threadRequestRef.current;
     if (!options.silent) setThreadLoading(true);
     setThreadError('');
     try {
       const data = await adminApi<{ messages: ChatMessage[]; user: FocusUser; unreadFromUser: number }>(
         `/api/admin/messages?userId=${encodeURIComponent(userId)}`,
       );
+      if (requestId !== threadRequestRef.current || selectedIdRef.current !== userId) return;
       setMessages(data.messages || []);
+      selectedIdRef.current = data.user?.id || userId;
       setSelected({ id: data.user?.id || userId, name: data.user?.name || '', email: data.user?.email || '' });
       if (data.unreadFromUser > 0) {
         await adminApi('/api/admin/messages', {
@@ -92,26 +107,35 @@ export function MessagesPanel({
         )));
       }
     } catch (error) {
-      if (!options.silent) {
+      if (!options.silent && requestId === threadRequestRef.current && selectedIdRef.current === userId) {
         setThreadError(error instanceof Error ? error.message : 'Não foi possível carregar a conversa.');
       }
     } finally {
-      if (!options.silent) setThreadLoading(false);
+      if (!options.silent && requestId === threadRequestRef.current) setThreadLoading(false);
     }
+  };
+
+  const selectConversation = (user: FocusUser) => {
+    if (sendingRef.current) return;
+    selectedIdRef.current = user.id;
+    setSelected(user);
+    setMessages([]);
+    setThreadError('');
+    setSendError('');
+    void loadThread(user.id);
   };
 
   useEffect(() => {
     void loadList();
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadList();
+      if (document.visibilityState === 'visible') void loadList({ silent: true });
     }, 25000);
     return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
     if (!focusUser) return;
-    setSelected(focusUser);
-    void loadThread(focusUser.id);
+    selectConversation(focusUser);
     void loadList();
     onFocusHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,45 +154,84 @@ export function MessagesPanel({
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages]);
 
+  const updateDraft = (value: string) => {
+    const userId = selected?.id;
+    if (!userId || sendingRef.current) return;
+    setDrafts((current) => ({ ...current, [userId]: value.slice(0, 2000) }));
+    if (sendError) setSendError('');
+  };
+
   const handleSend = async () => {
-    const body = text.trim();
-    if (!body || !selected?.id || sending) return;
+    const userId = selected?.id;
+    const body = (userId ? drafts[userId] || '' : '').trim();
+    if (!body || !userId || sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
+    setSendError('');
+    setAnnouncement('Enviando mensagem.');
     try {
       const result = await adminApi<{ message: ChatMessage }>('/api/admin/messages', {
         method: 'POST',
-        body: JSON.stringify({ userId: selected.id, body }),
+        body: JSON.stringify({ userId, body }),
       });
-      setMessages((current) => [...current, result.message]);
-      setText('');
+      threadRequestRef.current += 1;
+      if (selectedIdRef.current === userId) {
+        setMessages((current) => current.some((message) => message.id === result.message.id)
+          ? current
+          : [...current, result.message]);
+        setAnnouncement('Mensagem enviada.');
+      }
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[userId];
+        return next;
+      });
       toast('Mensagem enviada.', 'success');
-      void loadList();
+      void loadList({ silent: true });
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível enviar a mensagem.', 'error');
+      const message = error instanceof Error ? error.message : 'Não foi possível enviar a mensagem.';
+      setSendError(message);
+      setAnnouncement(`Não foi possível enviar a mensagem. ${message}`);
+      toast(message, 'error');
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
 
+  const closeConversation = () => {
+    if (sendingRef.current) return;
+    selectedIdRef.current = null;
+    threadRequestRef.current += 1;
+    setSelected(null);
+    setMessages([]);
+    setThreadError('');
+    setSendError('');
+    setAnnouncement('');
+  };
+
   return (
     <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</div>
       <section className={`${selected ? 'hidden lg:flex' : 'flex'} flex-col rounded-3xl border border-line bg-white p-4 shadow-sm`}>
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="label-sm text-accent">Conversas</p>
+            <p className="font-outfit text-xs font-semibold text-accent">Conversas</p>
             <h2 className="font-display text-lg font-semibold text-ink">Mensagens</h2>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-11 w-11 px-0"
             onClick={() => void loadList()}
+            disabled={listLoading}
             aria-label="Atualizar conversas"
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink/50 transition hover:bg-paper"
           >
-            <RefreshCw size={13} className={listLoading ? 'animate-spin' : ''} />
-          </button>
+            <RefreshCw size={16} className={listLoading ? 'animate-spin' : ''} aria-hidden="true" />
+          </Button>
         </div>
 
-        <p className="mt-2 text-[11px] leading-relaxed text-ink/45">
+        <p className="mt-2 text-xs leading-relaxed text-ink/50">
           Para iniciar uma conversa nova, abra um paciente em <strong className="text-ink/60">Usuários</strong> e toque em Mensagem.
         </p>
 
@@ -188,20 +251,26 @@ export function MessagesPanel({
           ))}
 
           {!listLoading && listError && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-[11px] font-semibold text-red-600">
-              <p className="flex items-center gap-1.5"><AlertTriangle size={13} /> {listError}</p>
-              <button type="button" onClick={() => void loadList()} className="mt-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100">
-                Tentar novamente
-              </button>
-            </div>
+            <StateView
+              status="error"
+              compact
+              title="Não foi possível carregar as conversas"
+              description={listError}
+              action={(
+                <Button variant="secondary" size="sm" onClick={() => void loadList()}>
+                  <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+                </Button>
+              )}
+            />
           )}
 
           {!listLoading && !listError && !conversations.length && (
-            <div className="rounded-2xl border border-dashed border-line bg-paper/50 p-5 text-center">
-              <MessageCircle size={22} className="mx-auto text-ink/25" />
-              <p className="mt-2 text-xs font-bold text-ink/60">Nenhuma conversa ainda</p>
-              <p className="mt-1 text-[10px] text-ink/40">Envie a primeira mensagem pela aba de usuários.</p>
-            </div>
+            <StateView
+              status="empty"
+              compact
+              title="Nenhuma conversa ainda"
+              description="Envie a primeira mensagem pela aba de usuários."
+            />
           )}
 
           {conversations.map((conversation) => {
@@ -210,29 +279,28 @@ export function MessagesPanel({
               <button
                 key={conversation.userId}
                 type="button"
-                onClick={() => {
-                  setSelected({ id: conversation.userId, name: conversation.name, email: conversation.email });
-                  void loadThread(conversation.userId);
-                }}
-                className={`w-full rounded-2xl border p-3 text-left transition ${
+                onClick={() => selectConversation({ id: conversation.userId, name: conversation.name, email: conversation.email })}
+                disabled={sending}
+                aria-pressed={isActive}
+                className={`w-full rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   isActive ? 'border-accent/40 bg-accent/10' : 'border-line bg-white hover:bg-paper/60'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-bold text-ink">{conversation.name || 'Paciente'}</p>
-                    <p className="truncate text-[10px] text-ink/45">{conversation.email || 'Sem e-mail'}</p>
-                  </div>
+                <span className="flex items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-ink">{conversation.name || 'Paciente'}</span>
+                    <span className="block truncate text-xs text-ink/50">{conversation.email || 'Sem e-mail'}</span>
+                  </span>
                   {conversation.unreadFromUser > 0 && (
-                    <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-paper">
+                    <span className="rounded-full bg-accent px-2 py-1 text-xs font-bold text-paper">
                       {conversation.unreadFromUser}
                     </span>
                   )}
-                </div>
-                <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-ink/55">
+                </span>
+                <span className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-ink/55">
                   {conversation.lastSender === 'nutritionist' ? 'Você: ' : ''}{conversation.lastMessage}
-                </p>
-                <p className="mt-1 text-[9px] font-semibold text-ink/35">{formatDateTime(conversation.lastAt)}</p>
+                </span>
+                <span className="mt-2 block text-xs font-semibold text-ink/45">{formatDateTime(conversation.lastAt)}</span>
               </button>
             );
           })}
@@ -246,7 +314,7 @@ export function MessagesPanel({
               <MessageCircle size={24} />
             </span>
             <p className="text-sm font-bold text-ink">Selecione uma conversa</p>
-            <p className="max-w-xs text-xs leading-relaxed text-ink/45">
+            <p className="max-w-xs text-sm leading-relaxed text-ink/50">
               As mensagens são privadas entre você e cada paciente. Elas aparecem no app assim que forem enviadas.
             </p>
           </div>
@@ -254,69 +322,88 @@ export function MessagesPanel({
           <>
             <header className="flex items-center justify-between gap-3 border-b border-line bg-paper/50 px-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelected(null);
-                    setMessages([]);
-                  }}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-11 w-11 shrink-0 px-0 lg:hidden"
+                  onClick={closeConversation}
+                  disabled={sending}
                   aria-label="Voltar para conversas"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink/50 transition hover:bg-white lg:hidden"
                 >
-                  <ArrowLeft size={14} />
-                </button>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
-                  <UserIcon size={16} />
+                  <ArrowLeft size={17} aria-hidden="true" />
+                </Button>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <UserIcon size={18} aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-ink">{selected.name || 'Paciente'}</p>
-                  <p className="truncate text-[10px] text-ink/45">{selected.email || 'Sem e-mail'}</p>
+                  <p className="truncate text-xs text-ink/50">{selected.email || 'Sem e-mail'}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex shrink-0 items-center gap-2">
                 {onOpenInsights && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenInsights(selected.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[10px] font-bold text-accent transition hover:bg-accent/5"
-                  >
-                    <Sparkles size={12} /> Insights
-                  </button>
+                  <Button variant="secondary" size="sm" onClick={() => onOpenInsights(selected.id)}>
+                    <Sparkles size={14} aria-hidden="true" /> Insights
+                  </Button>
                 )}
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-11 w-11 px-0"
                   onClick={() => void loadThread(selected.id)}
+                  disabled={threadLoading}
                   aria-label="Atualizar conversa"
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink/50 transition hover:bg-white"
                 >
-                  <RefreshCw size={13} className={threadLoading ? 'animate-spin' : ''} />
-                </button>
+                  <RefreshCw size={16} className={threadLoading ? 'animate-spin' : ''} aria-hidden="true" />
+                </Button>
               </div>
             </header>
 
-            <div ref={scrollRef} className="chat-scroll flex-1 space-y-2.5 overflow-y-auto bg-paper/30 px-4 py-4" style={{ maxHeight: '56vh', minHeight: 280 }}>
+            <div
+              ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-atomic="false"
+              aria-label={`Mensagens com ${selected.name || 'paciente'}`}
+              className="chat-scroll flex-1 space-y-2.5 overflow-y-auto bg-paper/30 px-4 py-4"
+              style={{ maxHeight: '56vh', minHeight: 280 }}
+            >
               {threadLoading && !messages.length && [0, 1, 2, 3].map((index) => (
                 <div key={index} className={`flex ${index % 2 ? 'justify-end' : 'justify-start'}`}>
                   <Skeleton className={`h-16 max-w-[85%] rounded-2xl ${index % 2 ? 'w-2/3 rounded-br-md' : 'w-3/4 rounded-bl-md'}`} />
                 </div>
               ))}
               {threadError && (
-                <p className="rounded-xl border border-red-100 bg-red-50 p-2.5 text-[11px] font-semibold text-red-600">{threadError}</p>
+                <StateView
+                  status="error"
+                  compact
+                  title="Não foi possível carregar a conversa"
+                  description={threadError}
+                  action={(
+                    <Button variant="secondary" size="sm" onClick={() => void loadThread(selected.id)}>
+                      <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+                    </Button>
+                  )}
+                />
               )}
               {!threadLoading && !threadError && !messages.length && (
-                <div className="rounded-2xl border border-dashed border-line bg-white/70 p-5 text-center text-xs text-ink/45">
-                  Nenhuma mensagem por aqui ainda. Comece com um acolhimento e uma pergunta aberta.
-                </div>
+                <StateView
+                  status="empty"
+                  compact
+                  title="Nenhuma mensagem por aqui ainda"
+                  description="Comece com um acolhimento e uma pergunta aberta."
+                />
               )}
               {messages.map((message) => {
                 const mine = message.sender === 'nutritionist';
                 return (
                   <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm ${
+                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
                       mine ? 'rounded-br-md bg-accent text-paper' : 'rounded-bl-md border border-line bg-white text-ink/80'
                     }`}>
                       <p className="whitespace-pre-wrap break-words">{message.body}</p>
-                      <p className={`mt-1 text-[9px] font-semibold ${mine ? 'text-paper/70' : 'text-ink/35'}`}>
+                      <p className={`mt-1 text-xs font-semibold ${mine ? 'text-paper/75' : 'text-ink/45'}`}>
                         {formatDateTime(message.createdAt)}
                       </p>
                     </div>
@@ -327,31 +414,40 @@ export function MessagesPanel({
 
             <div className="border-t border-line bg-white p-3">
               <div className="flex items-end gap-2">
-                <textarea
-                  value={text}
-                  onChange={(event) => setText(event.target.value.slice(0, 2000))}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleSend();
-                    }
-                  }}
-                  rows={2}
-                  maxLength={2000}
-                  placeholder="Escreva com acolhimento. Enter envia, Shift+Enter quebra a linha."
-                  className="min-h-[46px] flex-1 resize-none rounded-2xl border border-line bg-paper px-3.5 py-2.5 text-xs text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleSend()}
-                  disabled={sending || !text.trim()}
-                  aria-label="Enviar mensagem"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-paper shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+                <FormField
+                  className="min-w-0 flex-1"
+                  label="Mensagem"
+                  htmlFor={`admin-message-${selected.id}`}
+                  hint="Enter envia. Shift+Enter quebra a linha."
+                  error={sendError}
                 >
-                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                </button>
+                  <textarea
+                    value={text}
+                    onChange={(event) => updateDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey && !sendingRef.current) {
+                        event.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    rows={3}
+                    maxLength={2000}
+                    disabled={sending}
+                    placeholder="Escreva com acolhimento"
+                    className="min-h-[96px] w-full resize-none rounded-2xl border border-line bg-paper px-3.5 py-3 text-sm text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10 disabled:opacity-60"
+                  />
+                </FormField>
+                <Button
+                  className="h-12 w-12 shrink-0 px-0"
+                  onClick={() => void handleSend()}
+                  disabled={!text.trim()}
+                  loading={sending}
+                  aria-label={sendError ? 'Tentar enviar mensagem novamente' : 'Enviar mensagem'}
+                >
+                  {sending ? <span className="sr-only">Enviando mensagem</span> : <Send size={18} aria-hidden="true" />}
+                </Button>
               </div>
-              <p className="mt-1 text-right text-[9px] font-semibold text-ink/30">{text.length}/2000</p>
+              <p className="mt-1 text-right text-xs font-semibold text-ink/45">{text.length}/2000</p>
             </div>
           </>
         )}

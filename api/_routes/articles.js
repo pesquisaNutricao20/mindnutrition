@@ -1,3 +1,4 @@
+import { sanitizeArticleHtml } from '../_lib/articleContent.js';
 import { handleApiError, methodNotAllowed, sendJson } from '../_lib/http.js';
 import { isSupabaseAdminConfigured, supabaseAdminRequest } from '../_lib/supabaseAdmin.js';
 
@@ -17,7 +18,11 @@ export default async function handler(request, response) {
         limit: 200,
       },
     });
-    return sendJson(response, 200, { articles: Array.isArray(rows) ? rows : [] });
+    const articles = (Array.isArray(rows) ? rows : []).map((row) => ({
+      ...row,
+      content_html: sanitizeArticleHtml(row?.content_html || ''),
+    }));
+    return sendJson(response, 200, { articles });
   } catch (error) {
     return handleApiError(response, error, 'Não foi possível carregar a biblioteca agora.');
   }

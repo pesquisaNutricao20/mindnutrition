@@ -1,4 +1,3 @@
-import type { Recipe } from './data/recipes';
 import type { ChallengeActivityKey } from './data/challenge';
 
 export interface ChallengeDay {
@@ -27,8 +26,6 @@ export type Page =
   | 'challenge'
   | 'profile'
   | 'settings-account'
-  | 'settings-notifications'
-  | 'settings-theme'
   | 'settings-privacy'
   | 'settings-help'
   | 'admin-login'
@@ -66,7 +63,6 @@ export interface UserProfile {
   dailyNotes?: DailyNote[];
   sleepLogs?: SleepLog[];
   readArticleIds?: string[];
-  customRecipes?: Recipe[];
   challenge?: ChallengeState;
   height: number;
   weightEvolution: { date: string; value: number }[];

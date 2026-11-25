@@ -41,7 +41,7 @@ O parâmetro `force=1` ignora o intervalo de 6 dias e é útil apenas para valid
 - **Principal:** Gemini via endpoint compatível com OpenAI (`https://generativelanguage.googleapis.com/v1beta/openai`), modelo `gemini-3.1-flash-lite` para texto e visão. Configure `GEMINI_API_KEY` no servidor; os modelos podem ser sobrescritos por `GEMINI_TEXT_MODEL` e `GEMINI_VISION_MODEL`.
 - **Fallback:** falhas do Gemini (429, 5xx, timeout, chave ausente) passam automaticamente para a Groq — texto `openai/gpt-oss-120b` (`GROQ_TEXT_MODEL`) e fotos `qwen/qwen3.8-27b` (`GROQ_VISION_MODEL`). Configure `GROQ_API_KEY`.
 - **Último fallback (somente texto):** com `NVIDIA_API_KEY`, falhas do Gemini e da Groq passam para `minimaxai/minimax-m3.1-flash` (`NVIDIA_TEXT_MODEL`).
-- A chave do Gemini fica apenas no servidor (nunca use prefixo `VITE_`). `GET /api/health` informa quais provedores estão configurados.
+- A chave do Gemini fica apenas no servidor (nunca use prefixo `VITE_`).
 
 ### Nutrição comportamental nas respostas da IA
 
@@ -103,7 +103,8 @@ O `vercel.json` já configura o fallback de SPA (para abrir `/nutricionista` dir
 | `SUPABASE_SERVICE_ROLE_KEY` | Chave service role (somente servidor) |
 | `VITE_PUBLICSUPABASE_URL` | URL pública usada no build do cliente |
 | `VITE_PUBLICSUPABASE_ANON_KEY` | Chave anon pública usada no build do cliente |
+| `VITE_SITE_URL` | Opcional; URL pública usada no retorno de e-mail/Google OAuth (sem ela, usa `window.location.origin`) |
 
 As variáveis `VITE_*` são embutidas no build: altere-as antes de gerar o deploy. Nunca use prefixo `VITE_` em segredos.
 
-Depois do deploy, `GET /api/health` retorna apenas booleanos indicando se IA, admin e Supabase administrativo estão configurados — útil para conferir as variáveis sem expor valores.
+Depois do deploy, `GET /api/health` responde apenas `{ "ok": true }` — útil para monitoramento sem expor quais integrações estão configuradas.

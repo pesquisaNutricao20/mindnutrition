@@ -23,19 +23,10 @@ export function MascotComponent({ isLoading = false, onComplete }: MascotProps) 
 export function MascotLoading({ onComplete }: { onComplete?: () => void }) {
   return (
     <div className="fixed inset-0 z-[10001] bg-paper flex flex-col items-center justify-center">
-      <motion.div
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: [0, -20, 0], opacity: 1 }}
-        transition={{ y: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }, opacity: { duration: 0.3 } }}
-        className="relative"
-      >
+      <div className="relative">
         <FlyingMascotSprite className="w-40 h-40 md:w-56 md:h-56" />
-        <motion.div
-          className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-ink/10 rounded-full blur-sm"
-          animate={{ scale: [1, 0.7, 1], opacity: [0.3, 0.1, 0.3] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      </motion.div>
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 h-4 w-20 rounded-full bg-ink/10 opacity-20 blur-sm" />
+      </div>
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

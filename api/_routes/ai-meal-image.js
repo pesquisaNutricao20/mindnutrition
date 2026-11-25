@@ -1,3 +1,4 @@
+import { requireUser } from '../_lib/auth.js';
 import {
   HttpError,
   assertSameOrigin,
@@ -16,6 +17,7 @@ import {
 } from '../_lib/groq.js';
 
 const limiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 14 });
+const userLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 30, blockMs: 10 * 60 * 1000 });
 const DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/;
 const MAX_IMAGE_CHARS = 7.5 * 1024 * 1024;
 
@@ -78,6 +80,14 @@ export default async function handler(request, response) {
   }
 
   try {
+    const user = await requireUser(request);
+    const userLimit = userLimiter.consume(`user:${user.id}`);
+    if (!userLimit.allowed) {
+      return sendJson(response, 429, {
+        message: `Aguarde ${userLimit.retryAfter || 600} segundos para analisar outra imagem.`,
+      }, { 'Retry-After': String(userLimit.retryAfter || 600) });
+    }
+
     const body = await readJsonBody(request, 8 * 1024 * 1024);
     const image = typeof body?.image === 'string' ? body.image.trim() : '';
     const description = cleanText(body?.description, 600);

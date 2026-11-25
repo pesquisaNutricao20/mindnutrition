@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -45,6 +45,10 @@ import {
   startOfMonth,
   todayKey,
 } from '../lib/schedule';
+import { Button } from './ui/Button';
+import { FormField } from './ui/FormField';
+import { Overlay } from './ui/Overlay';
+import { PageContainer } from './ui/PageContainer';
 
 type CareTab = 'chat' | 'appointments';
 
@@ -64,6 +68,9 @@ export function UserCarePage({
   initialTab?: CareTab;
 }) {
   const [tab, setTab] = useState<CareTab>(initialTab);
+  const tabsId = useId();
+  const chatTabRef = useRef<HTMLButtonElement | null>(null);
+  const appointmentsTabRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setTab(initialTab);
@@ -74,6 +81,11 @@ export function UserCarePage({
   const [messagesError, setMessagesError] = useState('');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [newMessageAnnouncements, setNewMessageAnnouncements] = useState<ChatMessage[]>([]);
+  const sendingRef = useRef(false);
+  const knownMessageIdsRef = useRef<Set<string> | null>(null);
+  const chatHydratedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
@@ -86,19 +98,38 @@ export function UserCarePage({
   const [mode, setMode] = useState<'online' | 'presencial'>('online');
   const [bookingNotes, setBookingNotes] = useState('');
   const [booking, setBooking] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+  const bookingRef = useRef(false);
+  const [appointmentToCancel, setAppointmentToCancel] = useState<PatientAppointment | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const cancellingRef = useRef(false);
+  const keepAppointmentRef = useRef<HTMLButtonElement | null>(null);
 
   const cells = useMemo(() => buildMonthGrid(month), [month]);
   const today = availability?.today || todayKey();
   const activeAppointment = appointments.find((appointment) => isActiveAppointment(appointment, today)) || null;
   const selectedAvailability = dayAvailability(selectedDay, availability);
 
+  const trackNewMessages = (incoming: ChatMessage[]) => {
+    const known = knownMessageIdsRef.current || new Set<string>();
+    const fresh = chatHydratedRef.current ? incoming.filter((message) => !known.has(message.id)) : [];
+    incoming.forEach((message) => known.add(message.id));
+    knownMessageIdsRef.current = known;
+    if (fresh.length) {
+      setNewMessageAnnouncements((current) => [...current, ...fresh].slice(-20));
+    }
+  };
+
   const loadChat = async (options: { silent?: boolean } = {}) => {
     if (!options.silent) setMessagesLoading(true);
-    setMessagesError('');
     try {
       const data = await loadConversation();
-      setMessages(data.messages || []);
+      const incoming = data.messages || [];
+      trackNewMessages(incoming);
+      chatHydratedRef.current = true;
+      setMessages(incoming);
+      setMessagesError('');
       onUnreadChange?.(data.unreadCount || 0);
       if (data.unreadCount > 0) {
         await markConversationRead().catch(() => undefined);
@@ -109,9 +140,7 @@ export function UserCarePage({
         onUnreadChange?.(0);
       }
     } catch (error) {
-      if (!options.silent) {
-        setMessagesError(error instanceof Error ? error.message : 'Não foi possível carregar a conversa.');
-      }
+      setMessagesError(error instanceof Error ? error.message : 'Não foi possível carregar a conversa.');
     } finally {
       if (!options.silent) setMessagesLoading(false);
     }
@@ -119,15 +148,13 @@ export function UserCarePage({
 
   const loadAgenda = async (options: { silent?: boolean } = {}) => {
     if (!options.silent) setAppointmentsLoading(true);
-    setAppointmentsError('');
     try {
       const data = await loadAppointments();
       setAppointments(data.appointments || []);
       setAvailability(data.availability || null);
+      setAppointmentsError('');
     } catch (error) {
-      if (!options.silent) {
-        setAppointmentsError(error instanceof Error ? error.message : 'Não foi possível carregar a agenda.');
-      }
+      setAppointmentsError(error instanceof Error ? error.message : 'Não foi possível carregar a agenda.');
     } finally {
       if (!options.silent) setAppointmentsLoading(false);
     }
@@ -146,40 +173,67 @@ export function UserCarePage({
   }, []);
 
   useEffect(() => {
+    if (tab !== 'chat') return;
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [messages]);
+  }, [messages, tab]);
+
+  useEffect(() => {
+    if (selectedSlot && !dayAvailability(selectedDay, availability).freeSlots.includes(selectedSlot)) {
+      setSelectedSlot('');
+      setBookingError('Esse horário não está mais disponível. Escolha outro.');
+    }
+  }, [availability, selectedDay, selectedSlot]);
 
   useEffect(() => {
     setSelectedSlot('');
+    setBookingError('');
   }, [selectedDay]);
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    let next: CareTab | undefined;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') next = tab === 'chat' ? 'appointments' : 'chat';
+    if (event.key === 'Home') next = 'chat';
+    if (event.key === 'End') next = 'appointments';
+    if (!next) return;
+    event.preventDefault();
+    setTab(next);
+    (next === 'chat' ? chatTabRef : appointmentsTabRef).current?.focus();
+  };
 
   const handleSend = async () => {
     const body = text.trim();
-    if (!body || sending) return;
+    if (!body || sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
+    setSendError('');
     try {
       const result = await sendConversationMessage(body);
-      setMessages((current) => [...current, result.message]);
+      setMessages((current) => (
+        current.some((message) => message.id === result.message.id) ? current : [...current, result.message]
+      ));
       setText('');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível enviar sua mensagem.', 'error');
+      setSendError(error instanceof Error ? error.message : 'Não foi possível enviar sua mensagem.');
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
 
   const handleBook = async () => {
-    if (booking) return;
+    if (bookingRef.current) return;
     if (!selectedSlot) {
-      toast('Escolha um horário disponível para continuar.', 'error');
+      setBookingError('Escolha um horário disponível para continuar.');
       return;
     }
-    if (!selectedAvailability.available) {
-      toast(selectedAvailability.reason || 'Escolha outro dia para a consulta.', 'error');
+    if (!selectedAvailability.available || !selectedAvailability.freeSlots.includes(selectedSlot)) {
+      setBookingError(selectedAvailability.reason || 'Escolha outro dia para a consulta.');
       return;
     }
+    bookingRef.current = true;
     setBooking(true);
+    setBookingError('');
     try {
       await bookAppointment({ day: selectedDay, slot: selectedSlot, mode, notes: bookingNotes.trim() });
       toast('Solicitação enviada! Sua nutricionista vai confirmar em breve.', 'success');
@@ -188,85 +242,132 @@ export function UserCarePage({
       await loadAgenda({ silent: true });
     } catch (error) {
       const message = error instanceof PortalApiError ? error.message : 'Não foi possível solicitar a consulta.';
-      toast(message, 'error');
+      setBookingError(message);
       await loadAgenda({ silent: true });
     } finally {
+      bookingRef.current = false;
       setBooking(false);
     }
   };
 
   const handleCancel = async (appointment: PatientAppointment) => {
-    if (cancellingId) return;
+    if (cancellingRef.current) return false;
+    cancellingRef.current = true;
     setCancellingId(appointment.id);
+    setCancelError('');
     try {
-      await cancelAppointment(appointment.id);
+      const result = await cancelAppointment(appointment.id);
+      setAppointments((current) => current.map((item) => (
+        item.id === appointment.id ? result.appointment : item
+      )));
       toast('Consulta cancelada. Você pode escolher outro horário quando quiser.', 'success');
       await loadAgenda({ silent: true });
+      return true;
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível cancelar a consulta.', 'error');
+      setCancelError(error instanceof Error ? error.message : 'Não foi possível cancelar a consulta.');
+      return false;
     } finally {
+      cancellingRef.current = false;
       setCancellingId(null);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!appointmentToCancel) return;
+    const cancelled = await handleCancel(appointmentToCancel);
+    if (cancelled) {
+      setAppointmentToCancel(null);
+      setCancelError('');
     }
   };
 
   const unreadFromNutritionist = messages.filter((message) => message.sender === 'nutritionist' && !message.readAt).length;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pb-28 pt-24 sm:px-8 md:px-12 md:pt-28">
-      <header className="flex items-center gap-4">
-        <button
-          type="button"
+    <PageContainer className="mx-auto flex h-[100dvh] min-h-0! w-full max-w-5xl! flex-col gap-4 overflow-hidden pb-[calc(var(--mobile-nav-height)+max(0.75rem,env(safe-area-inset-bottom,0px)))]! pt-[calc(env(safe-area-inset-top,0px)+6rem)]! md:pb-8! md:pt-[calc(env(safe-area-inset-top,0px)+7rem)]!">
+      <header className="flex shrink-0 items-center gap-4">
+        <Button
+          variant="secondary"
           onClick={() => onNavigate('dashboard')}
           aria-label="Voltar ao início"
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-line transition-colors hover:bg-line"
+          className="h-12 w-12 shrink-0 p-0"
         >
-          <ArrowLeft size={20} />
-        </button>
+          <ArrowLeft size={20} aria-hidden="true" />
+        </Button>
         <div className="min-w-0">
-          <h1 className="display-title text-4xl sm:text-5xl">Seu cuidado.</h1>
-          <p className="serif-body mt-0.5 text-lg text-ink/60">Conversa e consultas com sua nutricionista.</p>
+          <h1 className="section-title">Seu cuidado.</h1>
+          <p className="section-subtitle mt-0.5 text-ink/60">Conversa e consultas com sua nutricionista.</p>
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
+      <div role="tablist" aria-label="Conversa e consultas" className="flex shrink-0 flex-wrap gap-2">
+        <Button
+          ref={chatTabRef}
+          role="tab"
+          id={`${tabsId}-chat-tab`}
+          aria-selected={tab === 'chat'}
+          aria-controls={`${tabsId}-chat-panel`}
+          tabIndex={tab === 'chat' ? 0 : -1}
+          variant={tab === 'chat' ? 'primary' : 'secondary'}
+          size="sm"
           onClick={() => setTab('chat')}
-          aria-pressed={tab === 'chat'}
-          className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold transition ${
-            tab === 'chat' ? 'bg-accent text-paper shadow-sm' : 'border border-line bg-white text-ink/60 hover:bg-paper'
-          }`}
+          onKeyDown={handleTabKeyDown}
+          className="px-4"
         >
-          <MessageCircleHeart size={15} /> Conversa
+          <MessageCircleHeart size={15} aria-hidden="true" /> Conversa
           {unreadFromNutritionist > 0 && (
-            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold text-accent">
+            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-accent">
               {unreadFromNutritionist}
             </span>
           )}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          ref={appointmentsTabRef}
+          role="tab"
+          id={`${tabsId}-appointments-tab`}
+          aria-selected={tab === 'appointments'}
+          aria-controls={`${tabsId}-appointments-panel`}
+          tabIndex={tab === 'appointments' ? 0 : -1}
+          variant={tab === 'appointments' ? 'primary' : 'secondary'}
+          size="sm"
           onClick={() => setTab('appointments')}
-          aria-pressed={tab === 'appointments'}
-          className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold transition ${
-            tab === 'appointments' ? 'bg-accent text-paper shadow-sm' : 'border border-line bg-white text-ink/60 hover:bg-paper'
-          }`}
+          onKeyDown={handleTabKeyDown}
+          className="px-4"
         >
-          <CalendarDays size={15} /> Consultas
-          {activeAppointment && <span className="h-1.5 w-1.5 rounded-full bg-accent-secondary" />}
-        </button>
+          <CalendarDays size={15} aria-hidden="true" /> Consultas
+          {activeAppointment && (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-secondary" aria-hidden="true" />
+              <span className="sr-only">Consulta ativa</span>
+            </>
+          )}
+        </Button>
       </div>
 
-      {tab === 'chat' && (
-        <section className="flex min-h-[62vh] flex-col overflow-hidden rounded-[2rem] border border-line bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-line bg-paper/50 px-5 py-3.5">
-            <div className="flex items-center gap-3">
+      <div role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false" className="sr-only">
+        {newMessageAnnouncements.map((message) => (
+          <p key={message.id}>
+            {message.sender === 'user' ? 'Você: ' : 'Nutricionista: '}{message.body}
+          </p>
+        ))}
+      </div>
+
+      <section
+        id={`${tabsId}-chat-panel`}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-chat-tab`}
+        tabIndex={0}
+        hidden={tab !== 'chat'}
+        className={tab === 'chat' ? 'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-line bg-white shadow-sm' : 'hidden'}
+      >
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-paper/50 px-5 py-3.5">
+            <div className="flex min-w-0 items-center gap-3">
               <img
                 src={iconApp}
                 alt="Logo Mind Nutrition"
                 className="h-10 w-10 shrink-0 rounded-full border border-line bg-white object-contain p-1.5"
               />
-              <div>
+              <div className="min-w-0">
                 <p className="flex items-center gap-1.5">
                   <span className="logo-wordmark text-sm">Mind Nutrition</span>
                   <BadgeCheck size={16} className="shrink-0 fill-accent text-white" aria-label="Perfil verificado" />
@@ -274,30 +375,38 @@ export function UserCarePage({
                 <p className="text-[11px] text-ink/45">Sua nutricionista · mensagens privadas</p>
               </div>
             </div>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => void loadChat()}
+              loading={messagesLoading}
               aria-label="Atualizar conversa"
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink/50 transition hover:bg-white"
+              className="h-11 w-11 shrink-0 p-0"
             >
-              <RefreshCw size={13} className={messagesLoading ? 'animate-spin' : ''} />
-            </button>
+              <RefreshCw size={16} className={messagesLoading ? 'invisible' : ''} aria-hidden="true" />
+            </Button>
           </div>
 
-          <div ref={scrollRef} className="chat-scroll flex-1 space-y-3 overflow-y-auto bg-paper/25 px-4 py-5 sm:px-6" style={{ maxHeight: '54vh', minHeight: 320 }}>
-            {messagesLoading && !messages.length && (
-              <p className="flex items-center gap-2 text-xs font-semibold text-ink/45">
-                <Loader2 size={14} className="animate-spin text-accent" /> Abrindo a conversa...
-              </p>
-            )}
+          {!messagesLoading && messagesError && (
+            <div role="alert" className="shrink-0 border-b border-danger/20 bg-danger/5 px-4 py-3 text-xs font-semibold text-danger sm:px-5">
+              <p className="flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {messagesError}</p>
+              <Button variant="secondary" size="sm" onClick={() => void loadChat()} className="mt-2 min-h-11 bg-white text-danger">
+                Tentar novamente
+              </Button>
+            </div>
+          )}
 
-            {!messagesLoading && messagesError && (
-              <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
-                <p className="flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {messagesError}</p>
-                <button type="button" onClick={() => void loadChat()} className="mt-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100">
-                  Tentar novamente
-                </button>
-              </div>
+          <div
+            ref={scrollRef}
+            role="region"
+            aria-label="Mensagens da conversa"
+            tabIndex={0}
+            className="chat-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-paper/25 px-4 py-5 sm:px-6"
+          >
+            {messagesLoading && !messages.length && (
+              <p role="status" className="flex items-center gap-2 text-xs font-semibold text-ink/45">
+                <Loader2 size={14} className="animate-spin text-accent" aria-hidden="true" /> Abrindo a conversa...
+              </p>
             )}
 
             {!messagesLoading && !messagesError && !messages.length && (
@@ -317,9 +426,11 @@ export function UserCarePage({
                   <div className={`max-w-[86%] rounded-3xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
                     mine ? 'rounded-br-lg bg-accent text-paper' : 'rounded-bl-lg border border-line bg-white text-ink/85'
                   }`}>
-                    <p className="whitespace-pre-wrap break-words">{message.body}</p>
+                    <p className="whitespace-pre-wrap break-words">
+                      <span className="sr-only">{mine ? 'Você: ' : 'Nutricionista: '}</span>{message.body}
+                    </p>
                     <p className={`mt-1 text-[10px] font-semibold ${mine ? 'text-paper/70' : 'text-ink/35'}`}>
-                      {formatDateTime(message.createdAt)}
+                      <time dateTime={message.createdAt || undefined}>{formatDateTime(message.createdAt)}</time>
                     </p>
                   </div>
                 </div>
@@ -327,39 +438,73 @@ export function UserCarePage({
             })}
           </div>
 
-          <div className="border-t border-line bg-white p-3 sm:p-4">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={text}
-                onChange={(event) => setText(event.target.value.slice(0, 2000))}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSend();
-                  }
-                }}
-                rows={2}
-                maxLength={2000}
-                placeholder="Escreva sua mensagem com liberdade..."
-                className="min-h-[48px] flex-1 resize-none rounded-2xl border border-line bg-paper px-4 py-3 text-sm text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10"
-              />
-              <button
-                type="button"
-                onClick={() => void handleSend()}
-                disabled={sending || !text.trim()}
-                aria-label="Enviar mensagem"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-paper shadow-md transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+          <form
+            aria-busy={sending}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSend();
+            }}
+            className="shrink-0 border-t border-line bg-white px-3 pt-3 pb-3 sm:px-4 sm:pt-4 sm:pb-4"
+          >
+            <div className="flex items-start gap-2">
+              <FormField
+                label="Sua mensagem"
+                htmlFor="care-message"
+                error={sendError}
+                hint={(
+                  <span className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                    <span>Enter envia; Shift + Enter adiciona uma linha.</span>
+                    <span>{text.length}/2000</span>
+                  </span>
+                )}
+                className="min-w-0 flex-1"
               >
-                {sending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
-              </button>
+                <textarea
+                  value={text}
+                  onChange={(event) => {
+                    setText(event.target.value.slice(0, 2000));
+                    if (sendError) setSendError('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  rows={2}
+                  maxLength={2000}
+                  disabled={sending}
+                  placeholder="Escreva sua mensagem com liberdade..."
+                  className="min-h-[48px] w-full resize-none rounded-2xl border border-line bg-paper px-4 py-3 text-sm text-ink outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </FormField>
+              <Button
+                type="submit"
+                loading={sending}
+                disabled={!text.trim()}
+                aria-label={sending ? 'Enviando mensagem' : 'Enviar mensagem'}
+                className="h-12 w-12 shrink-0 p-0"
+              >
+                <Send size={17} className={sending ? 'invisible' : ''} aria-hidden="true" />
+              </Button>
             </div>
-            <p className="mt-1 text-right text-[10px] font-semibold text-ink/30">{text.length}/2000</p>
-          </div>
+            <p role="status" className="sr-only">{sending ? 'Enviando mensagem...' : ''}</p>
+            {sendError && (
+              <Button variant="secondary" size="sm" onClick={() => void handleSend()} className="mt-2">
+                Tentar novamente
+              </Button>
+            )}
+          </form>
         </section>
-      )}
 
-      {tab === 'appointments' && (
-        <div className="space-y-4">
+      <section
+        id={`${tabsId}-appointments-panel`}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-appointments-tab`}
+        tabIndex={0}
+        hidden={tab !== 'appointments'}
+        className={tab === 'appointments' ? 'min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1' : 'hidden'}
+      >
           {activeAppointment && (
             <section className="rounded-[2rem] border border-accent/30 bg-accent/10 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -389,15 +534,18 @@ export function UserCarePage({
                   ? 'Sua solicitação está com a nutricionista. Assim que ela confirmar, o horário fica reservado para você.'
                   : 'Horário confirmado. Se precisar remarcar, cancele e escolha outro momento — sem problema.'}
               </p>
-              <button
-                type="button"
-                onClick={() => void handleCancel(activeAppointment)}
-                disabled={cancellingId === activeAppointment.id}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-4 py-2 text-[11px] font-bold text-ink/60 transition hover:bg-paper disabled:opacity-50"
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setCancelError('');
+                  setAppointmentToCancel(activeAppointment);
+                }}
+                className="mt-3 bg-white"
               >
-                {cancellingId === activeAppointment.id ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-                Cancelar consulta
-              </button>
+                <X size={14} aria-hidden="true" /> Cancelar consulta
+              </Button>
             </section>
           )}
 
@@ -408,41 +556,55 @@ export function UserCarePage({
                 <h2 className="font-display text-xl font-semibold text-ink">Escolha um dia e horário</h2>
                 <p className="mt-0.5 text-[11px] text-ink/45">Atendimentos de segunda a sábado. Dias ocupados e bloqueados ficam indisponíveis.</p>
               </div>
-              <div className="flex items-center gap-1 rounded-full border border-line bg-paper px-1 py-1">
-                <button
-                  type="button"
-                  onClick={() => setMonth((current) => addMonths(current, -1))}
-                  aria-label="Mês anterior"
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-ink/60 transition hover:bg-white"
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5 rounded-full border border-line bg-paper p-0.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMonth((current) => addMonths(current, -1))}
+                    aria-label="Mês anterior"
+                    className="h-11 w-11 p-0"
+                  >
+                    <ChevronLeft size={16} aria-hidden="true" />
+                  </Button>
+                  <span className="min-w-[100px] text-center text-[11px] font-bold capitalize text-ink/70 sm:min-w-[132px]">{monthLabel(month)}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMonth((current) => addMonths(current, 1))}
+                    aria-label="Próximo mês"
+                    className="h-11 w-11 p-0"
+                  >
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void loadAgenda()}
+                  loading={appointmentsLoading}
+                  aria-label="Atualizar agenda"
+                  className="h-11 w-11 shrink-0 border border-line bg-white p-0"
                 >
-                  <ChevronLeft size={15} />
-                </button>
-                <span className="min-w-[128px] text-center text-[11px] font-bold capitalize text-ink/70">{monthLabel(month)}</span>
-                <button
-                  type="button"
-                  onClick={() => setMonth((current) => addMonths(current, 1))}
-                  aria-label="Próximo mês"
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-ink/60 transition hover:bg-white"
-                >
-                  <ChevronRight size={15} />
-                </button>
+                  <RefreshCw size={16} className={appointmentsLoading ? 'invisible' : ''} aria-hidden="true" />
+                </Button>
               </div>
             </div>
 
             {appointmentsError && (
-              <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
-                <p className="flex items-center gap-1.5"><AlertTriangle size={14} /> {appointmentsError}</p>
-                <button type="button" onClick={() => void loadAgenda()} className="mt-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100">
+              <div role="alert" className="mt-4 rounded-2xl border border-danger/30 bg-danger/5 p-3 text-xs font-semibold text-danger">
+                <p className="flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {appointmentsError}</p>
+                <Button variant="secondary" size="sm" onClick={() => void loadAgenda()} className="mt-2 min-h-11 bg-white text-danger">
                   Tentar novamente
-                </button>
+                </Button>
               </div>
             )}
 
             <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-              <div>
-                <div className="grid grid-cols-7 gap-1 text-center">
+              <div className="overflow-x-auto pb-1">
+                <div className="grid min-w-[332px] grid-cols-7 gap-1 text-center">
                   {WEEKDAY_LABELS.map((label) => (
-                    <span key={label} className="pb-1 text-[10px] font-bold uppercase tracking-wide text-ink/35">{label}</span>
+                    <span key={label} className="pb-1 text-xs font-bold uppercase tracking-wide text-ink/35">{label}</span>
                   ))}
                   {cells.map((cell) => {
                     const info = dayAvailability(cell.key, availability);
@@ -456,8 +618,11 @@ export function UserCarePage({
                         key={cell.key}
                         type="button"
                         onClick={() => setSelectedDay(cell.key)}
-                        aria-label={`${cell.key}${info.available ? ' disponível' : ` — ${info.reason}`}`}
-                        className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-bold transition ${
+                        aria-label={`${formatDayLong(cell.key)}${info.available ? ', disponível' : `, ${info.reason}`}`}
+                        aria-pressed={isSelected}
+                        aria-current={isToday ? 'date' : undefined}
+                        disabled={booking}
+                        className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                           isSelected
                             ? 'border-accent bg-accent/10 text-accent'
                             : info.available
@@ -474,12 +639,13 @@ export function UserCarePage({
                     );
                   })}
                 </div>
+              </div>
                 {appointmentsLoading && (
-                  <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-ink/40">
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink/40">
                     <Loader2 size={12} className="animate-spin text-accent" /> Atualizando disponibilidade...
                   </p>
                 )}
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] font-semibold text-ink/40">
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-semibold text-ink/40">
                   <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent" /> Disponível</span>
                   <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-secondary" /> Sua consulta</span>
                   <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-ink/15" /> Indisponível</span>
@@ -487,80 +653,140 @@ export function UserCarePage({
               </div>
 
               <div className="rounded-2xl border border-line bg-paper/40 p-4">
-                <p className="label-sm text-accent">Dia escolhido</p>
-                <p className="mt-0.5 text-sm font-bold capitalize text-ink">{formatDayLong(selectedDay)}</p>
+                <form
+                  aria-busy={booking}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleBook();
+                  }}
+                >
+                  <ol className="space-y-4">
+                    <li>
+                      <h3 className="flex items-center gap-2 text-sm font-bold text-ink">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[11px] text-accent" aria-hidden="true">1</span>
+                        Dia
+                      </h3>
+                      <p className="mt-1.5 text-sm font-semibold capitalize text-ink/70">{formatDayLong(selectedDay)}</p>
+                      {!selectedAvailability.available && (
+                        <div className="mt-3 rounded-2xl border border-dashed border-line bg-white/70 p-4 text-center">
+                          <Info size={18} className="mx-auto text-ink/30" aria-hidden="true" />
+                          <p className="mt-1.5 text-xs font-semibold text-ink/55">{selectedAvailability.reason || 'Sem horários disponíveis.'}</p>
+                          <p className="mt-1 text-[10px] text-ink/40">Escolha outro dia no calendário.</p>
+                        </div>
+                      )}
+                    </li>
 
-                {!selectedAvailability.available ? (
-                  <div className="mt-3 rounded-2xl border border-dashed border-line bg-white/70 p-4 text-center">
-                    <Info size={18} className="mx-auto text-ink/30" />
-                    <p className="mt-1.5 text-xs font-semibold text-ink/55">{selectedAvailability.reason || 'Sem horários disponíveis.'}</p>
-                    <p className="mt-1 text-[10px] text-ink/40">Escolha outro dia no calendário.</p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-ink/40">Horários livres</p>
-                    <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-                      {selectedAvailability.freeSlots.map((slot) => (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => setSelectedSlot(slot)}
-                          aria-pressed={selectedSlot === slot}
-                          className={`rounded-xl border px-1 py-2 text-[11px] font-bold transition ${
-                            selectedSlot === slot
-                              ? 'border-accent bg-accent text-paper shadow-sm'
-                              : 'border-line bg-white text-ink/65 hover:border-accent/40'
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
+                    {selectedAvailability.available && (
+                      <>
+                        <li className="border-t border-line pt-4">
+                          <fieldset disabled={booking}>
+                            <legend className="flex items-center gap-2 text-sm font-bold text-ink">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[11px] text-accent" aria-hidden="true">2</span>
+                              Horário
+                            </legend>
+                            <p className="mt-1 text-[11px] text-ink/45">Escolha um dos horários livres.</p>
+                            <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                              {selectedAvailability.freeSlots.map((slot) => (
+                                <Button
+                                  key={slot}
+                                  variant={selectedSlot === slot ? 'primary' : 'secondary'}
+                                  size="sm"
+                                  aria-pressed={selectedSlot === slot}
+                                  onClick={() => {
+                                    setSelectedSlot(slot);
+                                    if (bookingError) setBookingError('');
+                                  }}
+                                  className="min-h-11 rounded-xl px-1 text-[11px]"
+                                >
+                                  {formatSlot(slot)}
+                                </Button>
+                              ))}
+                            </div>
+                          </fieldset>
+                        </li>
 
-                    <div className="mt-3 grid grid-cols-2 gap-1.5">
-                      {[
-                        { id: 'online' as const, label: 'Online', icon: Video },
-                        { id: 'presencial' as const, label: 'Presencial', icon: MapPin },
-                      ].map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setMode(option.id)}
-                          aria-pressed={mode === option.id}
-                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
-                            mode === option.id ? 'border-accent bg-accent/10 text-accent' : 'border-line bg-white text-ink/55'
-                          }`}
-                        >
-                          <option.icon size={12} /> {option.label}
-                        </button>
-                      ))}
-                    </div>
+                        <li className="border-t border-line pt-4">
+                          <fieldset disabled={booking}>
+                            <legend className="flex items-center gap-2 text-sm font-bold text-ink">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[11px] text-accent" aria-hidden="true">3</span>
+                              Modalidade
+                            </legend>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5">
+                              {[
+                                { id: 'online' as const, label: 'Online', icon: Video },
+                                { id: 'presencial' as const, label: 'Presencial', icon: MapPin },
+                              ].map((option) => (
+                                <Button
+                                  key={option.id}
+                                  variant={mode === option.id ? 'primary' : 'secondary'}
+                                  size="sm"
+                                  aria-pressed={mode === option.id}
+                                  onClick={() => setMode(option.id)}
+                                  className="min-h-11 rounded-xl px-2 text-[11px]"
+                                >
+                                  <option.icon size={14} aria-hidden="true" /> {option.label}
+                                </Button>
+                              ))}
+                            </div>
+                          </fieldset>
+                        </li>
 
-                    <textarea
-                      value={bookingNotes}
-                      onChange={(event) => setBookingNotes(event.target.value.slice(0, 800))}
-                      rows={2}
-                      maxLength={800}
-                      placeholder="Quer contar algo antes? (opcional)"
-                      className="mt-2 w-full resize-none rounded-xl border border-line bg-white px-3 py-2 text-[11px] text-ink outline-none focus:border-accent"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => void handleBook()}
-                      disabled={booking || !selectedSlot || Boolean(activeAppointment)}
-                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3 text-xs font-bold text-paper shadow-md transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      {booking ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                      {activeAppointment ? 'Você já tem uma consulta ativa' : 'Solicitar consulta'}
-                    </button>
-                    <p className="mt-2 text-[10px] leading-relaxed text-ink/40">
-                      A solicitação fica aguardando o aceite da nutricionista. Você acompanha o status aqui e na conversa.
-                    </p>
-                  </>
-                )}
+                        <li className="border-t border-line pt-4">
+                          <h3 className="flex items-center gap-2 text-sm font-bold text-ink">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[11px] text-accent" aria-hidden="true">4</span>
+                            Confirmação
+                          </h3>
+                          <FormField
+                            label="Recado para a nutricionista"
+                            htmlFor="care-booking-notes"
+                            optional
+                            hint={`${bookingNotes.length}/800 caracteres`}
+                            className="mt-2"
+                          >
+                            <textarea
+                              value={bookingNotes}
+                              onChange={(event) => setBookingNotes(event.target.value.slice(0, 800))}
+                              rows={2}
+                              maxLength={800}
+                              disabled={booking}
+                              placeholder="Quer contar algo antes? (opcional)"
+                              className="min-h-[72px] w-full resize-none rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                          </FormField>
+                          <p id="care-booking-confirmation" className="mt-3 rounded-xl bg-white/80 p-3 text-[11px] leading-relaxed text-ink/60">
+                            {selectedSlot
+                              ? `${formatDayLong(selectedDay)}, ${formatSlot(selectedSlot)} · ${mode === 'presencial' ? 'Presencial' : 'Online'}.`
+                              : 'Selecione um horário para revisar sua consulta.'}
+                          </p>
+                          {activeAppointment && (
+                            <p className="mt-2 text-[11px] font-semibold text-ink/55">Você já tem uma consulta ativa. Cancele-a antes de solicitar outro horário.</p>
+                          )}
+                          {bookingError && (
+                            <p id="care-booking-error" role="alert" className="mt-2 flex items-start gap-1.5 rounded-xl border border-danger/30 bg-danger/5 p-3 text-xs font-semibold text-danger">
+                              <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {bookingError}
+                            </p>
+                          )}
+                          <Button
+                            type="submit"
+                            fullWidth
+                            loading={booking}
+                            disabled={booking || appointmentsLoading || !selectedSlot || Boolean(activeAppointment)}
+                            aria-describedby={`care-booking-confirmation${bookingError ? ' care-booking-error' : ''}`}
+                            className="mt-3 min-h-12"
+                          >
+                            {!booking && selectedSlot && !activeAppointment && <CheckCircle2 size={15} aria-hidden="true" />}
+                            {activeAppointment ? 'Você já tem uma consulta ativa' : !selectedSlot ? 'Escolha um horário' : bookingError ? 'Tentar novamente' : 'Solicitar consulta'}
+                          </Button>
+                          <p role="status" className="sr-only">{booking ? 'Enviando solicitação de consulta...' : ''}</p>
+                          <p className="mt-2 text-[10px] leading-relaxed text-ink/40">
+                            A solicitação fica aguardando o aceite da nutricionista. Você acompanha o status aqui e na conversa.
+                          </p>
+                        </li>
+                      </>
+                    )}
+                  </ol>
+                </form>
               </div>
-            </div>
           </section>
 
           {appointments.filter((appointment) => !isActiveAppointment(appointment, today)).length > 0 && (
@@ -585,8 +811,60 @@ export function UserCarePage({
               </div>
             </section>
           )}
-        </div>
-      )}
-    </div>
+      </section>
+
+      <Overlay
+        open={Boolean(appointmentToCancel)}
+        onClose={() => {
+          if (cancellingRef.current) return;
+          setAppointmentToCancel(null);
+          setCancelError('');
+        }}
+        title="Cancelar consulta?"
+        description="Confira os detalhes antes de cancelar. Você poderá escolher outro horário disponível."
+        variant="drawer"
+        busy={cancellingId !== null}
+        initialFocusRef={keepAppointmentRef}
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              ref={keepAppointmentRef}
+              variant="secondary"
+              onClick={() => {
+                setAppointmentToCancel(null);
+                setCancelError('');
+              }}
+              disabled={cancellingId !== null}
+              className="min-h-11"
+            >
+              Manter consulta
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleConfirmCancel()}
+              loading={cancellingId !== null}
+              disabled={cancellingId !== null || !appointmentToCancel}
+              className="min-h-11"
+            >
+              Confirmar cancelamento
+            </Button>
+          </div>
+        )}
+      >
+        {appointmentToCancel && (
+          <div className="rounded-2xl border border-line bg-paper/60 p-4">
+            <p className="font-display text-lg font-semibold capitalize text-ink">{formatDayLong(appointmentToCancel.day)}</p>
+            <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-ink/60">
+              <Clock size={15} aria-hidden="true" /> {formatSlot(appointmentToCancel.slot)} · {appointmentToCancel.mode === 'presencial' ? 'Presencial' : 'Online'}
+            </p>
+          </div>
+        )}
+        {cancelError && (
+          <p role="alert" className="mt-3 flex items-start gap-1.5 rounded-2xl border border-danger/30 bg-danger/5 p-3 text-xs font-semibold text-danger">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {cancelError}
+          </p>
+        )}
+      </Overlay>
+    </PageContainer>
   );
 }

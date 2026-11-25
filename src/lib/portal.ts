@@ -10,9 +10,14 @@ export class PortalApiError extends Error {
   }
 }
 
-async function authFetch<T>(url: string, init?: RequestInit): Promise<T> {
+export async function authHeaders(): Promise<Record<string, string>> {
   const session = await getCurrentSession().catch(() => null);
-  if (!session?.access_token) {
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
+async function authFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = await authHeaders();
+  if (!headers.Authorization) {
     throw new PortalApiError(401, 'Entre na sua conta para acessar a conversa e a agenda.');
   }
 
@@ -21,7 +26,7 @@ async function authFetch<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      Authorization: `Bearer ${session.access_token}`,
+      ...headers,
       ...(init?.headers || {}),
     },
   });

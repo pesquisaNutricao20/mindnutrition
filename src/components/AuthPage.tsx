@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -34,29 +34,28 @@ export interface AuthPageProps {
 
 const passwordChecks = [
   { test: (value: string) => value.length >= 8, label: '8 caracteres' },
-  { test: (value: string) => /[A-Z]/.test(value), label: 'Maiuscula' },
-  { test: (value: string) => /\d/.test(value), label: 'Numero' },
-  { test: (value: string) => /[^A-Za-z\d]/.test(value), label: 'Simbolo' },
+  { test: (value: string) => /[A-Z]/.test(value), label: 'Maiúscula' },
+  { test: (value: string) => /\d/.test(value), label: 'Número' },
+  { test: (value: string) => /[^A-Za-z\d]/.test(value), label: 'Símbolo' },
 ];
 
 const getAuthRedirectUrl = () => {
-  const configuredUrl =
-    import.meta.env.VITE_PUBLIC_SITE_URL ||
-    import.meta.env.VITE_APP_URL ||
-    import.meta.env.VITE_SITE_URL ||
-    '';
+  const configuredUrl = import.meta.env.VITE_SITE_URL || '';
   const fallbackUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const url = configuredUrl || fallbackUrl;
 
   return url.replace(/\/+$/, '');
 };
 
-const getOAuthErrorMessage = (code: string | null, description: string | null) => {
-  if (code === 'bad_oauth_state') {
-    return 'O login com Google voltou para um endereço diferente ou expirou. Confira se a URL pública do app está liberada no Supabase e tente entrar novamente.';
-  }
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  bad_oauth_state: 'O login com Google voltou para um endereço diferente ou expirou. Confira se a URL pública do app está liberada no Supabase e tente entrar novamente.',
+  access_denied: 'O login com Google foi cancelado.',
+  server_error: 'O provedor de login teve um problema momentâneo. Tente novamente em instantes.',
+};
 
-  return description || 'Não foi possível concluir o login com Google agora.';
+const getOAuthErrorMessage = (code: string | null) => {
+  if (code && OAUTH_ERROR_MESSAGES[code]) return OAUTH_ERROR_MESSAGES[code];
+  return 'Não foi possível concluir o login com Google agora.';
 };
 
 export const AuthPage = ({
@@ -75,6 +74,11 @@ export const AuthPage = ({
   const [pendingConfirmation, setPendingConfirmation] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isResending, setIsResending] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [passwordResetConfirmation, setPasswordResetConfirmation] = useState('');
+  const passwordResetInFlight = useRef(false);
+  const loginTabRef = useRef<HTMLButtonElement>(null);
+  const signupTabRef = useRef<HTMLButtonElement>(null);
 
   const strongPassword = passwordChecks.every((item) => item.test(password));
   const passwordScore = passwordChecks.filter((item) => item.test(password)).length;
@@ -84,10 +88,9 @@ export const AuthPage = ({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search || window.location.hash.replace(/^#/, ''));
     const errorCode = params.get('error_code');
-    const errorDescription = params.get('error_description');
     if (!errorCode && !params.get('error')) return;
 
-    setError(getOAuthErrorMessage(errorCode, errorDescription));
+    setError(getOAuthErrorMessage(errorCode));
     window.history.replaceState({}, document.title, window.location.pathname);
   }, []);
 
@@ -106,6 +109,7 @@ export const AuthPage = ({
   const handleAuth = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const normalizedEmail = email.trim();
+    const login = isLogin;
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setError('Por favor, insira um e-mail válido.');
@@ -115,8 +119,8 @@ export const AuthPage = ({
       setError('Informe sua senha.');
       return;
     }
-    if (!isLogin && !strongPassword) {
-      setError('Use 8+ caracteres com maiúscula, minúscula, número e símbolo.');
+    if (!login && !strongPassword) {
+      setError('Use 8+ caracteres com maiúscula, número e símbolo.');
       return;
     }
     if (!supabase) {
@@ -127,7 +131,7 @@ export const AuthPage = ({
     setIsSubmitting(true);
     setError('');
     try {
-      const result = isLogin
+      const result = login
         ? await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
         : await supabase.auth.signUp({
             email: normalizedEmail,
@@ -136,7 +140,7 @@ export const AuthPage = ({
           });
       if (result.error) throw result.error;
 
-      if (!isLogin && !result.data.session) {
+      if (!login && !result.data.session) {
         setPendingConfirmation(true);
         onShowToast('Enviamos um link de confirmação para o seu e-mail.', 'info');
         return;
@@ -148,7 +152,7 @@ export const AuthPage = ({
         return;
       }
 
-      await onAuthenticated({ user, isLogin, signupPhoto });
+      await onAuthenticated({ user, isLogin: login, signupPhoto });
     } catch (err) {
       setError(getFriendlySupabaseError(err));
     } finally {
@@ -157,7 +161,7 @@ export const AuthPage = ({
   };
 
   const handleResendConfirmation = async () => {
-    if (!supabase || resendCooldown > 0) return;
+    if (!supabase || resendCooldown > 0 || isResending) return;
     setIsResending(true);
     try {
       const { error: resendError } = await supabase.auth.resend({
@@ -185,16 +189,31 @@ export const AuthPage = ({
   };
 
   const handlePasswordReset = async () => {
-    if (!supabase || !email.trim()) {
+    if (passwordResetInFlight.current || isResettingPassword || passwordResetConfirmation) return;
+
+    const normalizedEmail = email.trim();
+    if (!supabase || !normalizedEmail) {
       setError(!supabase ? getSupabaseConfigMessage() : 'Informe seu e-mail para recuperar a senha.');
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError('Por favor, insira um e-mail válido.');
+      return;
+    }
+
+    passwordResetInFlight.current = true;
+    setIsResettingPassword(true);
+    setError('');
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail);
       if (resetError) throw resetError;
+      setPasswordResetConfirmation(`Instruções enviadas para ${normalizedEmail}. Confira sua caixa de entrada.`);
       onShowToast('Instruções de recuperação enviadas para o e-mail.', 'success');
     } catch (err) {
       setError(getFriendlySupabaseError(err));
+    } finally {
+      passwordResetInFlight.current = false;
+      setIsResettingPassword(false);
     }
   };
 
@@ -224,23 +243,180 @@ export const AuthPage = ({
     }
   };
 
+  const selectAuthTab = (login: boolean) => {
+    setIsLogin(login);
+    setError('');
+  };
+
+  const handleAuthTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    let nextLogin: boolean;
+
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        nextLogin = !isLogin;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        nextLogin = !isLogin;
+        break;
+      case 'Home':
+        nextLogin = true;
+        break;
+      case 'End':
+        nextLogin = false;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    selectAuthTab(nextLogin);
+    (nextLogin ? loginTabRef : signupTabRef).current?.focus();
+  };
+
+  const authForm = (
+    <form className="mt-5 space-y-4" onSubmit={handleAuth}>
+      <div>
+        <label className="label-sm mb-2 block text-accent" htmlFor="auth-email">E-mail</label>
+        <div className="relative">
+          <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35" />
+          <input
+            id="auth-email"
+            type="email"
+            value={email}
+            maxLength={254}
+            onChange={(event) => { setEmail(event.target.value); setError(''); setPasswordResetConfirmation(''); }}
+            placeholder="voce@email.com"
+            autoComplete="email"
+            className="w-full rounded-2xl border border-line bg-paper py-3 pl-11 pr-4 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <label className="label-sm block text-accent" htmlFor="auth-password">Senha</label>
+          {isLogin && (
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={isResettingPassword || Boolean(passwordResetConfirmation)}
+              aria-busy={isResettingPassword}
+              aria-describedby={passwordResetConfirmation ? 'auth-password-reset-confirmation' : undefined}
+              className="min-h-11 text-xs font-bold text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isResettingPassword ? 'Enviando...' : passwordResetConfirmation ? 'Instruções enviadas' : 'Esqueci minha senha'}
+            </button>
+          )}
+        </div>
+        <div className="relative">
+          <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35" />
+          <input
+            id="auth-password"
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            maxLength={128}
+            onChange={(event) => { setPassword(event.target.value); setError(''); }}
+            placeholder="Sua senha aqui"
+            autoComplete={isLogin ? 'current-password' : 'new-password'}
+            aria-describedby={!isLogin ? 'auth-password-rules' : passwordResetConfirmation ? 'auth-password-reset-confirmation' : undefined}
+            className="w-full rounded-2xl border border-line bg-paper py-3 pl-11 pr-12 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((visible) => !visible)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-2 text-ink/45 transition-colors hover:bg-white hover:text-accent"
+            aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+            aria-pressed={showPassword}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+        {isLogin && passwordResetConfirmation && (
+          <p id="auth-password-reset-confirmation" role="status" className="mt-3 flex items-start gap-2 rounded-2xl border border-accent/20 bg-accent/5 p-3 text-sm font-medium leading-relaxed text-accent break-words">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            {passwordResetConfirmation}
+          </p>
+        )}
+        {!isLogin && (
+          <motion.div
+            id="auth-password-rules"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className="mt-4 rounded-3xl border border-line bg-paper p-4"
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-bold text-ink/55">Força da senha</span>
+              <motion.span
+                key={passwordScore}
+                initial={{ scale: 0.85, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className={`text-xs font-bold ${strongPassword ? 'text-accent' : 'text-ink/45'}`}
+              >
+                {strongPassword ? 'Forte' : `${passwordScore}/4`}
+              </motion.span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-ink/10">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-accent to-accent-secondary"
+                initial={false}
+                animate={{ width: `${passwordProgress}%` }}
+                transition={{ type: 'spring', stiffness: 220, damping: 26 }}
+              />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {passwordChecks.map((item) => {
+                const ok = item.test(password);
+                return (
+                  <motion.span
+                    key={item.label}
+                    layout
+                    animate={{ scale: ok ? 1 : 0.98 }}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-center text-[10px] font-bold transition-colors ${ok ? 'bg-accent/10 text-accent' : 'bg-white text-ink/40'}`}
+                  >
+                    <CheckCircle2 size={12} className={ok ? 'opacity-100' : 'opacity-35'} aria-hidden="true" />
+                    {item.label}
+                  </motion.span>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {error && (
+        <p role="alert" className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold leading-relaxed text-red-600">
+          {error}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={isSubmitting || !email || !password}
+        aria-busy={isSubmitting}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-paper shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}
+      >
+        {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
+        {isSubmitting ? 'Processando...' : isLogin ? 'Entrar no app' : 'Criar conta e continuar'}
+      </button>
+    </form>
+  );
+
   if (pendingConfirmation) {
     return (
       <div className="auth-page w-full px-3 py-3 sm:px-4 sm:py-5 lg:px-10 lg:py-8">
         <section className="auth-card mx-auto w-full max-w-2xl bg-white border border-line rounded-[1.5rem] p-4 sm:rounded-[2rem] sm:p-6 lg:p-8 shadow-sm">
-          <button type="button" onClick={() => { setPendingConfirmation(false); setError(''); }} className="icon-button">
-            <ArrowLeft size={20} className="text-ink" />
+          <button type="button" aria-label="Voltar ao cadastro" onClick={() => { setPendingConfirmation(false); setError(''); }} className="icon-button">
+            <ArrowLeft size={20} className="text-ink" aria-hidden="true" />
           </button>
           <div className="mt-4 space-y-4 text-center">
             <div className="relative mx-auto h-20 w-20 md:h-24 md:w-24">
               <div className="absolute inset-x-4 bottom-3 h-10 bg-accent/15 rounded-full blur-2xl" />
-              <motion.div
-                className="absolute left-1/2 top-0 h-full -translate-x-1/2 drop-shadow-2xl"
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              >
+              <div className="absolute left-1/2 top-0 h-full -translate-x-1/2 drop-shadow-2xl">
                 <FlyingMascotSprite alt="Mascote Mind Nutrition" animation="thinking" className="h-full" />
-              </motion.div>
+              </div>
             </div>
             <div className="space-y-2">
               <span className="label-sm text-accent">Quase lá</span>
@@ -272,7 +448,7 @@ export const AuthPage = ({
               </button>
               <button
                 type="button"
-                onClick={() => { setPendingConfirmation(false); setError(''); }}
+                onClick={() => { setPendingConfirmation(false); setIsLogin(true); setError(''); }}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl border border-line text-ink font-bold text-sm hover:bg-ink/5 transition-colors"
               >
                 <LogIn size={16} />
@@ -288,20 +464,16 @@ export const AuthPage = ({
   return (
     <div className="auth-page w-full px-3 py-3 sm:px-4 sm:py-5 lg:px-10 lg:py-8">
       <section className="auth-card relative mx-auto grid max-w-5xl overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm sm:rounded-[2rem] lg:grid-cols-[0.95fr_1.05fr]">
-        <button type="button" onClick={() => onNavigate('landing')} className="icon-button absolute left-5 top-5 z-30 bg-white/85 backdrop-blur-md">
-          <ArrowLeft size={20} className="text-ink" />
+        <button type="button" aria-label="Voltar para a página inicial" onClick={() => onNavigate('landing')} className="icon-button absolute left-5 top-5 z-30 bg-white/85 backdrop-blur-md">
+          <ArrowLeft size={20} className="text-ink" aria-hidden="true" />
         </button>
         <aside className="relative hidden min-h-[34rem] flex-col overflow-hidden bg-accent/10 p-7 pt-16 lg:flex">
           <div className="relative z-10">
             <div className="relative mb-5 h-36">
               <div className="absolute inset-x-8 bottom-6 h-16 rounded-full bg-accent/20 blur-2xl" />
-              <motion.div
-                className="mx-auto h-full drop-shadow-2xl"
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              >
+              <div className="mx-auto h-full drop-shadow-2xl">
                 <FlyingMascotSprite alt="Mascote Mind Nutrition" animation="maneuver" className="mx-auto h-full" />
-              </motion.div>
+              </div>
             </div>
             <h2 className="display-title mt-3 text-4xl">Sua jornada com mais calma.</h2>
             <p className="mt-3 text-sm font-medium leading-relaxed text-ink/65">
@@ -320,13 +492,9 @@ export const AuthPage = ({
             </div>
             <div className="relative mx-auto mb-3 h-14 md:hidden">
               <div className="absolute inset-x-16 bottom-2 h-10 rounded-full bg-accent/15 blur-2xl" />
-              <motion.div
-                className="mx-auto h-full drop-shadow-2xl"
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              >
+              <div className="mx-auto h-full drop-shadow-2xl">
                 <FlyingMascotSprite alt="Mascote Mind Nutrition" animation="idle" className="mx-auto h-full" />
-              </motion.div>
+              </div>
             </div>
             <h2 className="display-title text-3xl sm:text-4xl">
               {isLogin ? 'Entre na sua conta.' : 'Crie sua conta.'}
@@ -336,19 +504,41 @@ export const AuthPage = ({
             </p>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 rounded-2xl border border-line bg-paper p-1">
-            <button type="button" onClick={() => { setIsLogin(true); setError(''); }} className={`inline-flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-colors ${isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/55 hover:text-ink'}`}>
-              <LogIn size={16} />
+          <div role="tablist" aria-label="Entrar ou cadastrar" className="mt-5 grid grid-cols-2 rounded-2xl border border-line bg-paper p-1">
+            <button
+              ref={loginTabRef}
+              id="auth-login-tab"
+              type="button"
+              role="tab"
+              aria-selected={isLogin}
+              aria-controls="auth-login-panel"
+              tabIndex={isLogin ? 0 : -1}
+              onClick={() => selectAuthTab(true)}
+              onKeyDown={handleAuthTabKeyDown}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-colors ${isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/55 hover:text-ink'}`}
+            >
+              <LogIn size={16} aria-hidden="true" />
               Entrar
             </button>
-            <button type="button" onClick={() => { setIsLogin(false); setError(''); }} className={`inline-flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-colors ${!isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/55 hover:text-ink'}`}>
-              <UserPlus size={16} />
+            <button
+              ref={signupTabRef}
+              id="auth-signup-tab"
+              type="button"
+              role="tab"
+              aria-selected={!isLogin}
+              aria-controls="auth-signup-panel"
+              tabIndex={isLogin ? -1 : 0}
+              onClick={() => selectAuthTab(false)}
+              onKeyDown={handleAuthTabKeyDown}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-colors ${!isLogin ? 'bg-accent text-paper shadow-sm' : 'text-ink/55 hover:text-ink'}`}
+            >
+              <UserPlus size={16} aria-hidden="true" />
               Cadastrar
             </button>
           </div>
 
           {supabaseSetupMessage && (
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium leading-relaxed text-amber-800">
+            <div role="alert" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium leading-relaxed text-amber-800">
               {supabaseSetupMessage}
             </div>
           )}
@@ -369,131 +559,28 @@ export const AuthPage = ({
             <span className="h-px flex-1 bg-line" />
           </div>
 
-          {!isLogin && (
-            <div className="mt-4 flex items-center gap-3 rounded-3xl bg-paper border border-line p-3">
-              <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden border border-line bg-white shrink-0">
-                <ProfileAvatar photo={signupPhoto} size="lg" className="border-0" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-bold text-sm">Foto de perfil <span className="font-medium text-ink/45">(opcional)</span></p>
-                <p className="text-xs text-ink/50 mt-1">Você pode continuar sem foto. JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB.</p>
-                <label className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-2xl bg-accent/10 text-accent text-xs font-bold cursor-pointer hover:bg-accent/15">
-                  <Camera size={14} /> Escolher foto
-                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleSignupPhoto(e.target.files)} />
-                </label>
-              </div>
-            </div>
-          )}
+          <div id="auth-login-panel" role="tabpanel" aria-labelledby="auth-login-tab" hidden={!isLogin}>
+            {isLogin && authForm}
+          </div>
 
-          <form className="mt-5 space-y-4" onSubmit={handleAuth}>
-            <div>
-              <label className="label-sm mb-2 block text-accent" htmlFor="auth-email">E-mail</label>
-              <div className="relative">
-                <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35" />
-                <input
-                  id="auth-email"
-                  type="email"
-                  value={email}
-                  maxLength={254}
-                  onChange={(event) => { setEmail(event.target.value); setError(''); }}
-                  placeholder="voce@email.com"
-                  autoComplete="email"
-                  className="w-full rounded-2xl border border-line bg-paper py-3 pl-11 pr-4 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="label-sm block text-accent" htmlFor="auth-password">Senha</label>
-                {isLogin && (
-                  <button type="button" onClick={handlePasswordReset} className="text-xs font-bold text-accent hover:underline">
-                    Esqueci minha senha
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35" />
-                <input
-                  id="auth-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  maxLength={128}
-                  onChange={(event) => { setPassword(event.target.value); setError(''); }}
-                  placeholder="Sua senha aqui"
-                  autoComplete={isLogin ? 'current-password' : 'new-password'}
-                  className="w-full rounded-2xl border border-line bg-paper py-3 pl-11 pr-12 text-base font-medium transition-colors focus:border-accent focus:bg-white focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-2 text-ink/45 transition-colors hover:bg-white hover:text-accent"
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-              {!isLogin && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="mt-4 rounded-3xl border border-line bg-paper p-4"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <span className="text-xs font-bold text-ink/55">Força da senha</span>
-                    <motion.span
-                      key={passwordScore}
-                      initial={{ scale: 0.85, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className={`text-xs font-bold ${strongPassword ? 'text-accent' : 'text-ink/45'}`}
-                    >
-                      {strongPassword ? 'Forte' : `${passwordScore}/4`}
-                    </motion.span>
+          <div id="auth-signup-panel" role="tabpanel" aria-labelledby="auth-signup-tab" hidden={isLogin}>
+            {!isLogin && (
+              <>
+                <div className="mt-4 flex items-center gap-3 rounded-3xl bg-paper border border-line p-3">
+                  <ProfileAvatar photo={signupPhoto} size="md" className="h-16 w-16 shrink-0 border border-line bg-white md:h-20 md:w-20" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-sm">Foto de perfil <span className="font-medium text-ink/45">(opcional)</span></p>
+                    <p className="text-xs text-ink/50 mt-1">Você pode continuar sem foto. JPG, PNG ou WEBP até {MAX_IMAGE_SIZE_MB}MB.</p>
+                    <label className="inline-flex min-h-11 items-center gap-2 mt-2 px-4 py-2 rounded-2xl bg-accent/10 text-accent text-xs font-bold cursor-pointer hover:bg-accent/15 focus-within:outline-none focus-within:ring-2 focus-within:ring-accent">
+                      <Camera size={14} aria-hidden="true" /> Escolher foto
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => handleSignupPhoto(e.target.files)} />
+                    </label>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-ink/10">
-                    <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-accent to-accent-secondary"
-                      initial={false}
-                      animate={{ width: `${passwordProgress}%` }}
-                      transition={{ type: 'spring', stiffness: 220, damping: 26 }}
-                    />
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {passwordChecks.map((item) => {
-                    const ok = item.test(password);
-                    return (
-                      <motion.span
-                        key={item.label}
-                        layout
-                        animate={{ scale: ok ? 1 : 0.98 }}
-                        className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-center text-[10px] font-bold transition-colors ${ok ? 'bg-accent/10 text-accent' : 'bg-white text-ink/40'}`}
-                      >
-                        <CheckCircle2 size={12} className={ok ? 'opacity-100' : 'opacity-35'} />
-                        {item.label}
-                      </motion.span>
-                    );
-                  })}
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            {error && (
-              <p className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold leading-relaxed text-red-600">
-                {error}
-              </p>
+                </div>
+                {authForm}
+              </>
             )}
-
-            <button
-              type="submit"
-              disabled={isSubmitting || !email || !password}
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-paper shadow-lg transition-colors ${email && password && !isSubmitting ? 'bg-accent hover:bg-accent/90' : 'bg-ink/30 cursor-not-allowed'}`}
-            >
-              {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
-              {isSubmitting ? 'Processando...' : isLogin ? 'Entrar no app' : 'Criar conta e continuar'}
-            </button>
-          </form>
+          </div>
 
           <div className="pt-6 text-center">
             <button
