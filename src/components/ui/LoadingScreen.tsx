@@ -7,7 +7,7 @@ export const LoadingScreen = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative flex w-full max-w-4xl flex-col items-center justify-center overflow-hidden px-4">
       <div className="relative flex h-36 w-full items-center justify-center overflow-hidden md:h-44">
         <motion.div animate={{ y: [7, -13, 7] }} transition={{ duration: 2.1, repeat: Infinity, ease: 'easeInOut' }} className="relative">
-          <FlyingMascotSprite className="h-28 w-28 object-contain md:h-36 md:w-36" />
+          <FlyingMascotSprite className="h-28 w-28 md:h-36 md:w-36" />
         </motion.div>
       </div>
       <motion.div

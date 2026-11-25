@@ -38,6 +38,7 @@ import {
   PenTool,
   BedDouble,
   MessageCircle,
+  Bell,
   CalendarDays,
   Compass,
   ScanLine,
@@ -83,7 +84,7 @@ import {
   toIsoTimestamp,
   upsertProfile,
 } from './lib/supabase';
-import { loadUnreadMessageCount } from './lib/portal';
+import { loadConversation, loadUnreadMessageCount, type ChatMessage } from './lib/portal';
 import iconApp from './assets/logo/icon_app.png';
 import mascotAi from './assets/mascote_ai3.png';
 import {
@@ -1353,6 +1354,9 @@ export default function App() {
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState<ChatMessage[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [careInitialTab, setCareInitialTab] = useState<'chat' | 'appointments'>('chat');
   const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
   const [showHungerModal, setShowHungerModal] = useState(false);
@@ -1682,6 +1686,26 @@ export default function App() {
     { id: 'profile', icon: User, label: 'Perfil' },
   ];
 
+  const openNotifications = () => {
+    setShowNotificationsModal(true);
+    setNotificationsLoading(true);
+    loadConversation()
+      .then((data) => {
+        setUnreadMessages(data.unreadCount || 0);
+        setUnreadNotifications(
+          (data.messages || []).filter((message) => message.sender === 'nutritionist' && !message.readAt)
+        );
+      })
+      .catch(() => setUnreadNotifications([]))
+      .finally(() => setNotificationsLoading(false));
+  };
+
+  const openChatFromNotification = () => {
+    setShowNotificationsModal(false);
+    setCareInitialTab('chat');
+    setCurrentPage('messages');
+  };
+
   const renderTopNavbar = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles'].includes(currentPage) || isLoading) return null;
 
@@ -1702,8 +1726,20 @@ export default function App() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => { setCareInitialTab('chat'); setCurrentPage('messages'); }}
+            onClick={openNotifications}
             className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-white text-ink/60 transition hover:border-accent/40 hover:text-accent"
+            aria-label={unreadMessages > 0 ? `Notificações: ${unreadMessages} não lidas` : 'Notificações'}
+            title="Notificações"
+          >
+            <Bell size={17} />
+            {unreadMessages > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setCareInitialTab('chat'); setCurrentPage('messages'); }}
+            className="relative hidden h-9 w-9 items-center justify-center rounded-full border border-line bg-white text-ink/60 transition hover:border-accent/40 hover:text-accent sm:inline-flex"
             aria-label={unreadMessages > 0 ? `Mensagens: ${unreadMessages} não lidas` : 'Mensagens e consultas'}
             title="Mensagens e consultas"
           >
@@ -1778,8 +1814,8 @@ export default function App() {
 
     // Cinco itens: Início, Insights, Registrar (centro), Biblioteca, Perfil.
     return (
-      <div className="mobile-nav fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 pb-safe pointer-events-none">
-        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-md">
+      <div className="mobile-nav fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-safe pointer-events-none">
+        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-[1.75rem] border border-line bg-white px-1.5 shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
           {navItems.map((item) => {
             const isActive = currentPage === item.id;
 
@@ -1788,7 +1824,7 @@ export default function App() {
                 <div key={item.id} className="flex justify-center items-center">
                   <button
                     onClick={() => setCurrentPage('meal-log')}
-                    className="relative -top-5 w-14 h-14 rounded-full flex items-center justify-center border-4 border-paper bg-accent text-paper shadow-lg hover:scale-105 active:scale-95 transition-transform"
+                    className="relative -top-5 w-14 h-14 rounded-full flex items-center justify-center border-4 border-white bg-accent text-paper shadow-lg hover:scale-105 active:scale-95 transition-transform"
                     aria-label="Registrar Refeição"
                   >
                     <PlusCircle size={30} />
@@ -2060,6 +2096,7 @@ export default function App() {
               onNavigate={setCurrentPage}
               onOpenDiary={() => setShowDailyDiaryModal(true)}
               onSaveProfile={persistUserProfile}
+              onOpenCare={(tab) => { setCareInitialTab(tab); setCurrentPage('messages'); }}
               toast={toast}
             />
           )}
@@ -2156,6 +2193,65 @@ export default function App() {
         onClose={() => setShowSleepModal(false)}
         onSave={addSleepLog}
       />
+
+      {showNotificationsModal && (
+        <div className="modal-shell fixed inset-0 z-[60] flex">
+          <div className={MODAL_BACKDROP_CLASS} onClick={() => setShowNotificationsModal(false)} />
+          <div className="modal-panel relative z-10 w-full bg-paper md:max-w-md border border-line shadow-2xl">
+            <div className="modal-header flex items-center justify-between gap-3">
+              <div>
+                <span className="label-sm text-accent">Notificações</span>
+                <h3 className="font-display text-2xl mt-1">Mensagens da nutricionista</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNotificationsModal(false)}
+                className="w-10 h-10 rounded-full border border-line flex items-center justify-center text-ink/50 hover:bg-white"
+                aria-label="Fechar notificações"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {notificationsLoading ? (
+                <p className="flex items-center gap-2 text-xs font-semibold text-ink/45">
+                  <Loader2 size={14} className="animate-spin text-accent" /> Carregando mensagens...
+                </p>
+              ) : unreadNotifications.length === 0 ? (
+                <p className="rounded-2xl border border-line bg-white p-5 text-center text-sm text-ink/55">
+                  Nenhuma mensagem não vista por aqui.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {unreadNotifications.map((message) => (
+                    <button
+                      key={message.id}
+                      type="button"
+                      onClick={openChatFromNotification}
+                      className="w-full rounded-2xl border border-line bg-white p-4 text-left transition hover:border-accent hover:bg-accent/5"
+                    >
+                      <span className="text-[10px] font-bold text-accent">Mensagem não vista</span>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink/80">{message.body}</p>
+                      <span className="mt-2 block text-[10px] text-ink/40">
+                        {message.createdAt
+                          ? new Date(message.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={openChatFromNotification}
+                className="mt-5 w-full rounded-full bg-accent py-3.5 text-xs font-bold text-paper transition hover:bg-accent/90"
+              >
+                Abrir conversa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Article Reader Modal */}
       <AnimatePresence>
@@ -3211,7 +3307,7 @@ function MealLogPage({
               </div>
               <div className="mx-auto mt-3 flex w-full max-w-xs flex-col items-center">
                 <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }} className="h-20 w-20">
-                  <FlyingMascotSprite alt="Mascote voando" className="h-full w-full object-contain" />
+                  <FlyingMascotSprite alt="Mascote pensando" animation="thinking" className="h-full w-full" />
                 </motion.div>
                 <span className="mt-1 text-center text-[10px] font-bold text-ink/45">Pausa breve: como seu corpo e suas emoções estão?</span>
               </div>
@@ -4557,12 +4653,14 @@ function ProfilePageComponent({
   onNavigate,
   onOpenDiary,
   onSaveProfile,
+  onOpenCare,
   toast
 }: {
   userProfile: UserProfile;
   onNavigate: (page: Page) => void;
   onOpenDiary: () => void;
   onSaveProfile: (profile: UserProfile) => void;
+  onOpenCare: (tab: 'chat' | 'appointments') => void;
   toast: any;
 }) {
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
@@ -4641,13 +4739,22 @@ function ProfilePageComponent({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowMetricsModal(true)}
-        className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-xs font-bold text-paper shadow-sm transition hover:bg-accent/90 active:scale-95"
-      >
-        <Activity size={15} /> Atualizar métricas
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => onOpenCare('chat')}
+          className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-5 py-3 text-xs font-bold text-ink/70 shadow-sm transition hover:border-accent hover:text-accent active:scale-95 sm:hidden"
+        >
+          <MessageCircle size={15} /> Abrir conversa
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowMetricsModal(true)}
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-xs font-bold text-paper shadow-sm transition hover:bg-accent/90 active:scale-95"
+        >
+          <Activity size={15} /> Atualizar métricas
+        </button>
+      </div>
 
       {/* Diário do Usuário */}
       {(userProfile.dailyNotes && userProfile.dailyNotes.length > 0) && (

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, Send, Sparkles, X } from 'lucide-react';
-import mascoteEyesOpen from '../../assets/mascote_eyes_open.png';
-import mascoteEyesClosed from '../../assets/mascote_eyes_closed.png';
+import { FlyingMascotSprite } from './FlyingMascotSprite';
 import type { UserProfile } from '../../types';
 
 interface MascotBubbleProps {
@@ -15,15 +14,6 @@ export const MascotBubble = ({ userProfile, onMoodShared }: MascotBubbleProps) =
   const [moodInputOpen, setMoodInputOpen] = useState(false);
   const [currentMood, setCurrentMood] = useState('');
   const [pendingMood, setPendingMood] = useState<string | null>(null);
-  const [eyesOpen, setEyesOpen] = useState(true);
-
-  useEffect(() => {
-    const blinkInterval = setInterval(() => {
-      setEyesOpen(false);
-      setTimeout(() => setEyesOpen(true), 100);
-    }, 1800 + Math.random() * 1500);
-    return () => clearInterval(blinkInterval);
-  }, []);
 
   // O humor escolhido fica marcado até o fim do dia: deriva do checkIn de hoje.
   const todayLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -45,11 +35,7 @@ export const MascotBubble = ({ userProfile, onMoodShared }: MascotBubbleProps) =
     <div className="bg-accent/10 border border-accent/20 p-5 sm:p-6 rounded-[2rem] sm:rounded-[2.5rem] relative overflow-hidden group">
       <div className="flex flex-col items-start gap-4 relative z-10 sm:flex-row sm:items-center sm:gap-6">
         <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-inner shrink-0 overflow-hidden sm:w-24 sm:h-24">
-          <img
-            src={eyesOpen ? mascoteEyesOpen : mascoteEyesClosed}
-            alt="Mascote Mind Nutrition"
-            className="w-full h-full object-contain"
-          />
+          <FlyingMascotSprite alt="Mascote Nutri" animation="talking" className="h-full w-full" />
         </div>
         <div className="w-full flex-1">
           <div className="flex items-center gap-2">

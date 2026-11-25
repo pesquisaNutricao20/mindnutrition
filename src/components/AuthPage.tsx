@@ -239,7 +239,7 @@ export const AuthPage = ({
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <FlyingMascotSprite alt="Mascote Mind Nutrition" className="h-full object-contain" />
+                <FlyingMascotSprite alt="Mascote Mind Nutrition" animation="thinking" className="h-full" />
               </motion.div>
             </div>
             <div className="space-y-2">
@@ -300,7 +300,7 @@ export const AuthPage = ({
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <FlyingMascotSprite alt="Mascote Mind Nutrition" className="mx-auto h-full object-contain" />
+                <FlyingMascotSprite alt="Mascote Mind Nutrition" animation="maneuver" className="mx-auto h-full" />
               </motion.div>
             </div>
             <h2 className="display-title mt-3 text-4xl">Sua jornada com mais calma.</h2>
@@ -325,7 +325,7 @@ export const AuthPage = ({
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <FlyingMascotSprite alt="Mascote Mind Nutrition" className="mx-auto h-full object-contain" />
+                <FlyingMascotSprite alt="Mascote Mind Nutrition" animation="idle" className="mx-auto h-full" />
               </motion.div>
             </div>
             <h2 className="display-title text-3xl sm:text-4xl">

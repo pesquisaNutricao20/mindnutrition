@@ -24,7 +24,7 @@
   --accent-light: #D6EEF2;
   --line: rgba(39, 50, 56, 0.14);
   --mobile-nav-height: 4rem;
-  --mobile-nav-inset: 0.75rem;
+  --mobile-nav-inset: 0rem;
   --sheet-gap: 0.75rem;
   --paper-noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -374,6 +374,20 @@ select {
   to { transform: rotate(360deg); }
 }
 
+/* 8 quadros por linha; jump-none mantém o primeiro e o último quadro visíveis. */
+.mascot-sprite {
+  aspect-ratio: 1 / 1;
+  background-repeat: no-repeat;
+  background-size: 800% 500%;
+  animation-name: mascotSpriteFrames;
+  animation-timing-function: steps(8, jump-none);
+  animation-iteration-count: infinite;
+}
+@keyframes mascotSpriteFrames {
+  from { background-position-x: 0%; }
+  to { background-position-x: 100%; }
+}
+
 .animated-gradient {
   background: linear-gradient(-45deg, var(--accent), var(--accent-secondary), color-mix(in srgb, var(--accent) 78%, var(--ink)), color-mix(in srgb, var(--accent-secondary) 78%, var(--ink)));
   background-size: 400% 400%;
@@ -528,15 +542,22 @@ body:has(.modal-shell) {
   overflow: hidden;
 }
 
-/* A barra de navegação cede espaço ao modal sem precisar de re-render. */
+/* A navegação some enquanto qualquer modal está aberto, sem re-render. */
+.app-topbar,
+.app-sidebar,
 .mobile-nav {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
+body:has(.modal-shell) .app-topbar,
+body:has(.modal-shell) .app-sidebar,
 body:has(.modal-shell) .mobile-nav {
   opacity: 0;
-  transform: translateY(2rem);
   pointer-events: none;
+}
+
+body:has(.modal-shell) .mobile-nav {
+  transform: translateY(2rem);
 }
 
 body:has(.modal-shell) .mobile-nav nav {
