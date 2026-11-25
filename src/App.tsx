@@ -58,6 +58,7 @@ import { ProfileAvatar } from './components/ui/ProfileAvatar';
 import { FlyingMascotSprite } from './components/ui/FlyingMascotSprite';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { MascotBubble } from './components/ui/MascotBubble';
+import { ChallengePlant } from './components/ui/ChallengePlant';
 import { AdminPlatform } from './components/admin/AdminPlatform';
 import { UserCarePage } from './components/UserCarePage';
 import { APP_THEMES, DEFAULT_THEME_ID } from './constants/themes';
@@ -1388,7 +1389,7 @@ export default function App() {
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  const mainTabs: Page[] = ['dashboard', 'progress', 'challenge', 'content', 'profile'];
+  const mainTabs: Page[] = ['dashboard', 'progress', 'content', 'profile'];
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -1676,7 +1677,6 @@ export default function App() {
   const navItems = [
     { id: 'dashboard', icon: Home, label: 'Início' },
     { id: 'progress', icon: Activity, label: 'Insights' },
-    { id: 'challenge', icon: Sprout, label: 'Desafio' },
     { id: 'meal-log', icon: PlusCircle, label: 'Registrar', primary: true },
     { id: 'content', icon: Library, label: 'Biblioteca' },
     { id: 'profile', icon: User, label: 'Perfil' },
@@ -1776,10 +1776,10 @@ export default function App() {
   const renderMobileNav = () => {
     if (['landing', 'auth', 'diagnosis', 'admin-login', 'admin-dashboard', 'admin-users', 'admin-articles', 'meal-log'].includes(currentPage) || isLoading) return null;
 
-    // Seis itens: Início, Insights, Desafio, Registrar (centro), Biblioteca, Perfil.
+    // Cinco itens: Início, Insights, Registrar (centro), Biblioteca, Perfil.
     return (
       <div className="mobile-nav fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 pb-safe pointer-events-none">
-        <nav className="pointer-events-auto grid grid-cols-6 h-16 w-full max-w-[26rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-md">
+        <nav className="pointer-events-auto grid grid-cols-5 h-16 w-full max-w-[24rem] items-center rounded-full border border-white/55 bg-paper/70 px-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] backdrop-blur-md">
           {navItems.map((item) => {
             const isActive = currentPage === item.id;
 
@@ -2623,7 +2623,6 @@ function DashboardPage({
       {/* Mascote Interactive Bubble */}
       <MascotBubble
         userProfile={userProfile}
-        onShowToast={toast}
         onMoodShared={onMoodShared}
       />
 
@@ -2694,8 +2693,29 @@ function DashboardPage({
         </div>
       </section>
 
+      {/* Desafio de 21 Dias */}
+      <button
+        onClick={() => onNavigate('challenge')}
+        className="group relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-accent via-accent to-accent-secondary p-6 text-paper shadow-lg transition-all hover:shadow-xl active:scale-98"
+      >
+        <Sprout className="absolute -right-6 -bottom-8 text-white/15 w-40 h-40 rotate-12" />
+        <div className="relative z-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+              <Sprout size={26} />
+            </span>
+            <div className="text-left">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-paper/80">Jornada guiada · 21 dias</p>
+              <h3 className="font-display text-2xl font-bold leading-tight mt-0.5">Desafio de 21 Dias</h3>
+              <p className="mt-1 text-xs font-medium text-paper/85">Observar, compreender e cultivar em pequenos registros diários.</p>
+            </div>
+          </div>
+          <ArrowRight size={22} className="shrink-0 transition-transform group-hover:translate-x-1" />
+        </div>
+      </button>
+
       {/* Quick Hub Grid */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-3">
         <button
           onClick={() => setSelectedOption({
             id: 'signals',
@@ -2739,20 +2759,6 @@ function DashboardPage({
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-secondary/15 text-accent-secondary"><BookOpen size={20} /></span>
           <h3 className="mt-4 font-bold text-base">Biblioteca Científica</h3>
           <p className="mt-1 text-xs leading-relaxed text-ink/55">Artigos e receitas sobre nutrição gentil e autocompaixão.</p>
-        </button>
-        <button
-          onClick={() => setSelectedOption({
-            id: 'challenge',
-            title: 'Desafio de 21 Dias',
-            description: 'Uma jornada leve de observação: refeição, sono, emoções e uma missão por dia. Sem metas de peso, sem punição e com recompensas simbólicas.',
-            action: () => onNavigate('challenge'),
-          })}
-          aria-pressed={selectedOption?.id === 'challenge'}
-          className={`group rounded-[1.75rem] border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${selectedOption?.id === 'challenge' ? 'border-accent ring-2 ring-accent/20' : 'border-line'}`}
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Sprout size={20} /></span>
-          <h3 className="mt-4 font-bold text-base">Desafio de 21 Dias</h3>
-          <p className="mt-1 text-xs leading-relaxed text-ink/55">Observar, compreender e cultivar em pequenos registros diários.</p>
         </button>
       </section>
 
@@ -3724,11 +3730,17 @@ function ChallengePage({
           </div>
           <div className="flex items-center gap-2 rounded-full bg-accent/10 px-4 py-2 text-xs font-bold text-accent"><Sprout size={15} /> {totalPoints} sementes</div>
         </div>
-        <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-line/50">
-          <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(100, (completedDays / 21) * 100)}%` }} />
-        </div>
-        <div className="mt-2 flex justify-between text-[10px] font-bold text-ink/50">
-          <span>{completedDays} dias concluídos</span><span>{gardenStage(completedDays)}</span>
+        <div className="mt-5 flex flex-col items-center gap-6 sm:flex-row sm:items-end">
+          <ChallengePlant completedDays={completedDays} />
+          <div className="w-full flex-1 pb-1">
+            <div className="h-2.5 overflow-hidden rounded-full bg-line/50">
+              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(100, (completedDays / 21) * 100)}%` }} />
+            </div>
+            <div className="mt-2 flex justify-between text-[10px] font-bold text-ink/50">
+              <span>{completedDays} dias concluídos</span><span>{gardenStage(completedDays)}</span>
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-ink/45">A cada dia concluído sua plantinha ganha altura e folhas novas; com 15 dias ela floresce.</p>
+          </div>
         </div>
       </section>
 
@@ -4604,9 +4616,6 @@ function ProfilePageComponent({
               ))}
             </div>
           </div>
-          <button onClick={() => onNavigate('settings-account')} className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-ink/10 text-ink text-xs font-bold inline-flex items-center justify-center gap-2 hover:bg-ink/15">
-            <Edit2 size={14} /> Editar
-          </button>
         </div>
       </header>
 
