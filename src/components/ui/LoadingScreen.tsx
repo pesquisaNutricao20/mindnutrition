@@ -16,7 +16,7 @@ export const LoadingScreen = () => {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative flex w-full max-w-4xl flex-col items-center justify-center overflow-hidden px-4">
         <div className="relative flex h-36 w-full items-center justify-center overflow-hidden md:h-44">
           <div className="relative">
-            <FlyingMascotSprite className="h-28 w-28 md:h-36 md:w-36" />
+            <FlyingMascotSprite className="-scale-x-100 h-28 w-28 md:h-36 md:w-36" />
           </div>
         </div>
         <motion.div

@@ -284,15 +284,15 @@ export function UserCarePage({
   const unreadFromNutritionist = messages.filter((message) => message.sender === 'nutritionist' && !message.readAt).length;
 
   return (
-    <PageContainer className="mx-auto flex h-[100dvh] min-h-0! w-full max-w-5xl! flex-col gap-4 overflow-hidden pb-[calc(var(--mobile-nav-height)+max(0.75rem,env(safe-area-inset-bottom,0px)))]! pt-[calc(env(safe-area-inset-top,0px)+6rem)]! md:pb-8! md:pt-[calc(env(safe-area-inset-top,0px)+7rem)]!">
-      <header className="flex shrink-0 items-center gap-4">
+    <PageContainer hasTopbar={false} className="mx-auto flex h-[100dvh] min-h-0! w-full max-w-5xl! flex-col gap-4 overflow-hidden pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]! pt-[calc(env(safe-area-inset-top,0px)+1.5rem)]! md:pb-8! md:pt-6!">
+      <header className="flex shrink-0 items-center gap-3">
         <Button
           variant="secondary"
           onClick={() => onNavigate('dashboard')}
           aria-label="Voltar ao início"
           className="h-12 w-12 shrink-0 p-0"
         >
-          <ArrowLeft size={20} aria-hidden="true" />
+          <ArrowLeft size={24} aria-hidden="true" />
         </Button>
         <div className="min-w-0">
           <h1 className="section-title">Seu cuidado.</h1>

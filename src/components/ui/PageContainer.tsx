@@ -30,10 +30,12 @@ export function PageContainer({
 }: PageContainerProps) {
   const pagePadding = noPadding
     ? ''
-    : `px-4 sm:px-8 md:px-12 ${hasTopbar ? 'pt-24 md:pt-28' : 'pt-8 md:pt-12'}`;
+    : `px-4 sm:px-8 md:px-12 ${hasTopbar ? 'pt-24 md:pt-28' : 'pt-[calc(1rem+env(safe-area-inset-top,0px))] md:pt-12'}`;
   const bottomPadding = noPadding
     ? ''
-    : 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(4rem+env(safe-area-inset-bottom,0px))]';
+    : hasTopbar
+      ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(4rem+env(safe-area-inset-bottom,0px))]'
+      : 'pb-8 md:pb-12';
 
   return (
     <motion.div

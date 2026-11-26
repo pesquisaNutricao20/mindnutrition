@@ -91,7 +91,7 @@ export const AuthPage = ({
     if (!errorCode && !params.get('error')) return;
 
     setError(getOAuthErrorMessage(errorCode));
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({ ...window.history.state }, document.title, window.location.pathname);
   }, []);
 
   const handleSignupPhoto = async (files: FileList | null) => {
