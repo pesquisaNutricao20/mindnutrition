@@ -76,7 +76,7 @@ export function DashboardPage({
   const quoteIndex = Math.floor(Date.now() / 86_400_000) % quotes.length;
 
   return (
-    <PageContainer className="flex flex-col gap-8 md:gap-10">
+    <PageContainer className="flex flex-col gap-6 md:gap-10">
       <PageHeader
         eyebrow="Mind Nutrition"
         title={userProfile.name ? `Espaço de ${firstName}` : 'Seu espaço de cuidado'}
@@ -89,16 +89,6 @@ export function DashboardPage({
         }
       />
 
-      <Button
-        size="lg"
-        fullWidth
-        onClick={() => onNavigate('meal-log')}
-        className="min-h-16 justify-between rounded-[1.5rem] px-5 text-left"
-      >
-        <span><span className="block">Registrar refeição</span><span className="block text-xs font-medium text-paper/80">Observe fome, saciedade e humor agora</span></span>
-        <PlusCircle size={26} aria-hidden="true" />
-      </Button>
-
       <div><MascotBubble userProfile={userProfile} onMoodShared={onMoodShared} /></div>
 
       <section>
@@ -109,7 +99,7 @@ export function DashboardPage({
           </div>
           {loggedMeals.length > 0 && <span className="text-xs font-bold text-accent bg-accent/10 px-3 py-1 rounded-full">{loggedMeals.length} registros</span>}
         </div>
-        <div className="bg-white border border-line rounded-[2rem] overflow-hidden shadow-sm">
+        <div className="bg-white border border-line rounded-4xl overflow-hidden shadow-sm">
           {loggedMeals.length === 0 ? (
             <StateView status="empty" title="Nenhuma refeição registrada ainda" description="Comece a registrar suas refeições para acompanhar sua fome, saciedade e sentimentos." action={<Button onClick={() => onNavigate('meal-log')}>Registrar primeira refeição</Button>} />
           ) : (
@@ -149,7 +139,7 @@ export function DashboardPage({
       </section>
 
       {/* Acompanhamento: conversa e consultas */}
-      <section className="rounded-[2rem] border border-line bg-white p-5 shadow-sm sm:p-6">
+      <section className="rounded-4xl border border-line bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="label-sm text-accent">Seu acompanhamento</p>
@@ -200,7 +190,7 @@ export function DashboardPage({
       <button
         type="button"
         onClick={() => onNavigate('challenge')}
-        className="group relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-accent via-accent to-accent-secondary p-6 text-left text-paper shadow-lg transition-all hover:shadow-xl active:scale-98"
+        className="group relative overflow-hidden rounded-4xl bg-linear-to-br from-accent via-accent to-accent-secondary p-6 text-left text-paper shadow-lg transition-all hover:shadow-xl active:scale-98"
       >
         <Sprout className="absolute -right-6 -bottom-8 text-white/15 w-40 h-40 rotate-12" aria-hidden="true" />
         <div className="relative z-10 flex items-center justify-between gap-4">
@@ -222,7 +212,7 @@ export function DashboardPage({
       </button>
 
       {/* Card Reflexão do Dia & Status */}
-      <section className="mobile-card-padding animated-gradient p-6 md:p-10 rounded-[2rem] shadow-lg relative overflow-hidden text-paper">
+      <section className="mobile-card-padding animated-gradient p-6 md:p-10 rounded-4xl shadow-lg relative overflow-hidden text-paper">
         <Sparkles className="absolute -right-4 -top-4 text-paper/20 w-32 h-32 spin-slow" aria-hidden="true" />
         <div className="relative z-10 grid gap-6 lg:grid-cols-[1.4fr_0.8fr] lg:items-center">
           <div>
@@ -271,7 +261,7 @@ export function DashboardPage({
       </section>
 
       {/* Avaliação do App */}
-      <section className="rounded-[2rem] border border-line bg-white p-6 shadow-sm">
+      <section className="rounded-4xl border border-line bg-white p-6 shadow-sm">
         <p className="label-sm text-accent">Sua experiência</p>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-medium text-ink/70">Como está sendo sua experiência com o Mind Nutrition?</p>

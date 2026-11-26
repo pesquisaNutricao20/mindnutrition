@@ -292,7 +292,7 @@ export function UserCarePage({
           aria-label="Voltar ao início"
           className="h-12 w-12 shrink-0 p-0"
         >
-          <ArrowLeft size={24} aria-hidden="true" />
+          <ArrowLeft size={32} className="h-8 w-8 shrink-0" aria-hidden="true" />
         </Button>
         <div className="min-w-0">
           <h1 className="section-title">Seu cuidado.</h1>

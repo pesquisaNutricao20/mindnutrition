@@ -208,8 +208,8 @@ export function MealLogPage({
         {/* STEP 1: PRÉ-REFEIÇÃO */}
         {step === 'pre' && (
           <>
-            <fieldset className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
-              <legend className="font-bold text-lg">De onde vem sua fome?</legend>
+            <fieldset className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-4xl shadow-sm">
+              <legend className="font-bold m-2 text-lg">De onde vem sua fome?</legend>
               <p className="mt-1 text-xs leading-relaxed text-ink/55">Escolha o sinal que melhor representa este momento.</p>
               <div className="mx-auto mt-3 flex w-full max-w-xs flex-col items-center">
                 <div className="h-20 w-20">
@@ -369,7 +369,7 @@ export function MealLogPage({
         {step === 'post' && (
           <>
             <fieldset className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
-              <legend className="font-bold text-lg">Como foi sua saciedade?</legend>
+              <legend className="font-bold m-2 text-lg">Como foi sua saciedade?</legend>
               <p className="mt-1 text-xs leading-relaxed text-ink/55">Avalie o quanto esta refeição atendeu às suas necessidades físicas.</p>
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {[0, 1, 2, 3, 4, 5].map((val) => (
@@ -388,7 +388,7 @@ export function MealLogPage({
             </fieldset>
 
             <fieldset className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2rem] shadow-sm">
-              <legend className="font-bold text-lg">Seu humor após a refeição</legend>
+              <legend className="font-bold m-2 text-lg">Seu humor após a refeição</legend>
               <div className="mood-grid mt-3">
                 {moods.map(m => (
                   <button

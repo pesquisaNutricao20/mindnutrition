@@ -13,7 +13,7 @@ interface PageContainerProps {
 }
 
 const MAX_WIDTH = {
-  default: 'max-w-6xl',
+  default: 'max-w-5xl',
   narrow: 'max-w-2xl',
   wide: 'max-w-none',
 };
