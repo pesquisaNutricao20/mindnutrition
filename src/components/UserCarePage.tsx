@@ -290,9 +290,9 @@ export function UserCarePage({
           variant="secondary"
           onClick={() => onNavigate('dashboard')}
           aria-label="Voltar ao início"
-          className="h-12 w-12 shrink-0 p-0"
+          className="h-14 w-14 shrink-0 p-0"
         >
-          <ArrowLeft size={32} className="h-8 w-8 shrink-0" aria-hidden="true" />
+          <ArrowLeft size={48} className="h-12 w-12 shrink-0" strokeWidth={2.5} aria-hidden="true" />
         </Button>
         <div className="min-w-0">
           <h1 className="section-title">Seu cuidado.</h1>
