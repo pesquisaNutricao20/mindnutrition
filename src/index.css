@@ -189,9 +189,8 @@ select {
   flex-direction: column;
   min-height: 100vh;
   background-image:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--accent) 14%, transparent) 1px, transparent 0),
     linear-gradient(135deg, color-mix(in srgb, var(--accent-light) 20%, var(--paper)), var(--paper) 45%, color-mix(in srgb, var(--accent-secondary-light) 24%, var(--paper)));
-  background-size: 22px 22px, 100% 100%;
+  background-size: 100% 100%;
 }
 
 .app-main {
@@ -744,11 +743,10 @@ a {
 
 .landing-gradient {
   background:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--accent) 15%, transparent) 1px, transparent 0),
     radial-gradient(circle at 20% 18%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 34%),
     radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--accent-secondary) 18%, transparent), transparent 32%),
     linear-gradient(150deg, var(--paper), color-mix(in srgb, var(--accent-light) 42%, white), var(--paper));
-  background-size: 24px 24px, auto, auto, auto;
+  background-size: auto, auto, auto;
 }
 
 .landing-waves {

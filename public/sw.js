@@ -1,14 +1,14 @@
-const CACHE_NAME = 'mind-nutrition-v5';
+const CACHE_NAME = 'mind-nutrition-v6';
 const STATIC_DESTINATIONS = new Set(['script', 'style', 'image', 'font', 'manifest']);
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/pwa/android-chrome-192x192.png',
-  '/pwa/android-chrome-512x512.png',
+  '/pwa/web-app-manifest-192x192.png',
+  '/pwa/web-app-manifest-512x512.png',
   '/pwa/apple-touch-icon.png',
-  '/pwa/favicon-32x32.png',
-  '/pwa/favicon-16x16.png',
+  '/pwa/favicon-96x96.png',
+  '/pwa/favicon.svg',
   '/pwa/favicon.ico'
 ];
 

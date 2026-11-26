@@ -261,11 +261,8 @@ export function ProgressPageComponent({
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.45, ease: 'easeOut' }} className="mobile-card-padding bg-white border border-line p-6 sm:p-8 rounded-[2.5rem] shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-lg flex items-center gap-2">
-              <span className="text-accent"><Brain size={20} /></span> Insights da jornada
+              <span className="text-accent"><Brain size={20} /></span> Seus dados combinados
             </h3>
-            <button type="button" onClick={() => toast('O gráfico mostra o equilíbrio entre saciedade, consciência, energia, humor, constância e contexto.', 'info')} className="inline-flex min-h-11 items-center gap-1 px-2 text-xs font-bold text-accent">
-              <Info size={14} aria-hidden="true" /> Entender eixos
-            </button>
           </div>
           <p className="mb-4 text-xs sm:text-sm leading-relaxed text-ink/55">
             Representação multidimensional do seu bem-estar alimentar.
